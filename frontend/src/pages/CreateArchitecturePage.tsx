@@ -53,7 +53,8 @@ export function CreateArchitecturePage() {
   const [calculationError, setCalculationError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pickedSku, setPickedSku] = useState<CatalogSKU | null>(null);
-  const [skuAddError, setSkuAddError] = useState<string | null>(null);
+  const [skuActionError, setSkuActionError] = useState<string | null>(null);
+  const [editingSkuSelectionId, setEditingSkuSelectionId] = useState<string | null>(null);
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["architecture", architectureId] });
@@ -154,11 +155,33 @@ export function CreateArchitecturePage() {
         sku: pickedSku.sku,
         ...inputs,
       });
-      setSkuAddError(null);
+      setSkuActionError(null);
       setPickedSku(null);
       invalidate();
     } catch (err) {
-      setSkuAddError(errorMessageOf(err));
+      setSkuActionError(errorMessageOf(err));
+    }
+  }
+
+  async function updateSkuSelection(id: string, inputs: PricingInputs) {
+    try {
+      await api.updateSkuSelection(id, inputs);
+      setSkuActionError(null);
+      setEditingSkuSelectionId(null);
+      invalidate();
+    } catch (err) {
+      setSkuActionError(errorMessageOf(err));
+    }
+  }
+
+  async function removeSkuSelection(id: string) {
+    try {
+      await api.deleteSkuSelection(id);
+      setSkuActionError(null);
+      if (editingSkuSelectionId === id) setEditingSkuSelectionId(null);
+      invalidate();
+    } catch (err) {
+      setSkuActionError(errorMessageOf(err));
     }
   }
 
@@ -238,13 +261,26 @@ export function CreateArchitecturePage() {
             {selectedCollection.sku_selections.map((s) => (
               <li key={s.id}>
                 {s.service_code} / {s.sku} — {s.pricing_term}, {s.purchase_option}, qty{" "}
-                {s.usage_quantity}
+                {s.usage_quantity}{" "}
+                <button onClick={() => setEditingSkuSelectionId(s.id)}>Edit</button>{" "}
+                <button onClick={() => removeSkuSelection(s.id)}>Remove</button>
+                {editingSkuSelectionId === s.id && (
+                  <PricingInputsForm
+                    submitLabel="Save"
+                    initial={{
+                      pricing_term: s.pricing_term,
+                      purchase_option: s.purchase_option,
+                      usage_quantity: s.usage_quantity,
+                    }}
+                    onSubmit={(inputs) => updateSkuSelection(s.id, inputs)}
+                  />
+                )}
               </li>
             ))}
           </ul>
 
-          {skuAddError && (
-            <ErrorMessage message={skuAddError} onRetry={() => setSkuAddError(null)} />
+          {skuActionError && (
+            <ErrorMessage message={skuActionError} onRetry={() => setSkuActionError(null)} />
           )}
           {pickedSku ? (
             <>

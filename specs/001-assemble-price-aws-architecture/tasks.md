@@ -377,3 +377,16 @@ Task: "Build PricingInputsForm in frontend/src/components/PricingInputsForm.tsx"
 - [x] T070 Give the provider selector in `frontend/src/pages/LandingPage.tsx` a real
       interactive selected-state (or otherwise make "user selects AWS" a genuine UI action)
       per US1/AC1 (partial)
+
+---
+
+## Phase 8: Convergence
+
+- [x] T071 Add remove (and optionally edit) actions to each SKU Selection list item in
+      `frontend/src/pages/CreateArchitecturePage.tsx`, wiring the existing
+      `deleteSkuSelection` client call and a new `updateSkuSelection` one in
+      `frontend/src/api/client.ts`, so a user can correct or remove a mistakenly-added SKU
+      without deleting the whole Collection — the backend `PATCH`/`DELETE
+      /sku-selections/{id}` endpoints are already built and tested but currently
+      unreachable from the UI, per FR-006/FR-007 and the `contracts/api.md` SKU Selection
+      endpoints (partial)

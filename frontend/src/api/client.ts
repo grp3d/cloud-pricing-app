@@ -102,6 +102,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  updateSkuSelection: (
+    id: string,
+    body: Partial<{
+      pricing_term: PricingTerm;
+      purchase_option: PurchaseOption;
+      usage_quantity: string;
+    }>,
+  ) =>
+    request<SKUSelection>(`/sku-selections/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   deleteSkuSelection: (id: string) =>
     request<void>(`/sku-selections/${id}`, { method: "DELETE" }),
 

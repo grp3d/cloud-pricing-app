@@ -11,14 +11,19 @@ export interface PricingInputs {
 interface Props {
   onSubmit: (inputs: PricingInputs) => void;
   submitLabel?: string;
+  /** Pre-fill the form, e.g. when editing an existing SKU Selection's inputs. */
+  initial?: Partial<PricingInputs>;
 }
 
 /** Pricing inputs (FR-007): commitment term, purchase option, and usage quantity — the three
- * things a SKU selection needs beyond which SKU it is. */
-export function PricingInputsForm({ onSubmit, submitLabel = "Add" }: Props) {
-  const [term, setTerm] = useState<PricingTerm>("on_demand");
-  const [purchaseOption, setPurchaseOption] = useState<PurchaseOption>("not_applicable");
-  const [quantity, setQuantity] = useState("730");
+ * things a SKU selection needs beyond which SKU it is. Also reused, via `initial`, to edit an
+ * existing SKU Selection's inputs. */
+export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial }: Props) {
+  const [term, setTerm] = useState<PricingTerm>(initial?.pricing_term ?? "on_demand");
+  const [purchaseOption, setPurchaseOption] = useState<PurchaseOption>(
+    initial?.purchase_option ?? "not_applicable",
+  );
+  const [quantity, setQuantity] = useState(initial?.usage_quantity ?? "730");
 
   return (
     <form
