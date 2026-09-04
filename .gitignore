@@ -1,0 +1,21 @@
+# Python (backend/)
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+*.env
+.env.*
+
+# Node / TypeScript (frontend/)
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Universal
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+*.log

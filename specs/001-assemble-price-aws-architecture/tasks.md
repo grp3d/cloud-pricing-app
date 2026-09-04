@@ -29,20 +29,20 @@ independent implementation and testing of each story.
 
 **Purpose**: Project initialization and basic structure (backend/ + frontend/ per plan.md)
 
-- [ ] T001 Create the `backend/src/{api,models,services,pricing_data,db}/` and
+- [x] T001 Create the `backend/src/{api,models,services,pricing_data,db}/` and
       `backend/tests/{contract,integration,unit}/` directory skeletons, and the
       `frontend/src/{api,components,pages,services}/` and `frontend/tests/{unit,integration}/`
       directory skeletons, per `plan.md`'s Project Structure
-- [ ] T002 Initialize the backend Python project with `uv` (`backend/pyproject.toml`), adding
+- [x] T002 Initialize the backend Python project with `uv` (`backend/pyproject.toml`), adding
       FastAPI, Pydantic v2, SQLAlchemy 2.0, Alembic, `duckdb`, `psycopg[binary]`, pytest,
       pytest-asyncio, and httpx as dependencies
-- [ ] T003 [P] Initialize the frontend Vite + React + TypeScript project (`frontend/package.json`),
+- [x] T003 [P] Initialize the frontend Vite + React + TypeScript project (`frontend/package.json`),
       adding `@tanstack/react-query`, `@xyflow/react`, `openapi-typescript`, `vitest`, and
       `@testing-library/react` as dependencies
-- [ ] T004 [P] Configure backend linting/formatting (ruff) in `backend/pyproject.toml`
-- [ ] T005 [P] Configure frontend linting/formatting (ESLint + Prettier) in
+- [x] T004 [P] Configure backend linting/formatting (ruff) in `backend/pyproject.toml`
+- [x] T005 [P] Configure frontend linting/formatting (ESLint + Prettier) in
       `frontend/.eslintrc.cjs` and `frontend/package.json`
-- [ ] T006 [P] Create the backend settings module (`DATABASE_URL`, AWS pricing Parquet base
+- [x] T006 [P] Create the backend settings module (`DATABASE_URL`, AWS pricing Parquet base
       path, per `research.md`) in `backend/src/config.py`
 
 ---
@@ -53,37 +53,37 @@ independent implementation and testing of each story.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T007 Configure the async Postgres engine/session in `backend/src/db/session.py`
+- [x] T007 Configure the async Postgres engine/session in `backend/src/db/session.py`
       (depends on T002, T006)
-- [ ] T008 Initialize the Alembic migration environment in `backend/alembic.ini` and
+- [x] T008 Initialize the Alembic migration environment in `backend/alembic.ini` and
       `backend/src/db/migrations/env.py` (depends on T007)
-- [ ] T009 Implement SQLAlchemy ORM models for User, Architecture, Collection, SKU Selection, and
+- [x] T009 Implement SQLAlchemy ORM models for User, Architecture, Collection, SKU Selection, and
       Data Connector — including the soft-delete `deleted_at` columns, the `provider`/`type`/
       `pricing_term`/`purchase_option` enums, and the check constraints from `data-model.md`
       (self-connect rejection, exactly-one-parent on SKU Selection) — in
       `backend/src/models/orm.py` (depends on T007)
-- [ ] T010 Generate the initial Alembic migration for all tables in
+- [x] T010 Generate the initial Alembic migration for all tables in
       `backend/src/db/migrations/versions/0001_initial.py` (depends on T008, T009)
-- [ ] T011 [P] Implement Pydantic request/response schemas for all entities per
+- [x] T011 [P] Implement Pydantic request/response schemas for all entities per
       `contracts/api.md` in `backend/src/models/schemas.py` (depends on T009)
-- [ ] T012 [P] Implement the snapshot-date resolution helper (pin one `snapshot_date` across
+- [x] T012 [P] Implement the snapshot-date resolution helper (pin one `snapshot_date` across
       `service_dim`/`product_dim`/`product_attribute`/`region_dim`/`price_fact` per
       `research.md` #2) in `backend/src/pricing_data/snapshot.py` (depends on T006)
-- [ ] T013 [P] Implement the pricing-data-source-outage exception type in
+- [x] T013 [P] Implement the pricing-data-source-outage exception type in
       `backend/src/pricing_data/errors.py` (depends on T006)
-- [ ] T014 [P] Implement the DuckDB catalog search query function (filter by `service_code`,
+- [x] T014 [P] Implement the DuckDB catalog search query function (filter by `service_code`,
       `product_family`, free text; reject an all-empty filter) in
       `backend/src/pricing_data/catalog.py` (depends on T012, T013)
-- [ ] T015 [P] Implement the DuckDB price lookup query function (`price_fact` by SKU, term,
+- [x] T015 [P] Implement the DuckDB price lookup query function (`price_fact` by SKU, term,
       purchase option) in `backend/src/pricing_data/pricing.py` (depends on T012, T013)
-- [ ] T016 Implement the current-user auth dependency (FR-002 — a real, distinct user identity;
+- [x] T016 Implement the current-user auth dependency (FR-002 — a real, distinct user identity;
       login mechanism per `research.md`) in `backend/src/api/deps.py` (depends on T007)
-- [ ] T017 Implement the FastAPI app entrypoint, router registration, and the global exception
+- [x] T017 Implement the FastAPI app entrypoint, router registration, and the global exception
       handler mapping pricing-data-source errors to `503` (FR-018) in `backend/src/main.py`
       (depends on T013, T016)
-- [ ] T018 [P] Set up the frontend OpenAPI type-generation script (`openapi-typescript` against
+- [x] T018 [P] Set up the frontend OpenAPI type-generation script (`openapi-typescript` against
       `/openapi.json`) in `frontend/package.json` and `frontend/src/api/`
-- [ ] T019 [P] Set up the frontend app shell and router (routes for the landing page and the
+- [x] T019 [P] Set up the frontend app shell and router (routes for the landing page and the
       Create Architecture page) in `frontend/src/App.tsx`
 
 **Checkpoint**: Foundation ready — user story implementation can now begin
@@ -103,55 +103,55 @@ one AWS SKU with pricing inputs, click calculate, and verify a total price is di
 
 > Write these tests FIRST; ensure they FAIL before implementation (Constitution Principle V)
 
-- [ ] T020 [P] [US1] Contract test for `GET /providers` in
+- [x] T020 [P] [US1] Contract test for `GET /providers` in
       `backend/tests/contract/test_providers.py`
-- [ ] T021 [P] [US1] Contract test for `POST /architectures`, `GET /architectures`, and
+- [x] T021 [P] [US1] Contract test for `POST /architectures`, `GET /architectures`, and
       `GET /architectures/{id}` in `backend/tests/contract/test_architectures.py`
-- [ ] T022 [P] [US1] Contract test for `POST /architectures/{id}/collections` in
+- [x] T022 [P] [US1] Contract test for `POST /architectures/{id}/collections` in
       `backend/tests/contract/test_collections.py`
-- [ ] T023 [P] [US1] Contract test for `GET /catalog/skus` — including the `400` on an
+- [x] T023 [P] [US1] Contract test for `GET /catalog/skus` — including the `400` on an
       all-empty filter and the `503` on a simulated data-source outage — in
       `backend/tests/contract/test_catalog.py`
-- [ ] T024 [P] [US1] Contract test for `POST /collections/{id}/sku-selections` in
+- [x] T024 [P] [US1] Contract test for `POST /collections/{id}/sku-selections` in
       `backend/tests/contract/test_sku_selections.py`
-- [ ] T025 [P] [US1] Contract test for `POST /architectures/{id}/calculate` in
+- [x] T025 [P] [US1] Contract test for `POST /architectures/{id}/calculate` in
       `backend/tests/contract/test_calculate.py`
-- [ ] T026 [P] [US1] Unit test for the price calculation service — priceable line items sum
+- [x] T026 [P] [US1] Unit test for the price calculation service — priceable line items sum
       correctly, an unpriceable SKU (FR-011/FR-012) is flagged and excluded from the total, never
       silently omitted or estimated — in `backend/tests/unit/test_price_calculation.py`
-- [ ] T027 [US1] Integration test for the full assemble-and-price flow (per `quickstart.md`
+- [x] T027 [US1] Integration test for the full assemble-and-price flow (per `quickstart.md`
       section 1) in `backend/tests/integration/test_us1_assemble_and_price.py`
 
 ### Implementation for User Story 1
 
-- [ ] T028 [US1] Implement the `GET /providers` endpoint (AWS active, GCP/Azure disabled per
+- [x] T028 [US1] Implement the `GET /providers` endpoint (AWS active, GCP/Azure disabled per
       FR-003) in `backend/src/api/providers.py` (depends on T017)
-- [ ] T029 [US1] Implement `POST /architectures`, `GET /architectures`, and
+- [x] T029 [US1] Implement `POST /architectures`, `GET /architectures`, and
       `GET /architectures/{id}` endpoints, scoped to the authenticated user (FR-001, FR-002,
       FR-013) in `backend/src/api/architectures.py` (depends on T011, T016)
-- [ ] T030 [US1] Implement `POST /architectures/{id}/collections` (FR-004) in
+- [x] T030 [US1] Implement `POST /architectures/{id}/collections` (FR-004) in
       `backend/src/api/collections.py` (depends on T029)
-- [ ] T031 [US1] Implement `GET /catalog/skus` (FR-005) in `backend/src/api/catalog.py`
+- [x] T031 [US1] Implement `GET /catalog/skus` (FR-005) in `backend/src/api/catalog.py`
       (depends on T014)
-- [ ] T032 [US1] Implement `POST`/`PATCH`/`DELETE /collections/{id}/sku-selections` (FR-006,
+- [x] T032 [US1] Implement `POST`/`PATCH`/`DELETE /collections/{id}/sku-selections` (FR-006,
       FR-007) in `backend/src/api/sku_selections.py` (depends on T030)
-- [ ] T033 [US1] Implement the price calculation service (sum priceable line items via T015,
+- [x] T033 [US1] Implement the price calculation service (sum priceable line items via T015,
       flag unpriceable SKUs per FR-011/FR-012) in `backend/src/services/price_calculation.py`
       (depends on T015, T009)
-- [ ] T034 [US1] Implement `POST /architectures/{id}/calculate` (FR-010) in
+- [x] T034 [US1] Implement `POST /architectures/{id}/calculate` (FR-010) in
       `backend/src/api/calculate.py` (depends on T033)
-- [ ] T035 [US1] Register the US1 routers in `backend/src/main.py` (depends on T028, T029, T030,
+- [x] T035 [US1] Register the US1 routers in `backend/src/main.py` (depends on T028, T029, T030,
       T031, T032, T034)
-- [ ] T036 [P] [US1] Build the LandingPage (provider selector + Architecture list) in
+- [x] T036 [P] [US1] Build the LandingPage (provider selector + Architecture list) in
       `frontend/src/pages/LandingPage.tsx` (depends on T018, T019)
-- [ ] T037 [P] [US1] Build the CatalogSearchPanel component (service_code/product_family/text
+- [x] T037 [P] [US1] Build the CatalogSearchPanel component (service_code/product_family/text
       filters, FR-005) in `frontend/src/components/CatalogSearchPanel.tsx` (depends on T018)
-- [ ] T038 [P] [US1] Build the PricingInputsForm component (term, purchase option, usage
+- [x] T038 [P] [US1] Build the PricingInputsForm component (term, purchase option, usage
       quantity, FR-007) in `frontend/src/components/PricingInputsForm.tsx` (depends on T018)
-- [ ] T039 [US1] Build the CreateArchitecturePage's single-Collection flow, wiring
+- [x] T039 [US1] Build the CreateArchitecturePage's single-Collection flow, wiring
       CatalogSearchPanel and PricingInputsForm and the Calculate action/results display in
       `frontend/src/pages/CreateArchitecturePage.tsx` (depends on T036, T037, T038, T035)
-- [ ] T040 [US1] Run the `quickstart.md` "end-to-end assemble-and-price flow" validation script
+- [x] T040 [US1] Run the `quickstart.md` "end-to-end assemble-and-price flow" validation script
       against the running backend and frontend (depends on T035, T039)
 
 **Checkpoint**: User Story 1 is fully functional and independently testable — this is the MVP.
@@ -169,30 +169,30 @@ the calculated total (`quickstart.md` "Validate: connectors add to the total").
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T041 [P] [US2] Contract test for `POST /architectures/{id}/connectors`, including the
+- [x] T041 [P] [US2] Contract test for `POST /architectures/{id}/connectors`, including the
       `400` self-connect rejection (FR-008), in `backend/tests/contract/test_connectors.py`
-- [ ] T042 [P] [US2] Contract test for `POST /connectors/{id}/sku-selection` (FR-009) in
+- [x] T042 [P] [US2] Contract test for `POST /connectors/{id}/sku-selection` (FR-009) in
       `backend/tests/contract/test_connector_sku_selection.py`
-- [ ] T043 [US2] Integration test for the connectors-add-to-the-total flow (per `quickstart.md`
+- [x] T043 [US2] Integration test for the connectors-add-to-the-total flow (per `quickstart.md`
       section 2) in `backend/tests/integration/test_us2_connectors.py`
 
 ### Implementation for User Story 2
 
-- [ ] T044 [US2] Implement `POST /architectures/{id}/connectors`, validating
+- [x] T044 [US2] Implement `POST /architectures/{id}/connectors`, validating
       `from_collection_id != to_collection_id` and that both Collections belong to the
       Architecture (FR-008), in `backend/src/api/connectors.py` (depends on T030)
-- [ ] T045 [US2] Implement `POST /connectors/{id}/sku-selection` (FR-009) in
+- [x] T045 [US2] Implement `POST /connectors/{id}/sku-selection` (FR-009) in
       `backend/src/api/connectors.py` (depends on T044)
-- [ ] T046 [US2] Extend the price calculation service to include connector-attached SKU line
+- [x] T046 [US2] Extend the price calculation service to include connector-attached SKU line
       items in the total (FR-010) in `backend/src/services/price_calculation.py` (depends on
       T033, T045)
-- [ ] T047 [US2] Register the US2 routers in `backend/src/main.py` (depends on T044, T045)
-- [ ] T048 [US2] Add the React Flow canvas rendering Collections as nodes to the Create
+- [x] T047 [US2] Register the US2 routers in `backend/src/main.py` (depends on T044, T045)
+- [x] T048 [US2] Add the React Flow canvas rendering Collections as nodes to the Create
       Architecture page in `frontend/src/pages/CreateArchitecturePage.tsx` (depends on T039)
-- [ ] T049 [US2] Implement Data Connector edge creation and the attached-SKU side panel (reusing
+- [x] T049 [US2] Implement Data Connector edge creation and the attached-SKU side panel (reusing
       PricingInputsForm) in `frontend/src/components/DataConnectorPanel.tsx` (depends on T048,
       T038)
-- [ ] T050 [US2] Run the `quickstart.md` "connectors add to the total" validation script
+- [x] T050 [US2] Run the `quickstart.md` "connectors add to the total" validation script
       (depends on T047, T049)
 
 **Checkpoint**: User Stories 1 AND 2 both work independently.
@@ -210,33 +210,33 @@ after confirming the prompt, and verify it disappears from the list while its da
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T051 [P] [US3] Contract test for `DELETE /architectures/{id}` — soft delete and idempotent
+- [x] T051 [P] [US3] Contract test for `DELETE /architectures/{id}` — soft delete and idempotent
       re-delete (FR-014) — in `backend/tests/contract/test_architecture_delete.py`
-- [ ] T052 [P] [US3] Contract test for `DELETE /collections/{id}` cascading to soft-delete its
+- [x] T052 [P] [US3] Contract test for `DELETE /collections/{id}` cascading to soft-delete its
       Data Connectors (FR-015) in `backend/tests/contract/test_collection_delete_cascade.py`
-- [ ] T053 [US3] Integration test for the lifecycle flow (per `quickstart.md` section 3) in
+- [x] T053 [US3] Integration test for the lifecycle flow (per `quickstart.md` section 3) in
       `backend/tests/integration/test_us3_lifecycle.py`
 
 ### Implementation for User Story 3
 
-- [ ] T054 [US3] Implement `DELETE /architectures/{id}` soft delete (FR-014) in
+- [x] T054 [US3] Implement `DELETE /architectures/{id}` soft delete (FR-014) in
       `backend/src/api/architectures.py` (depends on T029)
-- [ ] T055 [US3] Implement `DELETE /collections/{id}` soft delete with the Data Connector
+- [x] T055 [US3] Implement `DELETE /collections/{id}` soft delete with the Data Connector
       cascade (FR-015) in `backend/src/services/architecture_service.py` and
       `backend/src/api/collections.py` (depends on T030, T044)
-- [ ] T056 [US3] Implement `DELETE /connectors/{id}` soft delete (FR-015) in
+- [x] T056 [US3] Implement `DELETE /connectors/{id}` soft delete (FR-015) in
       `backend/src/api/connectors.py` (depends on T044)
-- [ ] T057 [US3] Add the unconnected-VPCs warning (FR-017) to the price calculation service and
+- [x] T057 [US3] Add the unconnected-VPCs warning (FR-017) to the price calculation service and
       `/calculate` response in `backend/src/services/price_calculation.py` (depends on T046)
-- [ ] T058 [US3] Register the remaining US3 routes in `backend/src/main.py` (depends on T054,
+- [x] T058 [US3] Register the remaining US3 routes in `backend/src/main.py` (depends on T054,
       T055, T056)
-- [ ] T059 [US3] Add a ConfirmDeleteDialog component and wire delete actions into the Landing
+- [x] T059 [US3] Add a ConfirmDeleteDialog component and wire delete actions into the Landing
       and Create Architecture pages in `frontend/src/components/ConfirmDeleteDialog.tsx`
       (depends on T036, T039, T049)
-- [ ] T060 [US3] Display calculation warnings (unconnected VPCs) in the Create Architecture
+- [x] T060 [US3] Display calculation warnings (unconnected VPCs) in the Create Architecture
       page's results panel in `frontend/src/pages/CreateArchitecturePage.tsx` (depends on T057,
       T039)
-- [ ] T061 [US3] Run the `quickstart.md` "Validate: soft delete" script (depends on T058, T059)
+- [x] T061 [US3] Run the `quickstart.md` "Validate: soft delete" script (depends on T058, T059)
 
 **Checkpoint**: All three user stories are independently functional.
 
@@ -246,22 +246,22 @@ after confirming the prompt, and verify it disappears from the list while its da
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T062 [P] Add structured request/error logging in `backend/src/main.py`
-- [ ] T063 [P] Add a frontend error boundary with a distinct UI state for `503`
+- [x] T062 [P] Add structured request/error logging in `backend/src/main.py`
+- [x] T063 [P] Add a frontend error boundary with a distinct UI state for `503`
       pricing-data-source-outage responses (FR-018), separate from an empty-results state, in
       `frontend/src/components/ErrorBoundary.tsx`
-- [ ] T064 [P] Write setup instructions in `backend/README.md` and `frontend/README.md`
+- [x] T064 [P] Write setup instructions in `backend/README.md` and `frontend/README.md`
       referencing `quickstart.md`
-- [ ] T065 [P] Add unit tests for the data-model validation rules (SKU Selection's
+- [x] T065 [P] Add unit tests for the data-model validation rules (SKU Selection's
       exactly-one-parent constraint, Data Connector's self-connect constraint) in
       `backend/tests/unit/test_validation_rules.py`
-- [ ] T066 [P] Add a CI/build step that regenerates the frontend's OpenAPI-derived types
+- [x] T066 [P] Add a CI/build step that regenerates the frontend's OpenAPI-derived types
       (reusing T018's generation script) and fails the build if the regenerated output differs
       from what's checked in — e.g. `openapi-typescript` then `git diff --exit-code`, or an
       equivalent `tsc --noEmit` gate — enforcing Constitution Principle IV (contract drift MUST
       fail a build, never surface as a runtime bug) in `frontend/package.json` and the CI
       workflow config (depends on T018)
-- [ ] T067 Run the full `quickstart.md` validation end-to-end (all three user stories plus the
+- [x] T067 Run the full `quickstart.md` validation end-to-end (all three user stories plus the
       frontend smoke check) as the final regression pass
 
 ---
