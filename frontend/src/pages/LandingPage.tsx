@@ -4,6 +4,11 @@ import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { ConfirmDeleteDialog } from "../components/ConfirmDeleteDialog";
+import { ErrorMessage } from "../components/ErrorMessage";
+
+function errorMessageOf(err: unknown): string {
+  return err instanceof Error ? err.message : "Something went wrong.";
+}
 
 /**
  * Landing page: provider selector + this provider's Architecture list (FR-003, FR-013, FR-014).
@@ -12,28 +17,37 @@ import { ConfirmDeleteDialog } from "../components/ConfirmDeleteDialog";
  */
 export function LandingPage() {
   const queryClient = useQueryClient();
+  const [selectedProvider, setSelectedProvider] = useState("aws");
   const [newArchName, setNewArchName] = useState("");
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const providers = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
   const architectures = useQuery({
-    queryKey: ["architectures", "aws"],
-    queryFn: () => api.listArchitectures("aws"),
+    queryKey: ["architectures", selectedProvider],
+    queryFn: () => api.listArchitectures(selectedProvider),
   });
 
   const createArchitecture = useMutation({
-    mutationFn: (name: string) => api.createArchitecture(name, "aws"),
+    mutationFn: (name: string) => api.createArchitecture(name, selectedProvider),
     onSuccess: () => {
       setNewArchName("");
+      setActionError(null);
       queryClient.invalidateQueries({ queryKey: ["architectures"] });
     },
+    onError: (err) => setActionError(errorMessageOf(err)),
   });
 
   const deleteArchitecture = useMutation({
     mutationFn: (id: string) => api.deleteArchitecture(id),
     onSuccess: () => {
       setPendingDeleteId(null);
+      setActionError(null);
       queryClient.invalidateQueries({ queryKey: ["architectures"] });
+    },
+    onError: (err) => {
+      setPendingDeleteId(null);
+      setActionError(errorMessageOf(err));
     },
   });
 
@@ -48,7 +62,11 @@ export function LandingPage() {
         <ul style={{ display: "flex", gap: 12, listStyle: "none", padding: 0 }}>
           {providers.data?.map((p) => (
             <li key={p.code}>
-              <button disabled={!p.active} aria-pressed={p.code === "aws"}>
+              <button
+                disabled={!p.active}
+                aria-pressed={p.code === selectedProvider}
+                onClick={() => p.active && setSelectedProvider(p.code)}
+              >
                 {p.name}
                 {!p.active && " (coming soon)"}
               </button>
@@ -57,8 +75,12 @@ export function LandingPage() {
         </ul>
       </section>
 
+      {actionError && (
+        <ErrorMessage message={actionError} onRetry={() => setActionError(null)} retryLabel="Dismiss" />
+      )}
+
       <section aria-label="Architectures">
-        <h2>AWS Architectures</h2>
+        <h2>{selectedProvider.toUpperCase()} Architectures</h2>
 
         <form
           onSubmit={(e) => {
@@ -78,7 +100,15 @@ export function LandingPage() {
         </form>
 
         {architectures.isLoading && <p>Loading…</p>}
-        {architectures.data?.length === 0 && <p>No architectures yet — create one above.</p>}
+        {architectures.isError && (
+          <ErrorMessage
+            message={errorMessageOf(architectures.error)}
+            onRetry={() => architectures.refetch()}
+          />
+        )}
+        {!architectures.isError && architectures.data?.length === 0 && (
+          <p>No architectures yet — create one above.</p>
+        )}
 
         <ul>
           {architectures.data?.map((arch) => (

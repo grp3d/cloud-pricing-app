@@ -359,3 +359,21 @@ Task: "Build PricingInputsForm in frontend/src/components/PricingInputsForm.tsx"
   against them
 - Avoid: vague tasks, two tasks editing the same file marked `[P]`, cross-story edits that would
   break a story's independent testability
+
+---
+
+## Phase 7: Convergence
+
+- [x] T068 Add a confirmation prompt before deleting a Data Connector in
+      `frontend/src/components/DataConnectorPanel.tsx` (reusing `ConfirmDeleteDialog`, as
+      Architecture and Collection deletes already do) per FR-015 (missing)
+- [x] T069 Render a visible, distinct error state (not silence, and not a stale prior result)
+      for the catalog search query and the price-calculation mutation in
+      `frontend/src/components/CatalogSearchPanel.tsx` and
+      `frontend/src/pages/CreateArchitecturePage.tsx`, and wrap the direct async calls in
+      `CreateArchitecturePage.tsx`'s `addSkuToSelectedCollection` and
+      `DataConnectorPanel.tsx`'s `attach`/`removeConnector` in try/catch so failures are never
+      silent, per FR-018 (partial)
+- [x] T070 Give the provider selector in `frontend/src/pages/LandingPage.tsx` a real
+      interactive selected-state (or otherwise make "user selects AWS" a genuine UI action)
+      per US1/AC1 (partial)

@@ -19,7 +19,12 @@ import { type CatalogSKU, type CollectionType, api } from "../api/client";
 import { CatalogSearchPanel } from "../components/CatalogSearchPanel";
 import { ConfirmDeleteDialog } from "../components/ConfirmDeleteDialog";
 import { DataConnectorPanel } from "../components/DataConnectorPanel";
+import { ErrorMessage } from "../components/ErrorMessage";
 import { PricingInputsForm, type PricingInputs } from "../components/PricingInputsForm";
+
+function errorMessageOf(err: unknown): string {
+  return err instanceof Error ? err.message : "Something went wrong.";
+}
 
 /**
  * Assemble a single Architecture: Collections as nodes on a React Flow canvas (US2), Data
@@ -45,7 +50,10 @@ export function CreateArchitecturePage() {
   const [calculation, setCalculation] = useState<
     Awaited<ReturnType<typeof api.calculate>> | null
   >(null);
+  const [calculationError, setCalculationError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [pickedSku, setPickedSku] = useState<CatalogSKU | null>(null);
+  const [skuAddError, setSkuAddError] = useState<string | null>(null);
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["architecture", architectureId] });
@@ -54,8 +62,10 @@ export function CreateArchitecturePage() {
     mutationFn: () => api.createCollection(architectureId!, newCollectionType, newCollectionName),
     onSuccess: () => {
       setNewCollectionName("");
+      setActionError(null);
       invalidate();
     },
+    onError: (err) => setActionError(errorMessageOf(err)),
   });
 
   const deleteCollection = useMutation({
@@ -63,19 +73,40 @@ export function CreateArchitecturePage() {
     onSuccess: () => {
       setPendingDeleteCollectionId(null);
       if (selectedCollectionId === pendingDeleteCollectionId) setSelectedCollectionId(null);
+      setActionError(null);
       invalidate();
+    },
+    onError: (err) => {
+      setPendingDeleteCollectionId(null);
+      setActionError(errorMessageOf(err));
     },
   });
 
   const createConnector = useMutation({
     mutationFn: ({ from, to }: { from: string; to: string }) =>
       api.createConnector(architectureId!, from, to),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      setActionError(null);
+      invalidate();
+    },
+    onError: (err) => {
+      setActionError(errorMessageOf(err));
+      // The edge was drawn optimistically in onConnect before this rejection; resync the
+      // canvas from the server's actual state so a failed connector never stays visible.
+      invalidate();
+    },
   });
 
   const calculate = useMutation({
     mutationFn: () => api.calculate(architectureId!),
+    // Clear any prior result up front so a failed recalculation never leaves a stale total
+    // on screen looking like a fresh answer (Constitution Principle I).
+    onMutate: () => {
+      setCalculation(null);
+      setCalculationError(null);
+    },
     onSuccess: setCalculation,
+    onError: (err) => setCalculationError(errorMessageOf(err)),
   });
 
   // --- React Flow: Collections as nodes, Data Connectors as edges ---
@@ -117,13 +148,18 @@ export function CreateArchitecturePage() {
 
   async function addSkuToSelectedCollection(inputs: PricingInputs) {
     if (!selectedCollectionId || !pickedSku) return;
-    await api.addSkuSelection(selectedCollectionId, {
-      service_code: pickedSku.service_code,
-      sku: pickedSku.sku,
-      ...inputs,
-    });
-    setPickedSku(null);
-    invalidate();
+    try {
+      await api.addSkuSelection(selectedCollectionId, {
+        service_code: pickedSku.service_code,
+        sku: pickedSku.sku,
+        ...inputs,
+      });
+      setSkuAddError(null);
+      setPickedSku(null);
+      invalidate();
+    } catch (err) {
+      setSkuAddError(errorMessageOf(err));
+    }
   }
 
   const selectedCollection = collections.find((c) => c.id === selectedCollectionId);
@@ -160,6 +196,14 @@ export function CreateArchitecturePage() {
           Calculate
         </button>
       </section>
+
+      {actionError && (
+        <ErrorMessage
+          message={actionError}
+          onRetry={() => setActionError(null)}
+          retryLabel="Dismiss"
+        />
+      )}
 
       <div style={{ height: 320, border: "1px solid #ddd", marginTop: 12 }}>
         <ReactFlow
@@ -199,6 +243,9 @@ export function CreateArchitecturePage() {
             ))}
           </ul>
 
+          {skuAddError && (
+            <ErrorMessage message={skuAddError} onRetry={() => setSkuAddError(null)} />
+          )}
           {pickedSku ? (
             <>
               <p>
@@ -217,6 +264,13 @@ export function CreateArchitecturePage() {
           connector={selectedConnector}
           onChanged={invalidate}
           onClose={() => setSelectedConnectorId(null)}
+        />
+      )}
+
+      {calculationError && (
+        <ErrorMessage
+          message={calculationError}
+          onRetry={() => calculate.mutate()}
         />
       )}
 

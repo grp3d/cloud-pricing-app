@@ -7,8 +7,8 @@ full design, and `quickstart.md` for a scripted end-to-end validation of the API
 ## Setup
 
 ```bash
-brew install postgresql@16     # if not already installed
-brew services start postgresql@16
+brew install postgresql@18     # if not already installed
+brew services start postgresql@18
 createdb cloud_pricing_dev
 createdb cloud_pricing_test     # used by the test suite
 

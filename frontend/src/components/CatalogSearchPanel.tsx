@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { type CatalogSKU, api } from "../api/client";
+import { ErrorMessage } from "./ErrorMessage";
 
 interface Props {
   onAdd: (sku: CatalogSKU) => void;
@@ -50,7 +51,13 @@ export function CatalogSearchPanel({ onAdd }: Props) {
 
       {!hasFilter && <p>Enter at least one filter to search.</p>}
       {search.isLoading && <p>Searching…</p>}
-      {search.data?.results.length === 0 && <p>No matching services found.</p>}
+      {search.isError && (
+        <ErrorMessage
+          message={search.error instanceof Error ? search.error.message : "Search failed."}
+          onRetry={() => search.refetch()}
+        />
+      )}
+      {!search.isError && search.data?.results.length === 0 && <p>No matching services found.</p>}
 
       <ul>
         {search.data?.results.map((r) => (
