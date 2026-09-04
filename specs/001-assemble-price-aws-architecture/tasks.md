@@ -181,8 +181,8 @@ the calculated total (`quickstart.md` "Validate: connectors add to the total").
 - [ ] T044 [US2] Implement `POST /architectures/{id}/connectors`, validating
       `from_collection_id != to_collection_id` and that both Collections belong to the
       Architecture (FR-008), in `backend/src/api/connectors.py` (depends on T030)
-- [ ] T045 [US2] Implement `POST /connectors/{id}/sku-selection` and `DELETE /connectors/{id}`
-      (FR-009) in `backend/src/api/connectors.py` (depends on T044)
+- [ ] T045 [US2] Implement `POST /connectors/{id}/sku-selection` (FR-009) in
+      `backend/src/api/connectors.py` (depends on T044)
 - [ ] T046 [US2] Extend the price calculation service to include connector-attached SKU line
       items in the total (FR-010) in `backend/src/services/price_calculation.py` (depends on
       T033, T045)
@@ -255,7 +255,13 @@ after confirming the prompt, and verify it disappears from the list while its da
 - [ ] T065 [P] Add unit tests for the data-model validation rules (SKU Selection's
       exactly-one-parent constraint, Data Connector's self-connect constraint) in
       `backend/tests/unit/test_validation_rules.py`
-- [ ] T066 Run the full `quickstart.md` validation end-to-end (all three user stories plus the
+- [ ] T066 [P] Add a CI/build step that regenerates the frontend's OpenAPI-derived types
+      (reusing T018's generation script) and fails the build if the regenerated output differs
+      from what's checked in — e.g. `openapi-typescript` then `git diff --exit-code`, or an
+      equivalent `tsc --noEmit` gate — enforcing Constitution Principle IV (contract drift MUST
+      fail a build, never surface as a runtime bug) in `frontend/package.json` and the CI
+      workflow config (depends on T018)
+- [ ] T067 Run the full `quickstart.md` validation end-to-end (all three user stories plus the
       frontend smoke check) as the final regression pass
 
 ---
@@ -298,7 +304,7 @@ after confirming the prompt, and verify it disappears from the list while its da
 - T036, T037, T038 (US1 frontend components) can run in parallel with each other and with the
   US1 backend tasks
 - T041, T042 (US2 tests) can run in parallel; T051, T052 (US3 tests) can run in parallel
-- T062–T065 (Polish) can all run in parallel
+- T062–T066 (Polish) can all run in parallel; T067 (final regression) depends on all of them
 
 ---
 
