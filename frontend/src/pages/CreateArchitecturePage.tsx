@@ -3,6 +3,7 @@ import "@xyflow/react/dist/style.css";
 import {
   Background,
   Controls,
+  NodeResizer,
   ReactFlow,
   ReactFlowProvider,
   addEdge,
@@ -10,6 +11,7 @@ import {
   type Connection,
   type Edge,
   type Node,
+  type NodeProps,
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
@@ -23,11 +25,92 @@ import { ConfirmDeleteDialog } from "../components/ConfirmDeleteDialog";
 import { DataConnectorPanel } from "../components/DataConnectorPanel";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { PricingInputsForm, type PricingInputs } from "../components/PricingInputsForm";
+import { SkuDetail } from "../components/SkuDetail";
 import { decideNestingChange } from "./dropTargetDetection";
+import { VPC_CHILD_SPACING, estimateComponentHeight, estimateVpcHeight } from "./nodeLayout";
 
 function errorMessageOf(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
 }
+
+interface ApplicationComponentNodeData {
+  [key: string]: unknown;
+  label: string;
+  skuSelections: Collection["sku_selections"];
+}
+
+/** Custom node type for an Application Component (spec FR-007): shows its name plus the
+ * services it contains — or an empty state — and sizes itself to fit via
+ * `estimateComponentHeight`. Also carries a `NodeResizer` for manual resize (spec FR-010,
+ * FR-011); a manual resize is superseded the next time the canvas recomputes from fresh
+ * Collection data (research.md #5), so it needs no persistence of its own. */
+function ApplicationComponentNode({ data, selected }: NodeProps) {
+  const { label, skuSelections } = data as unknown as ApplicationComponentNodeData;
+  const minHeight = estimateComponentHeight(skuSelections.length);
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        boxSizing: "border-box",
+        border: selected ? "2px solid #2563eb" : "1px solid #9ca3af",
+        borderRadius: 4,
+        background: "#fff",
+        padding: 8,
+        overflow: "auto",
+      }}
+    >
+      <NodeResizer minWidth={160} minHeight={minHeight} isVisible={selected} />
+      <strong>{label}</strong>
+      {skuSelections.length === 0 ? (
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9ca3af" }}>No services yet.</p>
+      ) : (
+        <ul style={{ margin: "4px 0 0", paddingLeft: 16, fontSize: 12 }}>
+          {skuSelections.map((s) => (
+            <li key={s.id}>
+              {s.service_code} / {s.sku}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+interface VpcNodeData {
+  [key: string]: unknown;
+  label: string;
+  minHeight: number;
+}
+
+/** Custom node type for a VPC: same header styling as before (002-vpc-component-nesting), plus
+ * a `NodeResizer` whose `minHeight` is the VPC's own content-required size from
+ * `estimateVpcHeight` — the library's own resize-constraint mechanism enforces spec FR-011's
+ * "a VPC never shrinks below what its nested children need" directly, with no custom
+ * validation code (research.md #5). */
+function VpcNode({ data, selected }: NodeProps) {
+  const { label, minHeight } = data as unknown as VpcNodeData;
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        boxSizing: "border-box",
+        border: "2px solid #2563eb",
+        borderRadius: 4,
+        padding: 8,
+      }}
+    >
+      <NodeResizer minWidth={220} minHeight={minHeight} isVisible={selected} />
+      <strong>{label}</strong>
+    </div>
+  );
+}
+
+const nodeTypes = {
+  applicationComponent: ApplicationComponentNode,
+  vpc: VpcNode,
+};
 
 /**
  * Assemble a single Architecture: Collections as nodes on a React Flow canvas (US2), Data
@@ -166,27 +249,39 @@ function CreateArchitecturePageInner() {
     const nodes: Node[] = [];
     topLevel.forEach((c, i) => {
       const children = c.type === "vpc" ? (childrenByParent.get(c.id) ?? []) : [];
+      // Each child's estimated height (spec FR-007) — the VPC's own height sums these instead
+      // of 002's original fixed 50px-per-child assumption, so it fits variable-content children
+      // (spec FR-011, research.md #4).
+      const childHeights = children.map((child) =>
+        estimateComponentHeight(child.sku_selections.length),
+      );
+      const width = c.type === "vpc" ? 220 : 200;
+      const height =
+        c.type === "vpc"
+          ? estimateVpcHeight(childHeights)
+          : estimateComponentHeight(c.sku_selections.length);
       nodes.push({
         id: c.id,
+        type: c.type === "vpc" ? "vpc" : "applicationComponent",
         position: { x: (i % 4) * 260, y: Math.floor(i / 4) * 220 },
-        data: { label: `${c.name} (${c.type})` },
-        style:
+        data:
           c.type === "vpc"
-            ? {
-                border: "2px solid #2563eb",
-                width: 220,
-                height: Math.max(80, 50 + children.length * 50),
-              }
-            : undefined,
+            ? { label: `${c.name} (${c.type})`, minHeight: height }
+            : { label: `${c.name} (${c.type})`, skuSelections: c.sku_selections },
+        style: { width, height },
       });
       // Parent must precede its children in the array — React Flow requirement.
+      let y = 40;
       children.forEach((child, j) => {
         nodes.push({
           id: child.id,
+          type: "applicationComponent",
           parentId: c.id,
-          position: { x: 20, y: 40 + j * 50 },
-          data: { label: `${child.name} (${child.type})` },
+          position: { x: 20, y },
+          data: { label: `${child.name} (${child.type})`, skuSelections: child.sku_selections },
+          style: { width: 180, height: childHeights[j] },
         });
+        y += childHeights[j] + VPC_CHILD_SPACING;
       });
     });
     return nodes;
@@ -318,6 +413,7 @@ function CreateArchitecturePageInner() {
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -359,6 +455,7 @@ function CreateArchitecturePageInner() {
                       purchase_option: s.purchase_option,
                       usage_quantity: s.usage_quantity,
                     }}
+                    unit={s.unit}
                     onSubmit={(inputs) => updateSkuSelection(s.id, inputs)}
                   />
                 )}
@@ -374,7 +471,8 @@ function CreateArchitecturePageInner() {
               <p>
                 Selected: {pickedSku.service_name} — {pickedSku.summary}
               </p>
-              <PricingInputsForm onSubmit={addSkuToSelectedCollection} />
+              <SkuDetail attributes={pickedSku.attributes} />
+              <PricingInputsForm onSubmit={addSkuToSelectedCollection} unit={pickedSku.unit} />
             </>
           ) : (
             <CatalogSearchPanel onAdd={setPickedSku} />

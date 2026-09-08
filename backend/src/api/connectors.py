@@ -15,7 +15,11 @@ from src.models.schemas import (
     SKUSelectionCreate,
     SKUSelectionOut,
 )
-from src.services.architecture_service import get_owned_architecture, get_owned_connector
+from src.services.architecture_service import (
+    get_owned_architecture,
+    get_owned_connector,
+    sku_selection_out_with_unit,
+)
 
 router = APIRouter(tags=["connectors"])
 
@@ -62,7 +66,7 @@ async def create_connector(
 )
 async def attach_connector_sku(
     connector_id: uuid.UUID, body: SKUSelectionCreate, session: DbSession, user: CurrentUser
-) -> SKUSelection:
+) -> SKUSelectionOut:
     """Attach (or replace) the single AWS SKU on a Data Connector (FR-009)."""
     connector = await get_owned_connector(connector_id, session, user)
 
@@ -86,7 +90,7 @@ async def attach_connector_sku(
     session.add(selection)
     await session.commit()
     await session.refresh(selection)
-    return selection
+    return sku_selection_out_with_unit(selection)
 
 
 @router.delete("/connectors/{connector_id}", status_code=204)

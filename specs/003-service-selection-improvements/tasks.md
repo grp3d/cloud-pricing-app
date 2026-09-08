@@ -42,33 +42,33 @@ and one summary line (per `quickstart.md`).
 
 > Write these tests FIRST; ensure they FAIL before implementation (Constitution Principle V)
 
-- [ ] T001 [P] [US1] Unit test for a `parse_attributes` helper — valid JSON → a plain dict,
+- [X] T001 [P] [US1] Unit test for a `parse_attributes` helper — valid JSON → a plain dict,
       `None`/empty/malformed input → `{}` (never an error) — in `backend/tests/unit/test_catalog.py`
       (new file)
-- [ ] T002 [P] [US1] Contract test: `GET /catalog/skus` results include a non-empty `attributes`
+- [X] T002 [P] [US1] Contract test: `GET /catalog/skus` results include a non-empty `attributes`
       map for a SKU known to have rich attributes (e.g. an EC2 Compute Instance), and `{}` (not
       `null`) for one known to be sparse, in `backend/tests/contract/test_catalog.py`
 
 ### Implementation for User Story 1
 
-- [ ] T003 [US1] Add `attributes: dict[str, str]` to `CatalogSKUOut` in
+- [X] T003 [US1] Add `attributes: dict[str, str]` to `CatalogSKUOut` in
       `backend/src/models/schemas.py`
-- [ ] T004 [US1] Implement `parse_attributes` and extend `search_catalog` to populate
+- [X] T004 [US1] Implement `parse_attributes` and extend `search_catalog` to populate
       `attributes` per result in `backend/src/pricing_data/catalog.py` (depends on T003; makes
       T001/T002 pass)
-- [ ] T005 [US1] Regenerate the OpenAPI-derived frontend types (`npm run generate-api-types`)
+- [X] T005 [US1] Regenerate the OpenAPI-derived frontend types (`npm run generate-api-types`)
       against the running backend (depends on T004)
-- [ ] T006 [P] [US1] Create `SkuDetail.tsx` — a generic attributes key/value display with a "no
+- [X] T006 [P] [US1] Create `SkuDetail.tsx` — a generic attributes key/value display with a "no
       additional details available" empty state (spec FR-003) — in
       `frontend/src/components/SkuDetail.tsx` (depends on T005)
-- [ ] T007 [US1] Wire `SkuDetail` into the SKU-selected confirmation step in both places it
+- [X] T007 [US1] Wire `SkuDetail` into the SKU-selected confirmation step in both places it
       appears — `frontend/src/pages/CreateArchitecturePage.tsx` (adding a SKU to a Collection)
       and `frontend/src/components/DataConnectorPanel.tsx` (attaching a SKU to a Connector)
       (depends on T006)
-- [ ] T008 [US1] Enrich `CatalogSearchPanel`'s per-row detail line using a short summary derived
+- [X] T008 [US1] Enrich `CatalogSearchPanel`'s per-row detail line using a short summary derived
       from `attributes` (candidate keys per `research.md` #2) in
       `frontend/src/components/CatalogSearchPanel.tsx` (depends on T005)
-- [ ] T009 [US1] Run the `quickstart.md` validation for richer SKU detail (API steps 1 and 4,
+- [X] T009 [US1] Run the `quickstart.md` validation for richer SKU detail (API steps 1 and 4,
       plus frontend smoke-check item 1) (depends on T007, T008)
 
 **Checkpoint**: User Story 1 is fully functional and independently testable.
@@ -86,40 +86,40 @@ there too (per `quickstart.md`).
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T010 [P] [US2] Unit test for a batched `resolve_units` lookup — multiple SKUs resolved in
+- [X] T010 [P] [US2] Unit test for a batched `resolve_units` lookup — multiple SKUs resolved in
       one call, a SKU with no `price_fact` row resolves to `None` without failing the others —
       in `backend/tests/unit/test_pricing_units.py` (new file)
-- [ ] T011 [P] [US2] Contract test: `GET /catalog/skus` results, `POST`/`PATCH
+- [X] T011 [P] [US2] Contract test: `GET /catalog/skus` results, `POST`/`PATCH
       .../sku-selections` responses, and `POST .../connectors/{id}/sku-selection` responses all
       include a correct `unit` — extend `backend/tests/contract/test_catalog.py`,
       `test_sku_selections.py`, and `test_connector_sku_selection.py`
-- [ ] T012 [US2] Integration test: `GET /architectures/{id}`'s nested `sku_selections` each
+- [X] T012 [US2] Integration test: `GET /architectures/{id}`'s nested `sku_selections` each
       carry the correct `unit`, proving the batched tree-level resolution (not per-row) works —
       in `backend/tests/integration/test_unit_resolution.py` (new file)
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Add `unit: str | None` to `CatalogSKUOut` and `SKUSelectionOut` in
+- [X] T013 [US2] Add `unit: str | None` to `CatalogSKUOut` and `SKUSelectionOut` in
       `backend/src/models/schemas.py`
-- [ ] T014 [US2] Implement the batched `resolve_units` lookup in `backend/src/pricing_data/pricing.py`
+- [X] T014 [US2] Implement the batched `resolve_units` lookup in `backend/src/pricing_data/pricing.py`
       (depends on T013; makes T010 pass)
-- [ ] T015 [US2] Extend `search_catalog` to include `unit` per result in
+- [X] T015 [US2] Extend `search_catalog` to include `unit` per result in
       `backend/src/pricing_data/catalog.py` (depends on T014)
-- [ ] T016 [US2] Attach `unit` in the `POST`/`PATCH .../sku-selections` responses in
+- [X] T016 [US2] Attach `unit` in the `POST`/`PATCH .../sku-selections` responses in
       `backend/src/api/sku_selections.py` (depends on T014)
-- [ ] T017 [US2] Attach `unit` in the `POST .../connectors/{id}/sku-selection` response in
+- [X] T017 [US2] Attach `unit` in the `POST .../connectors/{id}/sku-selection` response in
       `backend/src/api/connectors.py` (depends on T014)
-- [ ] T018 [US2] Add a shared "attach units to a response tree" helper in
+- [X] T018 [US2] Add a shared "attach units to a response tree" helper in
       `backend/src/services/architecture_service.py` and use it in `GET /architectures/{id}` in
       `backend/src/api/architectures.py` (depends on T014; makes T012 pass)
-- [ ] T019 [US2] Regenerate the OpenAPI-derived frontend types against the running backend
+- [X] T019 [US2] Regenerate the OpenAPI-derived frontend types against the running backend
       (depends on T015, T016, T017, T018)
-- [ ] T020 [US2] Show the SKU's unit alongside the usage-quantity field, accepting a `unit`
+- [X] T020 [US2] Show the SKU's unit alongside the usage-quantity field, accepting a `unit`
       prop, in `frontend/src/components/PricingInputsForm.tsx` (depends on T019)
-- [ ] T021 [US2] Pass the picked/editing SKU's `unit` into `PricingInputsForm` from
+- [X] T021 [US2] Pass the picked/editing SKU's `unit` into `PricingInputsForm` from
       `frontend/src/pages/CreateArchitecturePage.tsx` and
       `frontend/src/components/DataConnectorPanel.tsx` (depends on T020)
-- [ ] T022 [US2] Run the `quickstart.md` validation for units (API steps 1-3, plus frontend
+- [X] T022 [US2] Run the `quickstart.md` validation for units (API steps 1-3, plus frontend
       smoke-check item 2) (depends on T016, T017, T018, T021)
 
 **Checkpoint**: User Stories 1 AND 2 both work independently.
@@ -137,19 +137,19 @@ verify a small empty state (per `quickstart.md`).
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T023 [P] [US3] Unit tests for `estimateComponentHeight` — zero services → a small default
+- [X] T023 [P] [US3] Unit tests for `estimateComponentHeight` — zero services → a small default
       height, N services → `baseHeight + N * rowHeight` — in
       `frontend/tests/unit/nodeLayout.test.ts` (new file)
 
 ### Implementation for User Story 3
 
-- [ ] T024 [US3] Implement `estimateComponentHeight` in `frontend/src/pages/nodeLayout.ts` (new
+- [X] T024 [US3] Implement `estimateComponentHeight` in `frontend/src/pages/nodeLayout.ts` (new
       file; makes T023 pass)
-- [ ] T025 [US3] Create a custom Application Component node type — rendering its name and its
+- [X] T025 [US3] Create a custom Application Component node type — rendering its name and its
       SKU Selections (or an empty state when it has none), sized via
       `estimateComponentHeight` — and register it via React Flow's `nodeTypes` prop in
       `frontend/src/pages/CreateArchitecturePage.tsx` (depends on T024)
-- [ ] T026 [US3] Run the `quickstart.md` validation for Application Component auto-resize
+- [X] T026 [US3] Run the `quickstart.md` validation for Application Component auto-resize
       (frontend smoke-check item 3) (depends on T025)
 
 **Checkpoint**: User Stories 1-3 all work independently.
@@ -167,20 +167,20 @@ Application Component box; verify a manually-shrunk VPC grows back to fit a newl
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T027 [P] [US4] Unit tests for `estimateVpcHeight` — sums its children's
+- [X] T027 [P] [US4] Unit tests for `estimateVpcHeight` — sums its children's
       `estimateComponentHeight` results plus the VPC's own header/spacing — in
       `frontend/tests/unit/nodeLayout.test.ts` (extends T023's file; depends on T024 existing)
 
 ### Implementation for User Story 4
 
-- [ ] T028 [US4] Implement `estimateVpcHeight` in `frontend/src/pages/nodeLayout.ts`, and update
+- [X] T028 [US4] Implement `estimateVpcHeight` in `frontend/src/pages/nodeLayout.ts`, and update
       `CreateArchitecturePage.tsx`'s VPC height computation to use it in place of `002`'s fixed
       50px-per-child formula (depends on T024; makes T027 pass)
-- [ ] T029 [US4] Attach React Flow's `NodeResizer` to the VPC node type (`minWidth`/`minHeight`
+- [X] T029 [US4] Attach React Flow's `NodeResizer` to the VPC node type (`minWidth`/`minHeight`
       from `estimateVpcHeight`, satisfying spec FR-011) and to the Application Component node
       type (minimums from `estimateComponentHeight`) in
       `frontend/src/pages/CreateArchitecturePage.tsx` (depends on T025, T028)
-- [ ] T030 [US4] Run the `quickstart.md` validation for manual resize, including the VPC
+- [X] T030 [US4] Run the `quickstart.md` validation for manual resize, including the VPC
       minimum-size guard (frontend smoke-check item 4) (depends on T029)
 
 **Checkpoint**: All four user stories are independently functional.
@@ -189,11 +189,11 @@ Application Component box; verify a manually-shrunk VPC grows back to fit a newl
 
 ## Phase 5: Polish & Cross-Cutting Concerns
 
-- [ ] T031 [P] Confirm the existing type-drift CI gate (`001`) catches this feature's
+- [X] T031 [P] Confirm the existing type-drift CI gate (`001`) catches this feature's
       `attributes`/`unit` schema additions until committed, then passes once staged — same
       verification pattern as `002`'s T015; no code change expected beyond T005/T019's
       regeneration
-- [ ] T032 Run the full existing regression suite from `001`/`002` (backend `pytest`, frontend
+- [X] T032 Run the full existing regression suite from `001`/`002` (backend `pytest`, frontend
       `vitest` + `tsc -b` + `eslint` + `build`) to confirm this feature introduces no regression
 
 ---

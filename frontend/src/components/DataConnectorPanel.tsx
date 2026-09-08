@@ -5,6 +5,7 @@ import { CatalogSearchPanel } from "./CatalogSearchPanel";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { ErrorMessage } from "./ErrorMessage";
 import { PricingInputsForm, type PricingInputs } from "./PricingInputsForm";
+import { SkuDetail } from "./SkuDetail";
 
 interface Props {
   connector: DataConnector;
@@ -67,6 +68,7 @@ export function DataConnectorPanel({ connector, onChanged, onClose }: Props) {
       {connector.sku_selection ? (
         <p>
           Attached service: {connector.sku_selection.service_code} / {connector.sku_selection.sku}
+          {connector.sku_selection.unit && ` (${connector.sku_selection.unit})`}
         </p>
       ) : (
         <p>No connecting service attached (optional — e.g. a NAT/Internet/Transit Gateway).</p>
@@ -77,7 +79,8 @@ export function DataConnectorPanel({ connector, onChanged, onClose }: Props) {
           <p>
             Selected: {pickedSku.service_name} — {pickedSku.summary}
           </p>
-          <PricingInputsForm onSubmit={attach} submitLabel="Attach" />
+          <SkuDetail attributes={pickedSku.attributes} />
+          <PricingInputsForm onSubmit={attach} submitLabel="Attach" unit={pickedSku.unit} />
         </>
       ) : (
         <CatalogSearchPanel onAdd={setPickedSku} />

@@ -340,6 +340,15 @@ export interface components {
             sku: string;
             /** Summary */
             summary: string;
+            /**
+             * Attributes
+             * @default {}
+             */
+            attributes: {
+                [key: string]: string;
+            };
+            /** Unit */
+            unit?: string | null;
         };
         /** CatalogSearchResult */
         CatalogSearchResult: {
@@ -485,6 +494,8 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: string;
+            /** Unit */
+            unit?: string | null;
         };
         /** SKUSelectionUpdate */
         SKUSelectionUpdate: {

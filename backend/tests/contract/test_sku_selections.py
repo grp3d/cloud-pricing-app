@@ -38,6 +38,7 @@ async def test_add_sku_selection(client, auth_headers):
     )
     assert resp.status_code == 201
     assert resp.json()["sku"] == KNOWN_SKU
+    assert resp.json()["unit"] == "Hrs"
 
 
 @pytest.mark.asyncio
@@ -85,6 +86,7 @@ async def test_update_sku_selection_pricing_inputs(client, auth_headers):
     )
     assert resp.status_code == 200
     assert resp.json()["usage_quantity"] == "500.0000"
+    assert resp.json()["unit"] == "Hrs"
 
 
 @pytest.mark.asyncio

@@ -13,12 +13,16 @@ interface Props {
   submitLabel?: string;
   /** Pre-fill the form, e.g. when editing an existing SKU Selection's inputs. */
   initial?: Partial<PricingInputs>;
+  /** The SKU's real billing unit (e.g. "Hrs", "GB-Mo") — shown alongside the usage-quantity
+   * field so a user knows what they're entering a quantity of (003-service-selection-
+   * improvements, FR-004/FR-005). `null`/undefined when unavailable — no fabricated unit. */
+  unit?: string | null;
 }
 
 /** Pricing inputs (FR-007): commitment term, purchase option, and usage quantity — the three
  * things a SKU selection needs beyond which SKU it is. Also reused, via `initial`, to edit an
  * existing SKU Selection's inputs. */
-export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial }: Props) {
+export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit }: Props) {
   const [term, setTerm] = useState<PricingTerm>(initial?.pricing_term ?? "on_demand");
   const [purchaseOption, setPurchaseOption] = useState<PurchaseOption>(
     initial?.purchase_option ?? "not_applicable",
@@ -64,7 +68,7 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial }: Pr
       )}
 
       <label>
-        Usage quantity{" "}
+        Usage quantity{unit ? ` (${unit})` : ""}{" "}
         <input
           type="number"
           min="0"

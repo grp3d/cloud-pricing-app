@@ -8,6 +8,28 @@ interface Props {
   onAdd: (sku: CatalogSKU) => void;
 }
 
+// A handful of common attribute keys shown inline in the compact list view, so similar SKUs
+// (e.g. several EC2 instance types) can be told apart at a glance (FR-001) without dumping every
+// attribute into every row (research.md #2) — the full set is shown at the confirmation step via
+// `SkuDetail`. This list is a frontend display choice, not a backend contract: adding another
+// common key later doesn't require an API change.
+const DETAIL_CANDIDATE_KEYS = [
+  "instanceType",
+  "memory",
+  "vcpu",
+  "operatingSystem",
+  "storage",
+  "group",
+  "groupDescription",
+];
+
+function detailLine(sku: CatalogSKU): string {
+  const parts = DETAIL_CANDIDATE_KEYS.filter((key) => sku.attributes[key]).map(
+    (key) => sku.attributes[key],
+  );
+  return parts.join(" · ");
+}
+
 /**
  * AWS catalog search (FR-005): filter by service code, product family, and free text — v1
  * scope only, no attribute-level faceting (spec Assumptions). Requires at least one filter,
@@ -60,12 +82,17 @@ export function CatalogSearchPanel({ onAdd }: Props) {
       {!search.isError && search.data?.results.length === 0 && <p>No matching services found.</p>}
 
       <ul>
-        {search.data?.results.map((r) => (
-          <li key={r.sku}>
-            {r.service_name} — {r.product_family} — {r.summary}
-            <button onClick={() => onAdd(r)}>Add</button>
-          </li>
-        ))}
+        {search.data?.results.map((r) => {
+          const details = detailLine(r);
+          return (
+            <li key={r.sku}>
+              {r.service_name} — {r.product_family} — {r.summary}
+              {details && <> — {details}</>}
+              {r.unit && <> ({r.unit})</>}
+              <button onClick={() => onAdd(r)}>Add</button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

@@ -7,15 +7,35 @@ least one filter is required to avoid returning the full ~173k-row catalog per r
 
 from __future__ import annotations
 
+import json
+
 import duckdb
 
 from src.config import settings
 from src.pricing_data.errors import PricingDataUnavailableError
+from src.pricing_data.pricing import resolve_units
 from src.pricing_data.snapshot import resolve_latest_snapshot_date
 
 
 class EmptyCatalogFilterError(ValueError):
     """Raised when a catalog search is attempted with no filter at all."""
+
+
+def parse_attributes(raw: str | None) -> dict[str, str]:
+    """Parse `product_dim.attributes_json` into a plain string map (spec FR-001, FR-002).
+
+    Never raises: `None`, empty, or malformed JSON all resolve to `{}` rather than fabricating
+    or guessing a value (spec FR-003, Constitution Principle I).
+    """
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(key): str(value) for key, value in parsed.items()}
 
 
 def _product_dim_path(snapshot_date: str) -> str:
@@ -42,7 +62,7 @@ def search_catalog(
 ) -> tuple[list[dict], str]:
     """Search the AWS pricing catalog. Returns (rows, snapshot_date_used).
 
-    Each row: service_code, service_name, product_family, sku, summary.
+    Each row: service_code, service_name, product_family, sku, summary, attributes, unit.
     """
     if not any([service_code, product_family, text]):
         raise EmptyCatalogFilterError(
@@ -73,7 +93,8 @@ def search_catalog(
             COALESCE(
                 json_extract_string(p.attributes_json, '$.instanceType'),
                 p.product_family
-            ) AS summary
+            ) AS summary,
+            p.attributes_json
         FROM read_parquet(?) p
         JOIN read_parquet(?) s USING (service_code)
         WHERE {where_clause}
@@ -97,4 +118,17 @@ def search_catalog(
     except duckdb.Error as exc:
         raise PricingDataUnavailableError(str(exc)) from exc
 
-    return [dict(zip(columns, row, strict=True)) for row in rows], snapshot_date
+    results = [dict(zip(columns, row, strict=True)) for row in rows]
+
+    # Attach attributes (parsed, never raw JSON) and unit — one batched DuckDB lookup for
+    # every result's unit rather than one query per row (research.md #3).
+    units = resolve_units(
+        [(r["sku"], "on_demand", "not_applicable") for r in results],
+        snapshot_date=snapshot_date,
+    )
+    for result in results:
+        raw_attributes = result.pop("attributes_json")
+        result["attributes"] = parse_attributes(raw_attributes)
+        result["unit"] = units.get((result["sku"], "on_demand", "not_applicable"))
+
+    return results, snapshot_date

@@ -71,6 +71,10 @@ class SKUSelectionOut(ORMBase):
     pricing_term: PricingTerm
     purchase_option: PurchaseOption
     usage_quantity: Decimal
+    # Resolved read-only from the AWS Pricing Catalog at response time (never a stored
+    # column) — attached by the endpoint after construction, since Pydantic's ORM-attribute
+    # serialization has no DuckDB access. `None` when unpriceable (003, FR-004/FR-005).
+    unit: str | None = None
 
 
 # --- Collection --------------------------------------------------------------------------
@@ -143,6 +147,12 @@ class CatalogSKUOut(BaseModel):
     product_family: str
     sku: str
     summary: str
+    # Full descriptive attributes as a flat key/value map — {} (never null) when none are
+    # available (003, FR-001/FR-002/FR-003).
+    attributes: dict[str, str] = {}
+    # Billing unit, e.g. "Hrs", "GB-Mo" — null if this SKU has no price data at all
+    # (003, FR-004/FR-005).
+    unit: str | None = None
 
 
 class CatalogSearchResult(BaseModel):

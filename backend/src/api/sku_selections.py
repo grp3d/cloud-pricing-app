@@ -9,7 +9,11 @@ from fastapi import APIRouter, HTTPException, status
 from src.api.deps import CurrentUser, DbSession
 from src.models.orm import SKUSelection
 from src.models.schemas import SKUSelectionCreate, SKUSelectionOut, SKUSelectionUpdate
-from src.services.architecture_service import get_owned_collection, get_owned_connector
+from src.services.architecture_service import (
+    get_owned_collection,
+    get_owned_connector,
+    sku_selection_out_with_unit,
+)
 
 router = APIRouter(tags=["sku-selections"])
 
@@ -21,7 +25,7 @@ router = APIRouter(tags=["sku-selections"])
 )
 async def add_sku_selection(
     collection_id: uuid.UUID, body: SKUSelectionCreate, session: DbSession, user: CurrentUser
-) -> SKUSelection:
+) -> SKUSelectionOut:
     collection = await get_owned_collection(collection_id, session, user)
     # Duplicates are explicitly allowed (spec Edge Cases) — the same SKU may appear more than
     # once, each with independent pricing inputs.
@@ -36,7 +40,7 @@ async def add_sku_selection(
     session.add(selection)
     await session.commit()
     await session.refresh(selection)
-    return selection
+    return sku_selection_out_with_unit(selection)
 
 
 async def _get_owned_sku_selection(
@@ -57,7 +61,7 @@ async def _get_owned_sku_selection(
 @router.patch("/sku-selections/{sku_selection_id}", response_model=SKUSelectionOut)
 async def update_sku_selection(
     sku_selection_id: uuid.UUID, body: SKUSelectionUpdate, session: DbSession, user: CurrentUser
-) -> SKUSelection:
+) -> SKUSelectionOut:
     selection = await _get_owned_sku_selection(sku_selection_id, session, user)
     if body.pricing_term is not None:
         selection.pricing_term = body.pricing_term.value
@@ -67,7 +71,7 @@ async def update_sku_selection(
         selection.usage_quantity = body.usage_quantity
     await session.commit()
     await session.refresh(selection)
-    return selection
+    return sku_selection_out_with_unit(selection)
 
 
 @router.delete("/sku-selections/{sku_selection_id}", status_code=204)

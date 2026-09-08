@@ -15,7 +15,7 @@ from sqlalchemy import select
 from src.api.deps import CurrentUser, DbSession
 from src.models.orm import Architecture
 from src.models.schemas import ArchitectureCreate, ArchitectureDetailOut, ArchitectureSummaryOut
-from src.services.architecture_service import get_owned_architecture
+from src.services.architecture_service import attach_units_to_architecture, get_owned_architecture
 
 router = APIRouter(tags=["architectures"])
 
@@ -52,8 +52,14 @@ async def list_architectures(
 @router.get("/architectures/{architecture_id}", response_model=ArchitectureDetailOut)
 async def get_architecture(
     architecture_id: uuid.UUID, session: DbSession, user: CurrentUser
-) -> Architecture:
-    return await get_owned_architecture(architecture_id, session, user)
+) -> ArchitectureDetailOut:
+    architecture = await get_owned_architecture(architecture_id, session, user)
+    detail = ArchitectureDetailOut.model_validate(architecture)
+    # `unit` lives only in the read-only pricing data (never a stored column), so it can't
+    # come from ORM-attribute serialization above — batch-resolve and attach it across the
+    # whole tree in one DuckDB query (003-service-selection-improvements, FR-004/FR-005).
+    attach_units_to_architecture(detail, architecture)
+    return detail
 
 
 @router.delete("/architectures/{architecture_id}", status_code=204)
