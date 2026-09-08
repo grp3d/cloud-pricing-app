@@ -61,12 +61,26 @@ class Architecture(Base):
 
 
 class Collection(Base):
-    """A user-defined grouping of AWS SKUs within an Architecture (spec FR-004)."""
+    """A user-defined grouping of AWS SKUs within an Architecture (spec FR-004).
+
+    May optionally be nested inside a VPC Collection via `parent_collection_id`
+    (002-vpc-component-nesting, spec FR-001-FR-004): only an `application_component` may have a
+    parent, and that parent must itself be a `vpc` (enforced at the DB layer for the single-row
+    rule; the cross-row "parent must actually be type=vpc" rule is enforced in
+    `services/architecture_service.py`, since a CHECK constraint cannot reference another row).
+    """
 
     __tablename__ = "collections"
     __table_args__ = (
         CheckConstraint(
             "type IN ('application_component', 'vpc')", name="ck_collection_type"
+        ),
+        CheckConstraint(
+            "parent_collection_id IS NULL OR type = 'application_component'",
+            name="ck_collection_parent_only_app_component",
+        ),
+        CheckConstraint(
+            "parent_collection_id != id", name="ck_collection_no_self_parent"
         ),
     )
 
@@ -76,6 +90,9 @@ class Collection(Base):
     )
     type: Mapped[str] = mapped_column(String(30), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    parent_collection_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("collections.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
@@ -85,6 +102,12 @@ class Collection(Base):
         back_populates="collection",
         cascade="all, delete-orphan",
         foreign_keys="SKUSelection.collection_id",
+    )
+    parent: Mapped[Collection | None] = relationship(
+        remote_side="Collection.id", foreign_keys=[parent_collection_id], back_populates="children"
+    )
+    children: Mapped[list[Collection]] = relationship(
+        back_populates="parent", foreign_keys=[parent_collection_id]
     )
 
 

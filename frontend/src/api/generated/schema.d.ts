@@ -128,7 +128,12 @@ export interface paths {
         delete: operations["delete_collection_api_v1_collections__collection_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Collection Nesting
+         * @description Nest, move, or un-nest an Application Component (002-vpc-component-nesting,
+         *     FR-001-FR-004).
+         */
+        patch: operations["update_collection_nesting_api_v1_collections__collection_id__patch"];
         trace?: never;
     };
     "/api/v1/collections/{collection_id}/sku-selections": {
@@ -351,6 +356,14 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * CollectionNestingUpdate
+         * @description Nest, move, or un-nest an Application Component (002-vpc-component-nesting, FR-001-003).
+         */
+        CollectionNestingUpdate: {
+            /** Parent Collection Id */
+            parent_collection_id: string | null;
+        };
         /** CollectionOut */
         CollectionOut: {
             /**
@@ -361,6 +374,8 @@ export interface components {
             type: components["schemas"]["CollectionType"];
             /** Name */
             name: string;
+            /** Parent Collection Id */
+            parent_collection_id?: string | null;
             /**
              * Sku Selections
              * @default []
@@ -779,6 +794,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_collection_nesting_api_v1_collections__collection_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                collection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionNestingUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionOut"];
+                };
             };
             /** @description Validation Error */
             422: {

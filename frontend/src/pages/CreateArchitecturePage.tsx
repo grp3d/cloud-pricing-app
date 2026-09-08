@@ -4,7 +4,9 @@ import {
   Background,
   Controls,
   ReactFlow,
+  ReactFlowProvider,
   addEdge,
+  useReactFlow,
   type Connection,
   type Edge,
   type Node,
@@ -15,12 +17,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import { type CatalogSKU, type CollectionType, api } from "../api/client";
+import { type CatalogSKU, type Collection, type CollectionType, api } from "../api/client";
 import { CatalogSearchPanel } from "../components/CatalogSearchPanel";
 import { ConfirmDeleteDialog } from "../components/ConfirmDeleteDialog";
 import { DataConnectorPanel } from "../components/DataConnectorPanel";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { PricingInputsForm, type PricingInputs } from "../components/PricingInputsForm";
+import { decideNestingChange } from "./dropTargetDetection";
 
 function errorMessageOf(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
@@ -30,9 +33,20 @@ function errorMessageOf(err: unknown): string {
  * Assemble a single Architecture: Collections as nodes on a React Flow canvas (US2), Data
  * Connectors as edges between them, and — for whichever Collection is selected — the catalog
  * search + pricing inputs to add AWS SKUs to it (US1). Calculate shows the total plus any
- * unpriceable-SKU flags and unconnected-VPCs warning (US1/US3).
+ * unpriceable-SKU flags and unconnected-VPCs warning (US1/US3). Application Components can be
+ * dragged into a VPC to nest them (002-vpc-component-nesting, US1).
  */
 export function CreateArchitecturePage() {
+  // useReactFlow() (used below to detect drop targets) only works inside a ReactFlowProvider,
+  // which must be an ancestor of the component calling it — hence this thin wrapper.
+  return (
+    <ReactFlowProvider>
+      <CreateArchitecturePageInner />
+    </ReactFlowProvider>
+  );
+}
+
+function CreateArchitecturePageInner() {
   const { architectureId } = useParams<{ architectureId: string }>();
   const queryClient = useQueryClient();
 
@@ -98,6 +112,21 @@ export function CreateArchitecturePage() {
     },
   });
 
+  const updateCollectionParent = useMutation({
+    mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) =>
+      api.updateCollectionParent(id, parentId),
+    onSuccess: () => {
+      setActionError(null);
+      invalidate();
+    },
+    onError: (err) => {
+      setActionError(errorMessageOf(err));
+      // The node may have visually moved during the drag before this rejection; resync the
+      // canvas from the server's actual state, same pattern as a rejected connector.
+      invalidate();
+    },
+  });
+
   const calculate = useMutation({
     mutationFn: () => api.calculate(architectureId!),
     // Clear any prior result up front so a failed recalculation never leaves a stale total
@@ -114,16 +143,54 @@ export function CreateArchitecturePage() {
   const collections = useMemo(() => architecture.data?.collections ?? [], [architecture.data]);
   const connectors = useMemo(() => architecture.data?.connectors ?? [], [architecture.data]);
 
-  const initialNodes: Node[] = useMemo(
-    () =>
-      collections.map((c, i) => ({
+  const { getIntersectingNodes } = useReactFlow();
+
+  // Application Components nested inside a VPC (parent_collection_id set) render as child
+  // nodes of that VPC's node (002-vpc-component-nesting, spec FR-001-003). No `extent:
+  // 'parent'` constraint is set — a user must be able to drag a nested node fully outside its
+  // VPC's bounds to un-nest it (FR-003); clamping movement to the parent would make that
+  // impossible. Positions are recomputed from Collection order on every refetch rather than
+  // preserved from free-form dragging — consistent with how top-level nodes already behaved
+  // before this feature.
+  const initialNodes: Node[] = useMemo(() => {
+    const topLevel = collections.filter((c) => !c.parent_collection_id);
+    const childrenByParent = new Map<string, Collection[]>();
+    for (const c of collections) {
+      if (c.parent_collection_id) {
+        const list = childrenByParent.get(c.parent_collection_id) ?? [];
+        list.push(c);
+        childrenByParent.set(c.parent_collection_id, list);
+      }
+    }
+
+    const nodes: Node[] = [];
+    topLevel.forEach((c, i) => {
+      const children = c.type === "vpc" ? (childrenByParent.get(c.id) ?? []) : [];
+      nodes.push({
         id: c.id,
-        position: { x: (i % 4) * 200, y: Math.floor(i / 4) * 120 },
+        position: { x: (i % 4) * 260, y: Math.floor(i / 4) * 220 },
         data: { label: `${c.name} (${c.type})` },
-        style: c.type === "vpc" ? { border: "2px solid #2563eb" } : undefined,
-      })),
-    [collections],
-  );
+        style:
+          c.type === "vpc"
+            ? {
+                border: "2px solid #2563eb",
+                width: 220,
+                height: Math.max(80, 50 + children.length * 50),
+              }
+            : undefined,
+      });
+      // Parent must precede its children in the array — React Flow requirement.
+      children.forEach((child, j) => {
+        nodes.push({
+          id: child.id,
+          parentId: c.id,
+          position: { x: 20, y: 40 + j * 50 },
+          data: { label: `${child.name} (${child.type})` },
+        });
+      });
+    });
+    return nodes;
+  }, [collections]);
   const initialEdges: Edge[] = useMemo(
     () =>
       connectors.map((conn) => ({
@@ -146,6 +213,25 @@ export function CreateArchitecturePage() {
     createConnector.mutate({ from: connection.source, to: connection.target });
     setEdges((eds) => addEdge(connection, eds));
   }
+
+  const onNodeDragStop = (_event: MouseEvent | TouchEvent, node: Node) => {
+    const dragged = collections.find((c) => c.id === node.id);
+    // Only an Application Component can be nested (spec FR-004) — dragging a VPC is a no-op
+    // for nesting purposes.
+    if (!dragged || dragged.type !== "application_component") return;
+
+    const intersectingVpcIds = getIntersectingNodes(node)
+      .filter((n) => collections.find((c) => c.id === n.id)?.type === "vpc")
+      .map((n) => n.id);
+
+    const { changed, newParentId } = decideNestingChange(
+      intersectingVpcIds,
+      dragged.parent_collection_id ?? null,
+    );
+    if (changed) {
+      updateCollectionParent.mutate({ id: dragged.id, parentId: newParentId });
+    }
+  };
 
   async function addSkuToSelectedCollection(inputs: PricingInputs) {
     if (!selectedCollectionId || !pickedSku) return;
@@ -235,6 +321,7 @@ export function CreateArchitecturePage() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeDragStop={onNodeDragStop}
           onNodeClick={(_, node) => {
             setSelectedCollectionId(node.id);
             setSelectedConnectorId(null);

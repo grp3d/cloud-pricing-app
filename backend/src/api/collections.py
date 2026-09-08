@@ -8,10 +8,11 @@ from fastapi import APIRouter
 
 from src.api.deps import CurrentUser, DbSession
 from src.models.orm import Collection
-from src.models.schemas import CollectionCreate, CollectionOut
+from src.models.schemas import CollectionCreate, CollectionNestingUpdate, CollectionOut
 from src.services.architecture_service import (
     get_owned_architecture,
     get_owned_collection,
+    set_collection_parent,
     soft_delete_collection,
 )
 
@@ -32,6 +33,18 @@ async def create_collection(
     await session.commit()
     await session.refresh(collection, attribute_names=["sku_selections"])
     return collection
+
+
+@router.patch("/collections/{collection_id}", response_model=CollectionOut)
+async def update_collection_nesting(
+    collection_id: uuid.UUID, body: CollectionNestingUpdate, session: DbSession, user: CurrentUser
+) -> Collection:
+    """Nest, move, or un-nest an Application Component (002-vpc-component-nesting,
+    FR-001-FR-004)."""
+    collection = await get_owned_collection(collection_id, session, user)
+    updated = await set_collection_parent(collection, body.parent_collection_id, session)
+    await session.refresh(updated, attribute_names=["sku_selections"])
+    return updated
 
 
 @router.delete("/collections/{collection_id}", status_code=204)

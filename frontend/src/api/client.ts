@@ -80,6 +80,13 @@ export const api = {
       body: JSON.stringify({ type, name }),
     }),
   deleteCollection: (id: string) => request<void>(`/collections/${id}`, { method: "DELETE" }),
+  /** Nest, move, or un-nest an Application Component (002-vpc-component-nesting, FR-001-003).
+   * Pass a VPC's id to nest/move into it, or `null` to un-nest back to top-level. */
+  updateCollectionParent: (id: string, parentCollectionId: string | null) =>
+    request<Collection>(`/collections/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ parent_collection_id: parentCollectionId }),
+    }),
 
   searchCatalog: (params: { service_code?: string; product_family?: string; q?: string }) => {
     const qs = new URLSearchParams(

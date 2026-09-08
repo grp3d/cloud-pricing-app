@@ -86,7 +86,10 @@ async def get_owned_connector(
 
 
 async def soft_delete_collection(collection: Collection, session: AsyncSession) -> None:
-    """Soft-delete a Collection and cascade to any Data Connector referencing it (FR-015)."""
+    """Soft-delete a Collection: cascade to any Data Connector referencing it (FR-015), and if
+    it's a VPC, un-nest — never delete — any Application Components nested inside it
+    (002-vpc-component-nesting, FR-007: nothing nested inside a VPC is ever lost by deleting
+    the VPC)."""
     now = datetime.now(UTC)
     collection.deleted_at = now
 
@@ -99,4 +102,58 @@ async def soft_delete_collection(collection: Collection, session: AsyncSession) 
     for connector in result.scalars().all():
         connector.deleted_at = now
 
+    children_stmt = select(Collection).where(
+        Collection.parent_collection_id == collection.id, Collection.deleted_at.is_(None)
+    )
+    children_result = await session.execute(children_stmt)
+    for child in children_result.scalars().all():
+        child.parent_collection_id = None
+
     await session.commit()
+
+
+async def set_collection_parent(
+    collection: Collection, parent_collection_id: uuid.UUID | None, session: AsyncSession
+) -> Collection:
+    """Nest, move, or un-nest an Application Component (002-vpc-component-nesting, FR-001-004).
+
+    `collection` must already be resolved via `get_owned_collection` so ownership is
+    established before this runs. The DB-level check constraints
+    (`ck_collection_parent_only_app_component`, `ck_collection_no_self_parent`) are the
+    single-row safety net; the cross-row rule below — the parent must actually be a VPC in the
+    same Architecture — cannot be expressed as a `CHECK` constraint, so it's enforced here,
+    mirroring how a Data Connector's two Collections are validated to share an Architecture.
+    """
+    if parent_collection_id is None:
+        collection.parent_collection_id = None
+        await session.commit()
+        await session.refresh(collection)
+        return collection
+
+    if collection.type != "application_component":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only an Application Component can be nested inside a VPC",
+        )
+
+    stmt = select(Collection).where(
+        Collection.id == parent_collection_id,
+        Collection.architecture_id == collection.architecture_id,
+        Collection.type == "vpc",
+        Collection.deleted_at.is_(None),
+    )
+    result = await session.execute(stmt)
+    parent = result.scalar_one_or_none()
+    if parent is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "parent_collection_id must reference an existing, non-deleted VPC Collection "
+                "in the same Architecture"
+            ),
+        )
+
+    collection.parent_collection_id = parent.id
+    await session.commit()
+    await session.refresh(collection)
+    return collection

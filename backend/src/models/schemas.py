@@ -85,7 +85,14 @@ class CollectionOut(ORMBase):
     id: uuid.UUID
     type: CollectionType
     name: str
+    parent_collection_id: uuid.UUID | None = None
     sku_selections: list[SKUSelectionOut] = []
+
+
+class CollectionNestingUpdate(BaseModel):
+    """Nest, move, or un-nest an Application Component (002-vpc-component-nesting, FR-001-003)."""
+
+    parent_collection_id: uuid.UUID | None
 
 
 # --- Data Connector ------------------------------------------------------------------------

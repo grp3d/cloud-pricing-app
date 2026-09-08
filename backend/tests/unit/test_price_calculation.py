@@ -107,3 +107,30 @@ def test_unconnected_vpc_warning(monkeypatch, vpc_count, connected, expect_warni
         assert "unconnected_vpcs" in warning_codes
     else:
         assert "unconnected_vpcs" not in warning_codes
+
+
+def test_nesting_does_not_affect_total(monkeypatch):
+    """002-vpc-component-nesting FR-009: nesting an Application Component inside a VPC must
+    not change the calculated total — price_calculation.py sums every Collection in
+    architecture.collections regardless of parent_collection_id, so nested vs. top-level must
+    produce an identical result.
+    """
+    monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 2.5)
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+
+    def build(nested: bool) -> Architecture:
+        vpc = Collection(id=uuid.uuid4(), type="vpc", name="VPC")
+        vpc.sku_selections = []
+        app = Collection(id=uuid.uuid4(), type="application_component", name="App")
+        app.sku_selections = [_selection(usage_quantity=Decimal("10"))]
+        if nested:
+            app.parent_collection_id = vpc.id
+        architecture = Architecture(name="A")
+        architecture.collections = [vpc, app]
+        architecture.connectors = []
+        return architecture
+
+    top_level_result = price_calculation.calculate_architecture_price(build(nested=False))
+    nested_result = price_calculation.calculate_architecture_price(build(nested=True))
+
+    assert top_level_result.total_price == nested_result.total_price == Decimal("25.0")
