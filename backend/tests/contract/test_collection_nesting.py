@@ -5,7 +5,9 @@ import uuid
 import pytest
 
 
-async def _make_architecture_with(client, auth_headers, *collection_types: str) -> tuple[str, list[str]]:
+async def _make_architecture_with(
+    client, auth_headers, *collection_types: str
+) -> tuple[str, list[str]]:
     arch = await client.post(
         "/api/v1/architectures", json={"name": "Arch", "provider": "aws"}, headers=auth_headers
     )
@@ -91,7 +93,9 @@ async def test_reject_nesting_a_vpc(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_reject_nonexistent_parent(client, auth_headers):
-    _arch_id, (app_id,) = await _make_architecture_with(client, auth_headers, "application_component")
+    _arch_id, (app_id,) = await _make_architecture_with(
+        client, auth_headers, "application_component"
+    )
 
     resp = await client.patch(
         f"/api/v1/collections/{app_id}",
@@ -103,7 +107,9 @@ async def test_reject_nonexistent_parent(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_reject_parent_from_a_different_architecture(client, auth_headers):
-    _arch1_id, (app_id,) = await _make_architecture_with(client, auth_headers, "application_component")
+    _arch1_id, (app_id,) = await _make_architecture_with(
+        client, auth_headers, "application_component"
+    )
     _arch2_id, (other_vpc_id,) = await _make_architecture_with(client, auth_headers, "vpc")
 
     resp = await client.patch(

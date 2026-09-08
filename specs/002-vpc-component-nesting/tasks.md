@@ -124,6 +124,19 @@ feature.
 
 ---
 
+## Phase 4: Convergence
+
+- [x] T017 Add a test deleting a *nested* Application Component and asserting its containing
+      VPC and any sibling Collections are unaffected, in
+      `backend/tests/integration/test_us1_nest_components.py` (or a new test in
+      `backend/tests/contract/test_collections.py`), per FR-008 (partial)
+- [x] T018 Add a test creating a Data Connector involving a nested Application Component, then
+      nesting/moving/un-nesting that component, asserting the connector (and its attached SKU,
+      if any) is unchanged throughout, in `backend/tests/integration/test_us1_nest_components.py`,
+      per FR-010 / SC-002 (partial)
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
