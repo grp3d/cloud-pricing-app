@@ -1,5 +1,5 @@
 """Price calculation service (spec FR-010, FR-011, FR-012, FR-017;
-004-canvas-pricing-improvements FR-001-FR-005).
+004-canvas-pricing-improvements FR-001-FR-005; 006-fix-reserved-pricing FR-001-FR-006).
 
 Sums every SKU Selection across an Architecture's Collections *and* its Data Connectors'
 attached services (FR-010), against the current AWS pricing data, scaled to a selected
@@ -7,6 +7,13 @@ attached services (FR-010), against the current AWS pricing data, scaled to a se
 classified into a recognized time-period category, is flagged and excluded from the total —
 never silently dropped, never estimated (FR-011, FR-012; 004 FR-005). Architectures with
 unconnected VPC Collections get a non-blocking warning (FR-017).
+
+A Reserved-term selection's cost (006) is computed independently of On-Demand's
+unit-classification proration: its recurring rate bills continuously for every hour of the
+requested duration (never scaled by `usage_quantity`, which has no Reserved-term meaning —
+006, Clarifications), plus, for Partial/All Upfront, a duration-proportional share of the
+one-time upfront fee. See `lookup_reserved_price` (pricing_data/pricing.py) for how the two
+values are retrieved.
 """
 
 from __future__ import annotations
@@ -22,7 +29,7 @@ from src.models.schemas import (
     UnpriceableItem,
 )
 from src.pricing_data.duration import classify_unit
-from src.pricing_data.pricing import lookup_price, resolve_units
+from src.pricing_data.pricing import lookup_price, lookup_reserved_price, resolve_units
 from src.pricing_data.snapshot import resolve_latest_snapshot_date
 
 # Day-counts used for every duration-based calculation (004, FR-006) — fixed, never derived from
@@ -33,12 +40,21 @@ _DURATION_DAYS: dict[CalculationDuration, int] = {
     CalculationDuration.one_year: 365,
 }
 
-# A Reserved commitment's own term length, in days — the reference period FR-002 prorates
-# against, regardless of the selection's billing unit (research.md #3).
+# A Reserved commitment's own term length, in days — also doubles as the "is this selection
+# Reserved?" test (006: branching on `_RESERVED_TERM_DAYS.get(pricing_term) is not None`
+# happens *before* any pricing lookup, so the Reserved and On-Demand paths are fully separate
+# procedures, research.md #2). This is the proration reference for a Reserved selection's
+# upfront-fee share (FR-002) — the recurring-rate contribution doesn't prorate against it at
+# all, since it bills continuously for every hour of the requested duration regardless of the
+# term's own length (FR-001).
 _RESERVED_TERM_DAYS: dict[str, int] = {
     "reserved_1yr": 365,
     "reserved_3yr": 1095,
 }
+
+# A Reserved recurring rate bills for every hour of the requested duration, not a "usage per
+# day" estimate (FR-001) — this is the hours-per-day multiplier that makes that explicit.
+_HOURS_PER_DAY = 24
 
 
 def calculate_architecture_price(
@@ -72,10 +88,15 @@ def calculate_architecture_price(
                 f"Data Connector between {from_name} and {to_name}"
             ]
 
-    # Batch-resolve every selection's billing unit in one query (003's `resolve_units`,
-    # research.md #2) — used here only to classify for proration, not to display.
+    # Batch-resolve billing units for On-Demand selections only (006) — a Reserved selection's
+    # cost no longer depends on unit classification at all (FR-001/FR-002), so there's nothing
+    # for this batch to usefully resolve for one; scoping it down keeps the query's purpose
+    # honest (003's `resolve_units`, research.md #2).
+    on_demand_selections = [
+        s for s in selections if _RESERVED_TERM_DAYS.get(s.pricing_term) is None
+    ]
     units = resolve_units(
-        [(s.sku, s.pricing_term, s.purchase_option) for s in selections],
+        [(s.sku, s.pricing_term, s.purchase_option) for s in on_demand_selections],
         snapshot_date=snapshot_date,
     )
 
@@ -83,44 +104,84 @@ def calculate_architecture_price(
     unpriceable: list[UnpriceableItem] = []
     total = Decimal("0")
 
-    for selection in selections:
-        unit_price = lookup_price(
-            sku=selection.sku,
-            pricing_term=selection.pricing_term,
-            purchase_option=selection.purchase_option,
-            snapshot_date=snapshot_date,
+    def _mark_unpriceable(selection, reason: str) -> None:
+        unpriceable.append(
+            UnpriceableItem(
+                sku_selection_id=selection.id,
+                service_code=selection.service_code,
+                sku=selection.sku,
+                reason=reason,
+                components=selection_components.get(selection.id, []),
+            )
         )
-        if unit_price is None:
-            unpriceable.append(
-                UnpriceableItem(
-                    sku_selection_id=selection.id,
-                    service_code=selection.service_code,
-                    sku=selection.sku,
-                    reason="no price for term/purchase_option in current snapshot",
-                    components=selection_components.get(selection.id, []),
-                )
+        line_items.append(
+            PriceLineItem(
+                sku_selection_id=selection.id,
+                service_code=selection.service_code,
+                sku=selection.sku,
+                price=None,
+                priceable=False,
             )
-            line_items.append(
-                PriceLineItem(
-                    sku_selection_id=selection.id,
-                    service_code=selection.service_code,
-                    sku=selection.sku,
-                    price=None,
-                    priceable=False,
-                )
-            )
-            continue
+        )
 
-        raw_cost = Decimal(str(unit_price)) * selection.usage_quantity
+    for selection in selections:
         term_days = _RESERVED_TERM_DAYS.get(selection.pricing_term)
 
         if term_days is not None:
-            # Reserved commitment: raw_cost covers the full committed term, regardless of the
-            # underlying unit — prorate against the term itself (FR-002).
-            displayed_cost = raw_cost * Decimal(duration_days) / Decimal(term_days)
+            # Reserved (006): a fully separate procedure from On-Demand below — never reads
+            # `usage_quantity`, never calls `lookup_price`/`classify_unit`.
+            reserved_price = lookup_reserved_price(
+                sku=selection.sku,
+                pricing_term=selection.pricing_term,
+                purchase_option=selection.purchase_option,
+                snapshot_date=snapshot_date,
+            )
+            if reserved_price is None or reserved_price.recurring_rate is None:
+                _mark_unpriceable(
+                    selection,
+                    "no recurring rate for term/purchase_option in current snapshot",
+                )
+                continue
+
+            # Recurring rate bills continuously for every hour of the requested duration —
+            # never scaled by `usage_quantity` (FR-001).
+            displayed_cost = (
+                Decimal(str(reserved_price.recurring_rate))
+                * _HOURS_PER_DAY
+                * Decimal(duration_days)
+            )
+
+            if selection.purchase_option != "no_upfront":
+                if reserved_price.upfront_fee is None:
+                    _mark_unpriceable(
+                        selection,
+                        "no upfront fee for term/purchase_option in current snapshot despite "
+                        f"{selection.purchase_option} requiring one",
+                    )
+                    continue
+                # A duration-proportional share of the one-time upfront fee, in addition to the
+                # recurring contribution above — never dropped (FR-002).
+                displayed_cost += (
+                    Decimal(str(reserved_price.upfront_fee))
+                    * Decimal(duration_days)
+                    / Decimal(term_days)
+                )
+            # else: no_upfront has no upfront fee to add (FR-003).
         else:
-            # On-demand: which proration rule applies depends on the billing unit (FR-003/004),
-            # classified from the unit `resolve_units` already resolved above.
+            # On-demand: unchanged from 004 (FR-006, SC-003) — which proration rule applies
+            # depends on the billing unit, classified from the unit `resolve_units` already
+            # resolved above.
+            unit_price = lookup_price(
+                sku=selection.sku,
+                pricing_term=selection.pricing_term,
+                purchase_option=selection.purchase_option,
+                snapshot_date=snapshot_date,
+            )
+            if unit_price is None:
+                _mark_unpriceable(selection, "no price for term/purchase_option in current snapshot")
+                continue
+
+            raw_cost = Decimal(str(unit_price)) * selection.usage_quantity
             unit = units.get((selection.sku, selection.pricing_term, selection.purchase_option))
             classification = classify_unit(unit)
             if classification.category == "no_period":
@@ -134,26 +195,10 @@ def calculate_architecture_price(
                 )
             else:
                 # unrecognized — excluded, never guessed (FR-005).
-                unpriceable.append(
-                    UnpriceableItem(
-                        sku_selection_id=selection.id,
-                        service_code=selection.service_code,
-                        sku=selection.sku,
-                        reason=(
-                            f"billing unit '{unit}' isn't recognized as time-based; excluded "
-                            f"from the {duration_days}-day total"
-                        ),
-                        components=selection_components.get(selection.id, []),
-                    )
-                )
-                line_items.append(
-                    PriceLineItem(
-                        sku_selection_id=selection.id,
-                        service_code=selection.service_code,
-                        sku=selection.sku,
-                        price=None,
-                        priceable=False,
-                    )
+                _mark_unpriceable(
+                    selection,
+                    f"billing unit '{unit}' isn't recognized as time-based; excluded "
+                    f"from the {duration_days}-day total",
                 )
                 continue
 

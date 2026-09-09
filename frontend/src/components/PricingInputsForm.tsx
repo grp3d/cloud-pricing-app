@@ -29,10 +29,11 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
     initial?.purchase_option ?? "not_applicable",
   );
   const [quantity, setQuantity] = useState(initial?.usage_quantity ?? "730");
-  // Which of the two proration interpretations this quantity represents (004, FR-007) —
-  // recomputed live as the user changes Term, since half the answer (Reserved vs. on-demand)
-  // depends on that.
-  const hint = usageQuantityHint(term, unit);
+  // Which of the two proration interpretations this quantity represents (004, FR-007) — only
+  // meaningful for On-Demand (006-fix-reserved-pricing: usage_quantity has no Reserved-term
+  // meaning at all, so the input isn't shown — and this hint isn't computed — once a Reserved
+  // term is selected, below).
+  const hint = usageQuantityHint(unit);
 
   return (
     <form
@@ -48,8 +49,16 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
           onChange={(e) => {
             const value = e.target.value as PricingTerm;
             setTerm(value);
-            if (value === "on_demand") setPurchaseOption("not_applicable");
-            else if (purchaseOption === "not_applicable") setPurchaseOption("no_upfront");
+            if (value === "on_demand") {
+              setPurchaseOption("not_applicable");
+            } else {
+              if (purchaseOption === "not_applicable") setPurchaseOption("no_upfront");
+              // usage_quantity has no Reserved-term meaning (006, Clarifications) — its input
+              // is hidden below, but the API field is still required, so reset it to a
+              // harmless, self-consistent value rather than carrying over whatever was last
+              // typed for an On-Demand selection (research.md §4).
+              setQuantity("1");
+            }
           }}
         >
           <option value="on_demand">On-Demand</option>
@@ -72,25 +81,32 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
         </label>
       )}
 
-      <label>
-        Usage quantity{unit ? ` (${unit})` : ""}{" "}
-        <input
-          type="number"
-          min="0"
-          step="any"
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-        />
-      </label>
-      {hint === "per_day_estimate" && (
-        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
-          Enter a steady daily rate — the Calculate duration scales this up.
-        </p>
-      )}
-      {hint === "period_denominated" && (
-        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
-          Enter the SKU's own quantity for its billing period — not scaled by duration.
-        </p>
+      {/* 006-fix-reserved-pricing, FR-007: usage_quantity has no Reserved-term meaning at all
+          — showing it (even relabeled) invites exactly the mistake that produced the original
+          bug report, so it's hidden outright rather than shown with different guidance. */}
+      {term === "on_demand" && (
+        <>
+          <label>
+            Usage quantity{unit ? ` (${unit})` : ""}{" "}
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+            />
+          </label>
+          {hint === "per_day_estimate" && (
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
+              Enter a steady daily rate — the Calculate duration scales this up.
+            </p>
+          )}
+          {hint === "period_denominated" && (
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
+              Enter the SKU's own quantity for its billing period — not scaled by duration.
+            </p>
+          )}
+        </>
       )}
 
       <button type="submit">{submitLabel}</button>

@@ -1,13 +1,19 @@
-"""Read-only DuckDB price lookup over `price_fact` (spec FR-010, FR-011, FR-012).
+"""Read-only DuckDB price lookup over `price_fact` (spec FR-010, FR-011, FR-012;
+006-fix-reserved-pricing FR-001-FR-005).
 
 Maps a (sku, pricing_term, purchase_option) pricing input to a real, current price — or
 `None` if no matching row exists, which the caller (services/price_calculation.py) must treat
-as unpriceable, never estimated (FR-012).
+as unpriceable, never estimated (FR-012). `lookup_reserved_price` is the Reserved-term
+counterpart of `lookup_price`: a Reserved/Partial-or-All-Upfront combination has two distinct
+`price_fact` rows (a recurring `Hrs` rate and a one-time `Quantity` upfront fee) sharing every
+other column, which `lookup_price`'s single-row `LIMIT 1` can't return both of at once (006,
+FR-004) — the actual bug this module's second function exists to fix.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import duckdb
 
@@ -64,6 +70,78 @@ def lookup_price(
         raise PricingDataUnavailableError(str(exc)) from exc
 
     return float(row[0]) if row else None
+
+
+@dataclass(frozen=True)
+class ReservedPrice:
+    """Both `price_fact` values a Reserved-term selection's cost needs (006, FR-001/FR-002).
+    Not persisted — an in-memory result of `lookup_reserved_price` only.
+
+    `recurring_rate`/`upfront_fee` are independently `None` when their respective row is
+    absent: `upfront_fee=None` is the expected, normal shape for `no_upfront` (there's no
+    upfront row to have); `recurring_rate=None`, or `upfront_fee=None` for a
+    `partial_upfront`/`all_upfront` combination, is a real pricing-data gap the caller must
+    treat as unpriceable (FR-005), never substituted or guessed.
+    """
+
+    recurring_rate: float | None
+    upfront_fee: float | None
+
+
+def lookup_reserved_price(
+    *, sku: str, pricing_term: str, purchase_option: str, snapshot_date: str | None = None
+) -> ReservedPrice | None:
+    """Return the recurring hourly rate and, when applicable, the one-time upfront fee for one
+    Reserved-term sku/purchase_option — distinguished from each other by `unit` ("Hrs" vs.
+    "Quantity"), not by row order, closing the bug where `lookup_price`'s ambiguous `LIMIT 1`
+    (no `unit` filter) always silently returned the recurring row and dropped the upfront fee
+    entirely (006, FR-002, FR-004).
+
+    Returns `None` only when no row matches at all (any unit) — the same "nothing priceable"
+    signal `lookup_price`/`resolve_units` already use. Requires a Reserved `pricing_term`
+    (raises `ValueError` for `on_demand`, which has no lease/term to look up against — a
+    programming error, not a data gap, so this fails loudly rather than returning nonsense).
+
+    A same-unit combination that happens to have more than one matching row (a known,
+    pre-existing characteristic of a few real SKUs' Reserved pricing data, unrelated to this
+    fix — see quickstart.md's Notes) resolves to whichever row is read first, the same
+    determinism `lookup_price` already relies on elsewhere.
+    """
+    snapshot_date = snapshot_date or resolve_latest_snapshot_date()
+    term, lease_length = _TERM_MAP[pricing_term]
+    if lease_length is None:
+        raise ValueError(
+            f"lookup_reserved_price requires a Reserved pricing_term, got {pricing_term!r}"
+        )
+    purchase = _PURCHASE_OPTION_MAP[purchase_option]
+
+    query = (
+        "SELECT unit, price FROM read_parquet(?) WHERE sku = ? AND term = ? "
+        "AND REPLACE(lease_contract_length, ' ', '') = ?"
+    )
+    params: list[object] = [_price_fact_path(snapshot_date), sku, term, lease_length]
+    if purchase is not None:
+        query += " AND REPLACE(purchase_option, ' ', '') = ?"
+        params.append(purchase)
+
+    try:
+        con = duckdb.connect(":memory:", read_only=False)
+        rows = con.execute(query, params).fetchall()
+    except duckdb.Error as exc:
+        raise PricingDataUnavailableError(str(exc)) from exc
+
+    if not rows:
+        return None
+
+    recurring_rate: float | None = None
+    upfront_fee: float | None = None
+    for unit, price in rows:
+        if unit == "Hrs" and recurring_rate is None:
+            recurring_rate = float(price)
+        elif unit == "Quantity" and upfront_fee is None:
+            upfront_fee = float(price)
+
+    return ReservedPrice(recurring_rate=recurring_rate, upfront_fee=upfront_fee)
 
 
 def resolve_units(

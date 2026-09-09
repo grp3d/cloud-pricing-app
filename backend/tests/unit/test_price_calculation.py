@@ -14,6 +14,7 @@ import pytest
 
 from src.models.orm import Architecture, Collection, DataConnector, SKUSelection
 from src.models.schemas import CalculationDuration
+from src.pricing_data.pricing import ReservedPrice
 from src.services import price_calculation
 
 
@@ -186,41 +187,187 @@ def _architecture_with(selection: SKUSelection) -> Architecture:
     return architecture
 
 
-def test_reserved_1yr_prorates_against_term_length(monkeypatch):
-    """FR-002: a Reserved commitment's raw cost covers the full term — divided by 365 for a
-    1-day view, unchanged for a 1-year view."""
-    monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 365.0)
-    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
-    _mock_units(monkeypatch, {"SKU1": "Hrs"})
+# --- 006-fix-reserved-pricing: Reserved-term calculation correctness (FR-001-FR-005) ---
+#
+# These replace 004's `test_reserved_1yr_prorates_against_term_length`/
+# `test_reserved_3yr_prorates_against_term_length`, which asserted the exact bug this feature
+# fixes (a Reserved total silently divided by the term length as if `usage_quantity` were a
+# term-long quantity). `lookup_reserved_price` — not `lookup_price` — is now the Reserved path's
+# only pricing lookup.
 
-    selection = _selection(pricing_term="reserved_1yr", usage_quantity=Decimal("1"))
+
+def _mock_reserved_price(monkeypatch, result: ReservedPrice | None):
+    monkeypatch.setattr(price_calculation, "lookup_reserved_price", lambda **kw: result)
+
+
+def test_reserved_no_upfront_recurring_cost_ignores_usage_quantity(monkeypatch):
+    """FR-001: a Reserved/No-Upfront selection's cost is `recurring_rate * 24 *
+    duration_days` — `usage_quantity` plays no role at all, however it's set (006,
+    Clarifications)."""
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=1.0, upfront_fee=None))
+
+    selection = _selection(
+        pricing_term="reserved_1yr",
+        purchase_option="no_upfront",
+        usage_quantity=Decimal("999"),  # deliberately absurd — must be irrelevant
+    )
     architecture = _architecture_with(selection)
 
     one_day = price_calculation.calculate_architecture_price(
         architecture, duration=CalculationDuration.one_day
     )
+    one_month = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_month
+    )
     one_year = price_calculation.calculate_architecture_price(
         architecture, duration=CalculationDuration.one_year
     )
 
-    assert one_day.total_price == Decimal("1")
-    assert one_year.total_price == Decimal("365")
+    assert one_day.total_price == Decimal("24")
+    assert one_month.total_price == Decimal("744")  # 1.0 * 24 * 31
+    assert one_year.total_price == Decimal("8760")  # 1.0 * 24 * 365
 
 
-def test_reserved_3yr_prorates_against_term_length(monkeypatch):
-    """FR-002: a 3-year commitment's term is 1095 days."""
-    monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 1095.0)
+def test_reserved_missing_recurring_rate_is_unpriceable(monkeypatch):
+    """FR-005: a row exists (so `lookup_reserved_price` doesn't return None outright) but with
+    no `Hrs` row — excluded with a reason, never guessed."""
     monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
-    _mock_units(monkeypatch, {"SKU1": "Hrs"})
+    _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=None, upfront_fee=None))
 
-    selection = _selection(pricing_term="reserved_3yr", usage_quantity=Decimal("1"))
+    selection = _selection(pricing_term="reserved_1yr", purchase_option="no_upfront")
     architecture = _architecture_with(selection)
 
     result = price_calculation.calculate_architecture_price(
         architecture, duration=CalculationDuration.one_month
     )
 
-    assert result.total_price == Decimal("31")
+    assert result.total_price == Decimal("0")
+    assert len(result.unpriceable) == 1
+    assert "recurring rate" in result.unpriceable[0].reason
+    assert result.line_items[0].priceable is False
+
+
+def test_reserved_no_lookup_result_at_all_is_unpriceable(monkeypatch):
+    """FR-005: `lookup_reserved_price` returning `None` outright (no matching row whatsoever)
+    is unpriceable too, not a crash."""
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_reserved_price(monkeypatch, None)
+
+    selection = _selection(pricing_term="reserved_1yr", purchase_option="no_upfront")
+    architecture = _architecture_with(selection)
+
+    result = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_month
+    )
+
+    assert result.total_price == Decimal("0")
+    assert len(result.unpriceable) == 1
+    assert result.line_items[0].priceable is False
+
+
+def test_reserved_partial_upfront_includes_amortized_upfront_share(monkeypatch):
+    """FR-002: total = recurring contribution + `upfront_fee * duration_days / term_days`."""
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=1.0, upfront_fee=365.0))
+
+    selection = _selection(pricing_term="reserved_1yr", purchase_option="partial_upfront")
+    architecture = _architecture_with(selection)
+
+    one_month = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_month
+    )
+
+    # recurring: 1.0 * 24 * 31 = 744; upfront: 365 * 31 / 365 = 31; total = 775.
+    assert one_month.total_price == Decimal("775")
+
+
+def test_reserved_all_upfront_zero_recurring_never_zeroes_the_total(monkeypatch):
+    """Edge Case: an All-Upfront selection's $0/hr recurring rate must not zero out the total
+    — the upfront share still applies."""
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=0.0, upfront_fee=365.0))
+
+    selection = _selection(pricing_term="reserved_1yr", purchase_option="all_upfront")
+    architecture = _architecture_with(selection)
+
+    one_month = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_month
+    )
+
+    assert one_month.total_price == Decimal("31")  # 365 * 31 / 365
+    assert one_month.total_price != Decimal("0")
+
+
+def test_reserved_no_upfront_gets_no_upfront_contribution(monkeypatch):
+    """FR-003: even if `lookup_reserved_price` somehow returned an `upfront_fee` for a
+    No-Upfront selection (shouldn't happen in real data, but the branch must not read it
+    either way), the total stays exactly the recurring-only contribution."""
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=1.0, upfront_fee=999999.0))
+
+    selection = _selection(pricing_term="reserved_1yr", purchase_option="no_upfront")
+    architecture = _architecture_with(selection)
+
+    one_month = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_month
+    )
+
+    assert one_month.total_price == Decimal("744")  # 1.0 * 24 * 31, upfront_fee ignored
+
+
+def test_reserved_partial_upfront_missing_upfront_fee_is_unpriceable(monkeypatch):
+    """FR-005: the recurring rate is present but the upfront row is missing for a
+    Partial/All-Upfront selection — excluded with a reason distinct from the
+    missing-recurring-rate case."""
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=1.0, upfront_fee=None))
+
+    selection = _selection(pricing_term="reserved_1yr", purchase_option="partial_upfront")
+    architecture = _architecture_with(selection)
+
+    result = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_month
+    )
+
+    assert result.total_price == Decimal("0")
+    assert len(result.unpriceable) == 1
+    assert "upfront fee" in result.unpriceable[0].reason
+    assert result.line_items[0].priceable is False
+
+
+def test_reserved_3yr_amortizes_upfront_against_1095_days(monkeypatch):
+    """FR-002: a 3-Year Reserved selection's upfront share is prorated against 1095 days, not
+    365."""
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=0.0, upfront_fee=1095.0))
+
+    selection = _selection(pricing_term="reserved_3yr", purchase_option="all_upfront")
+    architecture = _architecture_with(selection)
+
+    one_month = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_month
+    )
+
+    assert one_month.total_price == Decimal("31")  # 1095 * 31 / 1095
+
+
+def test_on_demand_calculation_unchanged_by_reserved_fix(monkeypatch):
+    """SC-003: restructuring the Reserved branch (006) must not alter On-Demand's own math —
+    same scenario/expected value as `test_on_demand_no_period_unit_scales_by_duration_days`,
+    asserted again here explicitly as this fix's regression check."""
+    monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 2.0)
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_units(monkeypatch, {"SKU1": "Requests"})
+
+    selection = _selection(usage_quantity=Decimal("10"))
+    architecture = _architecture_with(selection)
+
+    result = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_month
+    )
+
+    assert result.total_price == Decimal("620")
 
 
 def test_on_demand_no_period_unit_scales_by_duration_days(monkeypatch):

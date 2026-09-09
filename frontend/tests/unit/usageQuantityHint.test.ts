@@ -4,26 +4,26 @@ import { usageQuantityHint } from "../../src/lib/usageQuantityHint";
 
 describe("usageQuantityHint", () => {
   it("is null when there's no unit yet", () => {
-    expect(usageQuantityHint("on_demand", null)).toBeNull();
-    expect(usageQuantityHint("on_demand", undefined)).toBeNull();
+    expect(usageQuantityHint(null)).toBeNull();
+    expect(usageQuantityHint(undefined)).toBeNull();
   });
 
-  it("is per_day_estimate for an on-demand no-period unit (FR-003)", () => {
-    expect(usageQuantityHint("on_demand", "Hrs")).toBe("per_day_estimate");
-    expect(usageQuantityHint("on_demand", "Requests")).toBe("per_day_estimate");
+  it("is per_day_estimate for a no-period unit (FR-003)", () => {
+    expect(usageQuantityHint("Hrs")).toBe("per_day_estimate");
+    expect(usageQuantityHint("Requests")).toBe("per_day_estimate");
   });
 
-  it("is period_denominated for an on-demand fixed-period unit (FR-004)", () => {
-    expect(usageQuantityHint("on_demand", "GB-Mo")).toBe("period_denominated");
-    expect(usageQuantityHint("on_demand", "Month")).toBe("period_denominated");
+  it("is period_denominated for a fixed-period unit (FR-004)", () => {
+    expect(usageQuantityHint("GB-Mo")).toBe("period_denominated");
+    expect(usageQuantityHint("Month")).toBe("period_denominated");
   });
 
-  it("is null for an on-demand unrecognized unit (FR-005 — excluded, no hint needed)", () => {
-    expect(usageQuantityHint("on_demand", "Quantity")).toBeNull();
+  it("is null for an unrecognized unit (FR-005 — excluded, no hint needed)", () => {
+    expect(usageQuantityHint("Quantity")).toBeNull();
   });
 
-  it("is period_denominated for any Reserved term, regardless of unit", () => {
-    expect(usageQuantityHint("reserved_1yr", "Hrs")).toBe("period_denominated");
-    expect(usageQuantityHint("reserved_3yr", "GB-Mo")).toBe("period_denominated");
-  });
+  // 006-fix-reserved-pricing: the Reserved-term case (previously `usageQuantityHint(term,
+  // unit)` returning "period_denominated" for any Reserved term) is gone — the usage-quantity
+  // input isn't shown at all for a Reserved term (PricingInputsForm.test.tsx), so there's no
+  // hint left to compute for that case, and the `term` parameter is gone with it.
 });
