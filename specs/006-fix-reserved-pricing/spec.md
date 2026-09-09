@@ -30,6 +30,20 @@ hourly charge for that same duration, rather than dropping it. Both issues were 
 user manually verifying a calculated total against the real AWS pricing data for a specific
 SKU and term/purchase_option combination."
 
+## Clarifications
+
+### Session 2026-09-08
+
+- Q: After this fix ships, should an existing Reserved-term SKU Selection's already-stored
+  `usage_quantity` be reset to a safe default, left as-is, or should the field not carry a
+  dual meaning at all? → A: The field MUST NOT carry a dual meaning. Reserved pricing math
+  never multiplies by `usage_quantity` — it isn't read for a Reserved-term selection at all.
+  A user who needs more than one identical reserved unit adds another SKU Selection into the
+  Architecture (the app's existing multi-selection mechanism already covers this; no new
+  "reservation quantity" field is introduced, per Constitution Principle VI, Simplicity &
+  YAGNI). Since the field is simply never read for Reserved terms, no data migration is
+  needed for pre-existing stored values — they're inert, not wrong.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - A Reserved service's recurring cost reflects the full commitment, not a daily-use guess (Priority: P1)
@@ -47,18 +61,19 @@ primary purpose.
 
 **Independent Test**: Add a Reserved (No Upfront) service to a Collection, calculate at any
 duration, and verify the result equals the service's recurring hourly rate × 24 × the
-duration's day-count × the selection's quantity — matching what AWS would actually bill for
-that commitment over that span.
+duration's day-count — matching what AWS would actually bill for that commitment over that
+span, for one reserved unit.
 
 **Acceptance Scenarios**:
 
 1. **Given** a Collection with one Reserved/No-Upfront SKU Selection, **When** the user
    calculates at "1 month" (31 days), **Then** the displayed cost for that selection equals
-   `recurring_hourly_rate × 24 × 31 × quantity` — not a value derived from a "hours per day"
-   interpretation of quantity.
+   `recurring_hourly_rate × 24 × 31` — not a value derived from a "hours per day"
+   interpretation of the selection's usage-quantity input, and not affected by whatever value
+   that input holds (it isn't read for a Reserved selection — see Clarifications).
 2. **Given** the same selection, **When** the user recalculates at "1 day" or "1 year",
    **Then** the displayed cost scales linearly with the requested duration's day-count only
-   (1, 31, or 365 days respectively), holding the hourly rate and quantity fixed.
+   (1, 31, or 365 days respectively), holding the hourly rate fixed.
 3. **Given** an On-Demand SKU Selection in the same Architecture, **When** the user
    calculates, **Then** its cost is computed exactly as before this fix — On-Demand behavior
    is unchanged.
@@ -86,7 +101,7 @@ contribution (per User Story 1) and a duration-proportional share of the upfront
 1. **Given** a Reserved/Partial-Upfront SKU Selection with a known recurring hourly rate and
    a known upfront fee, **When** the user calculates at "1 month" (31 days) with the
    selection's term being 1 year (365 days), **Then** the displayed cost equals the
-   recurring-rate contribution (User Story 1) **plus** `upfront_fee × (31 / 365) × quantity`.
+   recurring-rate contribution (User Story 1) **plus** `upfront_fee × (31 / 365)`.
 2. **Given** a Reserved/All-Upfront SKU Selection (recurring rate of $0/hr), **When** the
    user calculates, **Then** the displayed cost is entirely the duration-proportional share
    of the upfront fee — never $0.
@@ -96,29 +111,33 @@ contribution (per User Story 1) and a duration-proportional share of the upfront
 
 ---
 
-### User Story 3 - The quantity field is clearly labeled for a Reserved selection (Priority: P2)
+### User Story 3 - The quantity field doesn't invite a value it won't use, for a Reserved selection (Priority: P2)
 
-When a user is entering pricing inputs for a Reserved-term selection, the field they'd
-otherwise read as a "daily usage estimate" (the label used for On-Demand, time-based-unit
-selections) instead clearly indicates it means the quantity of reserved units being
-committed to — so a user isn't misled into entering a daily-use number the way the original
-bug report's user was.
+When a user is entering pricing inputs for a Reserved-term selection, the usage-quantity
+field — which has no meaning for Reserved pricing (see Clarifications) — doesn't sit there
+inviting a "daily usage estimate" value the way it does for On-Demand, so a user isn't misled
+into entering a number that silently does nothing, the way the original bug report's user
+was.
 
 **Why this priority**: This is the UI-facing root cause of how the User Story 1 bug was
 triggered in the first place by a real user; fixing the calculation without also fixing the
-misleading label leaves the door open to the same input mistake recurring. Still secondary
-to the calculation fixes themselves, which are correctness bugs regardless of labeling.
+misleading input leaves the door open to the same mistake recurring. Still secondary to the
+calculation fixes themselves, which are correctness bugs regardless of the input's presence.
 
-**Independent Test**: Select a Reserved pricing term for a SKU in the pricing inputs form
-and verify the quantity field's guidance text describes "how many of this reservation" —
-distinct from the existing "steady daily rate" wording shown for On-Demand, time-based-unit
-selections.
+**Independent Test**: Select a Reserved pricing term for a SKU in the pricing inputs form and
+verify the usage-quantity input is hidden or disabled (not offered as something to fill in) —
+distinct from how it's shown, with "steady daily rate" guidance, for an On-Demand,
+time-based-unit selection.
 
 **Acceptance Scenarios**:
 
 1. **Given** a user has selected "1-Year Reserved" or "3-Year Reserved" as the pricing term
-   for a SKU, **When** they view the usage-quantity input, **Then** its guidance text
-   describes the value as the quantity of reserved units, not a daily usage rate.
+   for a SKU, **When** they view the pricing inputs form, **Then** the usage-quantity input
+   is hidden or disabled rather than shown with guidance text that no longer applies.
+2. **Given** a user needs to price more than one identical reserved unit, **When** they look
+   for how to do that, **Then** adding another SKU Selection for the same SKU (the
+   Architecture's existing mechanism for multiple services) is how they accomplish it — no
+   quantity input on a single selection is needed or offered for that purpose.
 
 ---
 
@@ -130,8 +149,11 @@ selections.
   Partial/All Upfront), or both, for a Reserved selection? The selection is flagged as
   unpriceable and excluded from the total with a clear reason — never partially calculated
   from whichever row happens to be present, and never guessed (Constitution Principle I).
-- What happens with a quantity greater than 1 on a Reserved selection? Both the recurring-rate
-  contribution and the upfront-amortized contribution scale by that quantity.
+- What happens to a Reserved selection's stored `usage_quantity` (from before this fix, or if
+  a user enters one anyway)? It's never read by Reserved-term pricing — the input is hidden
+  for Reserved terms (User Story 3), and any pre-existing stored value is simply inert, not
+  migrated or corrected. Pricing more than one identical reserved unit means adding another
+  SKU Selection, not raising this value.
 - What happens when the requested duration exceeds the Reserved term's own length (e.g.
   calculating "1 year" for a 1-Year Reserved selection, where duration equals the term
   exactly)? The proportional share is exactly 1× the full recurring/upfront cost for that
@@ -144,12 +166,13 @@ selections.
 
 - **FR-001**: For a Reserved-term (1-Year or 3-Year) SKU Selection, the system MUST calculate
   its recurring-rate contribution to a duration-scoped total as: recurring hourly rate × 24 ×
-  the requested duration's day-count × the selection's quantity — never scaled by an
-  assumption of "hours used per day."
+  the requested duration's day-count — never scaled by an assumption of "hours used per day,"
+  and never multiplied by the selection's `usage_quantity` (not applicable to Reserved terms
+  — see Clarifications/FR-008).
 - **FR-002**: For a Reserved-term SKU Selection whose purchase option is Partial Upfront or
   All Upfront, the system MUST add an upfront-amortized contribution to the duration-scoped
   total, equal to: the one-time upfront fee × (requested duration's day-count / the term's
-  own day-count) × the selection's quantity.
+  own day-count).
 - **FR-003**: For a Reserved-term SKU Selection whose purchase option is No Upfront, the
   system MUST NOT add any upfront-fee contribution — its total is exactly FR-001's
   recurring-rate contribution.
@@ -164,18 +187,21 @@ selections.
   calculation.
 - **FR-006**: On-Demand SKU Selection calculation behavior MUST remain exactly as it is
   today — this fix is scoped to Reserved-term selections only.
-- **FR-007**: When a user selects a Reserved pricing term for a SKU, the usage-quantity
-  input's guidance text MUST describe the value as the quantity of reserved units being
-  committed to, distinctly from the "steady daily rate" guidance shown for On-Demand,
-  time-based-unit selections.
+- **FR-007**: When a user selects a Reserved pricing term for a SKU, the pricing inputs form
+  MUST hide or disable the usage-quantity input rather than showing it with guidance that no
+  longer applies.
+- **FR-008**: The system MUST NOT introduce a new field or setting for "number of reserved
+  units" — pricing more than one identical reserved unit is accomplished by adding another
+  SKU Selection for the same SKU into the Architecture, the existing mechanism for multiple
+  services.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
 - **SC-001**: For a real, currently-available Reserved/No-Upfront SKU, the tool's calculated
-  1-month cost matches `recurring_hourly_rate × 24 × 31 × quantity` exactly, verified against
-  the underlying AWS pricing data for at least one real SKU.
+  1-month cost matches `recurring_hourly_rate × 24 × 31` exactly, verified against the
+  underlying AWS pricing data for at least one real SKU.
 - **SC-002**: For a real, currently-available Reserved/Partial-Upfront or All-Upfront SKU, the
   tool's calculated total always includes a non-zero upfront-amortized component whenever an
   upfront fee applies to that SKU/term/purchase-option combination.
@@ -184,10 +210,12 @@ selections.
 
 ## Assumptions
 
-- For a Reserved-term SKU Selection, `usage_quantity` (the existing field — no schema change)
-  is reinterpreted as the number of identical reserved units (e.g., instances) this selection
-  represents, not a usage-duration input. It defaults the same way it already does today (the
-  field is unchanged; only its meaning for Reserved terms changes).
+- `usage_quantity` (the existing field — no schema change) is simply not read for a
+  Reserved-term SKU Selection's pricing math (Clarifications). It keeps its existing
+  On-Demand meaning ("steady daily rate" for a no-period unit) unchanged; it does not gain a
+  second, Reserved-specific meaning, and no new field is introduced to represent "number of
+  reserved units" — an Architecture with more than one identical reserved unit has more than
+  one SKU Selection for that SKU instead.
 - "Hours in the requested duration" uses the same fixed, non-calendar day-counts already
   established in `004-canvas-pricing-improvements` (1 / 31 / 365 days for 1 day / 1 month / 1
   year) — this fix does not change how a duration maps to a day-count, only how a Reserved
