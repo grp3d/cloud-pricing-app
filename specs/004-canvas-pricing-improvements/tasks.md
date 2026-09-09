@@ -323,3 +323,17 @@ Task: "Contract test for the duration query param in backend/tests/contract/test
   `research.md` for why the existing patterns from `001`-`003` (batched DuckDB resolution,
   React Flow's built-in `Handle`/`useOnSelectionChange`, extracted pure layout/decision
   functions) were reused rather than building new ones (Constitution Principle VI)
+
+---
+
+## Phase 7: Convergence
+
+- [X] T039 Add a clear indicator to the usage-quantity field in
+      `frontend/src/components/PricingInputsForm.tsx` distinguishing a per-day-estimate
+      quantity (on-demand, FR-003) from an already-period-denominated one (Reserved, or
+      on-demand `fixed_period`, FR-004) per FR-007 (missing) — implemented via a new pure
+      `usageQuantityHint()` in `frontend/src/lib/usageQuantityHint.ts` (5 passing unit tests),
+      mirroring the backend's `classify_unit()` unit-string tables since half the answer
+      (Reserved vs. on-demand) is live form state that couldn't come from a static API field.
+      Live-verified: switching Term between On-Demand and 1-Year Reserved correctly swaps the
+      hint text in real time.

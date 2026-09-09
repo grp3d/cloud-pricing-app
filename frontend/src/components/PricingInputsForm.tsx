@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { PricingTerm, PurchaseOption } from "../api/client";
+import { usageQuantityHint } from "../lib/usageQuantityHint";
 
 export interface PricingInputs {
   pricing_term: PricingTerm;
@@ -28,6 +29,10 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
     initial?.purchase_option ?? "not_applicable",
   );
   const [quantity, setQuantity] = useState(initial?.usage_quantity ?? "730");
+  // Which of the two proration interpretations this quantity represents (004, FR-007) —
+  // recomputed live as the user changes Term, since half the answer (Reserved vs. on-demand)
+  // depends on that.
+  const hint = usageQuantityHint(term, unit);
 
   return (
     <form
@@ -77,6 +82,16 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
           onChange={(e) => setQuantity(e.target.value)}
         />
       </label>
+      {hint === "per_day_estimate" && (
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
+          Enter a steady daily rate — the Calculate duration scales this up.
+        </p>
+      )}
+      {hint === "period_denominated" && (
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
+          Enter the SKU's own quantity for its billing period — not scaled by duration.
+        </p>
+      )}
 
       <button type="submit">{submitLabel}</button>
     </form>
