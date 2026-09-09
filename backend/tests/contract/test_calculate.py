@@ -1,4 +1,5 @@
-"""Contract test for POST /architectures/{id}/calculate (spec FR-010, FR-011, FR-012)."""
+"""Contract test for POST /architectures/{id}/calculate
+(spec FR-010, FR-011, FR-012; 004-canvas-pricing-improvements FR-001)."""
 
 import pytest
 
@@ -43,7 +44,9 @@ async def test_calculate_sums_priceable_line_items(client, auth_headers):
 @pytest.mark.asyncio
 async def test_calculate_flags_unpriceable_sku_without_estimating(client, auth_headers):
     arch = await client.post(
-        "/api/v1/architectures", json={"name": "Calc Arch 2", "provider": "aws"}, headers=auth_headers
+        "/api/v1/architectures",
+        json={"name": "Calc Arch 2", "provider": "aws"},
+        headers=auth_headers,
     )
     arch_id = arch.json()["id"]
     coll = await client.post(
@@ -71,3 +74,39 @@ async def test_calculate_flags_unpriceable_sku_without_estimating(client, auth_h
     assert len(body["unpriceable"]) == 1
     assert body["line_items"][0]["priceable"] is False
     assert body["line_items"][0]["price"] is None
+    # 004-canvas-pricing-improvements FR-012: the entry names its containing Collection.
+    assert body["unpriceable"][0]["components"] == ["Web"]
+
+
+@pytest.mark.asyncio
+async def test_calculate_defaults_to_one_month_duration(client, auth_headers):
+    """004-canvas-pricing-improvements FR-001."""
+    arch = await client.post(
+        "/api/v1/architectures",
+        json={"name": "Duration Default", "provider": "aws"},
+        headers=auth_headers,
+    )
+    arch_id = arch.json()["id"]
+
+    resp = await client.post(f"/api/v1/architectures/{arch_id}/calculate", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["duration"] == "1_month"
+
+
+@pytest.mark.asyncio
+async def test_calculate_accepts_and_echoes_duration_param(client, auth_headers):
+    """004-canvas-pricing-improvements FR-001."""
+    arch = await client.post(
+        "/api/v1/architectures",
+        json={"name": "Duration Param", "provider": "aws"},
+        headers=auth_headers,
+    )
+    arch_id = arch.json()["id"]
+
+    for duration in ("1_day", "1_month", "1_year"):
+        resp = await client.post(
+            f"/api/v1/architectures/{arch_id}/calculate?duration={duration}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["duration"] == duration

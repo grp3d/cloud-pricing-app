@@ -39,6 +39,8 @@ async def test_add_sku_selection(client, auth_headers):
     assert resp.status_code == 201
     assert resp.json()["sku"] == KNOWN_SKU
     assert resp.json()["unit"] == "Hrs"
+    # 004-canvas-pricing-improvements FR-014.
+    assert resp.json()["attributes"]["instanceType"] == "t3.medium"
 
 
 @pytest.mark.asyncio

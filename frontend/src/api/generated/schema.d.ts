@@ -303,10 +303,18 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * CalculationDuration
+         * @description The period a calculated total is scoped to (004, FR-001). Day-counts used for proration
+         *     are fixed per FR-006: 1 day, 31 days, 365 days.
+         * @enum {string}
+         */
+        CalculationDuration: "1_day" | "1_month" | "1_year";
         /** CalculationResult */
         CalculationResult: {
             /** Snapshot Date */
             snapshot_date: string;
+            duration: components["schemas"]["CalculationDuration"];
             /** Total Price */
             total_price: string;
             /**
@@ -496,6 +504,13 @@ export interface components {
             usage_quantity: string;
             /** Unit */
             unit?: string | null;
+            /**
+             * Attributes
+             * @default {}
+             */
+            attributes: {
+                [key: string]: string;
+            };
         };
         /** SKUSelectionUpdate */
         SKUSelectionUpdate: {
@@ -517,6 +532,11 @@ export interface components {
             sku: string;
             /** Reason */
             reason: string;
+            /**
+             * Components
+             * @default []
+             */
+            components: string[];
         };
         /** ValidationError */
         ValidationError: {
@@ -961,7 +981,9 @@ export interface operations {
     };
     calculate_architecture_api_v1_architectures__architecture_id__calculate_post: {
         parameters: {
-            query?: never;
+            query?: {
+                duration?: components["schemas"]["CalculationDuration"];
+            };
             header?: {
                 authorization?: string | null;
             };

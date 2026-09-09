@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from src.models.orm import Architecture, Collection, DataConnector, SKUSelection, User
 from src.models.schemas import ArchitectureDetailOut, SKUSelectionOut
+from src.pricing_data.catalog import resolve_attributes
 from src.pricing_data.pricing import resolve_units
 
 
@@ -166,22 +167,27 @@ def _unit_key(selection: SKUSelection) -> tuple[str, str, str]:
 
 
 def sku_selection_out_with_unit(selection: SKUSelection) -> SKUSelectionOut:
-    """Build a `SKUSelectionOut` for one SKU Selection with `unit` resolved and attached
-    (003-service-selection-improvements, FR-004/FR-005). Used by the single-object endpoints
-    (add/update a SKU Selection, attach one to a Data Connector) — for a whole Architecture's
-    nested tree, batch through `attach_units_to_architecture` instead so many selections cost
-    one DuckDB query, not N.
+    """Build a `SKUSelectionOut` for one SKU Selection with `unit` and `attributes` resolved and
+    attached (003-service-selection-improvements FR-004/FR-005;
+    004-canvas-pricing-improvements FR-014). Used by the single-object endpoints (add/update a
+    SKU Selection, attach one to a Data Connector) — for a whole Architecture's nested tree,
+    batch through `attach_units_to_architecture` instead so many selections cost one DuckDB
+    query each, not N.
     """
     out = SKUSelectionOut.model_validate(selection)
     key = _unit_key(selection)
     out.unit = resolve_units([key]).get(key)
+    out.attributes = resolve_attributes([(selection.service_code, selection.sku)]).get(
+        (selection.service_code, selection.sku), {}
+    )
     return out
 
 
 def attach_units_to_architecture(detail: ArchitectureDetailOut, architecture: Architecture) -> None:
-    """Batch-resolve and attach `unit` to every SKU Selection nested in an Architecture's
-    response tree — one DuckDB query for the whole tree, not one per SKU Selection
-    (003-service-selection-improvements, FR-004/FR-005, research.md #3).
+    """Batch-resolve and attach `unit` and `attributes` to every SKU Selection nested in an
+    Architecture's response tree — one DuckDB query per field for the whole tree, not one per
+    SKU Selection (003-service-selection-improvements FR-004/FR-005, research.md #3;
+    004-canvas-pricing-improvements FR-014, research.md #5).
 
     `detail` must have been built from `architecture` via `model_validate` so the two trees
     line up positionally; mutates `detail` in place.
@@ -198,6 +204,13 @@ def attach_units_to_architecture(detail: ArchitectureDetailOut, architecture: Ar
     if not orm_selections:
         return
     units = resolve_units([_unit_key(selection) for selection in orm_selections])
+    attributes = resolve_attributes(
+        [(selection.service_code, selection.sku) for selection in orm_selections]
+    )
+
+    def _attach(selection_out: SKUSelectionOut, selection: SKUSelection) -> None:
+        selection_out.unit = units.get(_unit_key(selection))
+        selection_out.attributes = attributes.get((selection.service_code, selection.sku), {})
 
     for collection_out, collection in zip(
         detail.collections, architecture.collections, strict=True
@@ -205,8 +218,8 @@ def attach_units_to_architecture(detail: ArchitectureDetailOut, architecture: Ar
         for selection_out, selection in zip(
             collection_out.sku_selections, collection.sku_selections, strict=True
         ):
-            selection_out.unit = units.get(_unit_key(selection))
+            _attach(selection_out, selection)
 
     for connector_out, connector in zip(detail.connectors, architecture.connectors, strict=True):
         if connector_out.sku_selection is not None and connector.sku_selection is not None:
-            connector_out.sku_selection.unit = units.get(_unit_key(connector.sku_selection))
+            _attach(connector_out.sku_selection, connector.sku_selection)

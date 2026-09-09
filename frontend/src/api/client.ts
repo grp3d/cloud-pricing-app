@@ -14,6 +14,7 @@ export type SKUSelection = components["schemas"]["SKUSelectionOut"];
 export type CatalogSKU = components["schemas"]["CatalogSKUOut"];
 export type CatalogSearchResult = components["schemas"]["CatalogSearchResult"];
 export type CalculationResult = components["schemas"]["CalculationResult"];
+export type CalculationDuration = components["schemas"]["CalculationDuration"];
 export type CollectionType = components["schemas"]["CollectionType"];
 export type PricingTerm = components["schemas"]["PricingTerm"];
 export type PurchaseOption = components["schemas"]["PurchaseOption"];
@@ -148,8 +149,9 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  calculate: (architectureId: string) =>
-    request<CalculationResult>(`/architectures/${architectureId}/calculate`, {
-      method: "POST",
-    }),
+  calculate: (architectureId: string, duration: CalculationDuration = "1_month") =>
+    request<CalculationResult>(
+      `/architectures/${architectureId}/calculate?duration=${duration}`,
+      { method: "POST" },
+    ),
 };

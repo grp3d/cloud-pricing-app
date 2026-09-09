@@ -47,6 +47,15 @@ class PurchaseOption(str, Enum):
     not_applicable = "not_applicable"
 
 
+class CalculationDuration(str, Enum):
+    """The period a calculated total is scoped to (004, FR-001). Day-counts used for proration
+    are fixed per FR-006: 1 day, 31 days, 365 days."""
+
+    one_day = "1_day"
+    one_month = "1_month"
+    one_year = "1_year"
+
+
 # --- SKU Selection ---------------------------------------------------------------------------
 
 
@@ -75,6 +84,10 @@ class SKUSelectionOut(ORMBase):
     # column) — attached by the endpoint after construction, since Pydantic's ORM-attribute
     # serialization has no DuckDB access. `None` when unpriceable (003, FR-004/FR-005).
     unit: str | None = None
+    # Full descriptive attributes, mirroring CatalogSKUOut.attributes (003) — {} (never null)
+    # when unavailable. Lets the canvas diagram show an identifying detail per service without
+    # a second catalog lookup (004, FR-014).
+    attributes: dict[str, str] = {}
 
 
 # --- Collection --------------------------------------------------------------------------
@@ -177,6 +190,11 @@ class UnpriceableItem(BaseModel):
     service_code: str
     sku: str
     reason: str
+    # The Architecture component(s) containing this service — a Collection's name, or a Data
+    # Connector description (e.g. "Data Connector between X and Y") — so a user can find and
+    # fix it directly (004, FR-012/FR-013). Covers both this class's original "no price" case
+    # and 004's new duration-unrecognized-unit case, in one combined list (spec Clarifications).
+    components: list[str] = []
 
 
 class CalculationWarning(BaseModel):
@@ -186,6 +204,9 @@ class CalculationWarning(BaseModel):
 
 class CalculationResult(BaseModel):
     snapshot_date: str
+    # Echoes the CalculationDuration the total was computed for (004, FR-001) — every price
+    # below reflects proration to this duration per FR-002/003/004.
+    duration: CalculationDuration
     total_price: Decimal
     currency: str = "USD"
     line_items: list[PriceLineItem]

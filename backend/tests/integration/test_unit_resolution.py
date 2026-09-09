@@ -70,6 +70,9 @@ async def test_architecture_tree_carries_units_for_every_nested_sku_selection(cl
 
     coll_a_out = next(c for c in body["collections"] if c["id"] == coll_a.json()["id"])
     assert coll_a_out["sku_selections"][0]["unit"] == "Hrs"
+    # 004-canvas-pricing-improvements FR-014: attributes are batch-resolved for the tree too.
+    assert coll_a_out["sku_selections"][0]["attributes"]["instanceType"] == "t3.medium"
 
     connector_out = body["connectors"][0]
     assert connector_out["sku_selection"]["unit"] == "Gbps-hrs"
+    assert connector_out["sku_selection"]["attributes"] != {}

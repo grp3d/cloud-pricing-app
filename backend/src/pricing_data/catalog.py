@@ -8,6 +8,7 @@ least one filter is required to avoid returning the full ~173k-row catalog per r
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 
 import duckdb
 
@@ -132,3 +133,34 @@ def search_catalog(
         result["unit"] = units.get((result["sku"], "on_demand", "not_applicable"))
 
     return results, snapshot_date
+
+
+def resolve_attributes(
+    skus: Sequence[tuple[str, str]], *, snapshot_date: str | None = None
+) -> dict[tuple[str, str], dict[str, str]]:
+    """Batched `attributes` lookup for many (service_code, sku) pairs (004, FR-014,
+    research.md #5) — one DuckDB query for the whole set, mirroring `resolve_units`'s (003)
+    "resolve once per request" discipline rather than one query per SKU Selection. `{}` for any
+    pair with no matching row, same as `parse_attributes`'s missing-data behavior.
+    """
+    if not skus:
+        return {}
+
+    snapshot_date = snapshot_date or resolve_latest_snapshot_date()
+    unique_skus = sorted({sku for _, sku in skus})
+    placeholders = ",".join("?" for _ in unique_skus)
+
+    query = (
+        "SELECT service_code, sku, attributes_json "
+        f"FROM read_parquet(?) WHERE sku IN ({placeholders})"
+    )
+    try:
+        con = duckdb.connect(":memory:", read_only=False)
+        rows = con.execute(query, [_product_dim_path(snapshot_date), *unique_skus]).fetchall()
+    except duckdb.Error as exc:
+        raise PricingDataUnavailableError(str(exc)) from exc
+
+    index: dict[tuple[str, str], dict[str, str]] = {
+        (service_code, sku): parse_attributes(raw) for service_code, sku, raw in rows
+    }
+    return {key: index.get(key, {}) for key in skus}

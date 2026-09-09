@@ -3,10 +3,13 @@ import "@xyflow/react/dist/style.css";
 import {
   Background,
   Controls,
+  Handle,
   NodeResizer,
+  Position,
   ReactFlow,
   ReactFlowProvider,
   addEdge,
+  useOnSelectionChange,
   useReactFlow,
   type Connection,
   type Edge,
@@ -19,34 +22,70 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import { type CatalogSKU, type Collection, type CollectionType, api } from "../api/client";
+import {
+  type CalculationDuration,
+  type CatalogSKU,
+  type Collection,
+  type CollectionType,
+  api,
+} from "../api/client";
 import { CatalogSearchPanel } from "../components/CatalogSearchPanel";
 import { ConfirmDeleteDialog } from "../components/ConfirmDeleteDialog";
 import { DataConnectorPanel } from "../components/DataConnectorPanel";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { PricingInputsForm, type PricingInputs } from "../components/PricingInputsForm";
 import { SkuDetail } from "../components/SkuDetail";
+import { summarizeAttributes } from "../lib/skuDetail";
+import { canConnect } from "./connectorSelection";
 import { decideNestingChange } from "./dropTargetDetection";
-import { VPC_CHILD_SPACING, estimateComponentHeight, estimateVpcHeight } from "./nodeLayout";
+import {
+  VPC_CHILD_SPACING,
+  type LayoutNode,
+  estimateComponentHeight,
+  estimateNodeHeight,
+} from "./nodeLayout";
 
 function errorMessageOf(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
+}
+
+/** Shared service-list rendering for both node types (004, FR-015: a VPC shows its own
+ * directly-attached services "the same way an Application Component shows its own contained
+ * services"). */
+function ServiceList({ skuSelections }: { skuSelections: Collection["sku_selections"] }) {
+  if (skuSelections.length === 0) {
+    return <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9ca3af" }}>No services yet.</p>;
+  }
+  return (
+    <ul style={{ margin: "4px 0 0", paddingLeft: 16, fontSize: 12 }}>
+      {skuSelections.map((s) => {
+        const detail = summarizeAttributes(s.attributes);
+        return (
+          <li key={s.id}>
+            {s.service_code} / {s.sku}
+            {detail && <> — {detail}</>}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 interface ApplicationComponentNodeData {
   [key: string]: unknown;
   label: string;
   skuSelections: Collection["sku_selections"];
+  minHeight: number;
 }
 
 /** Custom node type for an Application Component (spec FR-007): shows its name plus the
  * services it contains — or an empty state — and sizes itself to fit via
- * `estimateComponentHeight`. Also carries a `NodeResizer` for manual resize (spec FR-010,
- * FR-011); a manual resize is superseded the next time the canvas recomputes from fresh
- * Collection data (research.md #5), so it needs no persistence of its own. */
+ * `estimateNodeHeight` (004, replacing the old fixed-formula-only sizing). Also carries a
+ * `NodeResizer` for manual resize (spec FR-010, FR-011); a manual resize is superseded the next
+ * time the canvas recomputes from fresh Collection data (research.md #5), so it needs no
+ * persistence of its own. */
 function ApplicationComponentNode({ data, selected }: NodeProps) {
-  const { label, skuSelections } = data as unknown as ApplicationComponentNodeData;
-  const minHeight = estimateComponentHeight(skuSelections.length);
+  const { label, skuSelections, minHeight } = data as unknown as ApplicationComponentNodeData;
   return (
     <div
       style={{
@@ -61,18 +100,13 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
       }}
     >
       <NodeResizer minWidth={160} minHeight={minHeight} isVisible={selected} />
+      {/* React Flow's default node type renders these automatically; a custom node type must
+          render them itself — their absence here was the actual cause of "can't draw
+          connectors" (004, FR-011, research.md #8). */}
+      <Handle type="target" position={Position.Left} />
+      <Handle type="source" position={Position.Right} />
       <strong>{label}</strong>
-      {skuSelections.length === 0 ? (
-        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9ca3af" }}>No services yet.</p>
-      ) : (
-        <ul style={{ margin: "4px 0 0", paddingLeft: 16, fontSize: 12 }}>
-          {skuSelections.map((s) => (
-            <li key={s.id}>
-              {s.service_code} / {s.sku}
-            </li>
-          ))}
-        </ul>
-      )}
+      <ServiceList skuSelections={skuSelections} />
     </div>
   );
 }
@@ -80,16 +114,18 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
 interface VpcNodeData {
   [key: string]: unknown;
   label: string;
+  skuSelections: Collection["sku_selections"];
   minHeight: number;
 }
 
-/** Custom node type for a VPC: same header styling as before (002-vpc-component-nesting), plus
- * a `NodeResizer` whose `minHeight` is the VPC's own content-required size from
- * `estimateVpcHeight` — the library's own resize-constraint mechanism enforces spec FR-011's
- * "a VPC never shrinks below what its nested children need" directly, with no custom
- * validation code (research.md #5). */
+/** Custom node type for a VPC: same header styling as before (002-vpc-component-nesting), now
+ * also showing its own directly-attached services (004, FR-015), plus a `NodeResizer` whose
+ * `minHeight` is the VPC's own content-required size from `estimateNodeHeight` — the library's
+ * own resize-constraint mechanism enforces spec FR-011's "a VPC never shrinks below what its
+ * nested children need" directly, now cascading through however many levels of nesting exist
+ * (004, FR-016/FR-017), with no custom validation code (research.md #5, #6). */
 function VpcNode({ data, selected }: NodeProps) {
-  const { label, minHeight } = data as unknown as VpcNodeData;
+  const { label, skuSelections, minHeight } = data as unknown as VpcNodeData;
   return (
     <div
       style={{
@@ -99,10 +135,14 @@ function VpcNode({ data, selected }: NodeProps) {
         border: "2px solid #2563eb",
         borderRadius: 4,
         padding: 8,
+        overflow: "auto",
       }}
     >
       <NodeResizer minWidth={220} minHeight={minHeight} isVisible={selected} />
+      <Handle type="target" position={Position.Left} />
+      <Handle type="source" position={Position.Right} />
       <strong>{label}</strong>
+      <ServiceList skuSelections={skuSelections} />
     </div>
   );
 }
@@ -141,9 +181,12 @@ function CreateArchitecturePageInner() {
 
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [pendingDeleteCollectionId, setPendingDeleteCollectionId] = useState<string | null>(null);
+  const [pendingDeleteConnectorId, setPendingDeleteConnectorId] = useState<string | null>(null);
   const [newCollectionType, setNewCollectionType] = useState<CollectionType>("application_component");
   const [newCollectionName, setNewCollectionName] = useState("");
+  const [calculationDuration, setCalculationDuration] = useState<CalculationDuration>("1_month");
   const [calculation, setCalculation] = useState<
     Awaited<ReturnType<typeof api.calculate>> | null
   >(null);
@@ -195,6 +238,20 @@ function CreateArchitecturePageInner() {
     },
   });
 
+  const deleteConnector = useMutation({
+    mutationFn: (id: string) => api.deleteConnector(id),
+    onSuccess: () => {
+      setPendingDeleteConnectorId(null);
+      if (selectedConnectorId === pendingDeleteConnectorId) setSelectedConnectorId(null);
+      setActionError(null);
+      invalidate();
+    },
+    onError: (err) => {
+      setPendingDeleteConnectorId(null);
+      setActionError(errorMessageOf(err));
+    },
+  });
+
   const updateCollectionParent = useMutation({
     mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) =>
       api.updateCollectionParent(id, parentId),
@@ -211,7 +268,7 @@ function CreateArchitecturePageInner() {
   });
 
   const calculate = useMutation({
-    mutationFn: () => api.calculate(architectureId!),
+    mutationFn: () => api.calculate(architectureId!, calculationDuration),
     // Clear any prior result up front so a failed recalculation never leaves a stale total
     // on screen looking like a fresh answer (Constitution Principle I).
     onMutate: () => {
@@ -227,6 +284,20 @@ function CreateArchitecturePageInner() {
   const connectors = useMemo(() => architecture.data?.connectors ?? [], [architecture.data]);
 
   const { getIntersectingNodes } = useReactFlow();
+
+  // Tracks React Flow's own multi-select state (shift/ctrl+click) — drives the "Connect"
+  // action's enabled state (004-canvas-pricing-improvements, FR-008/FR-009, research.md #7).
+  // Independent of `selectedCollectionId`/`onNodeClick` below, which only opens the details
+  // panel for the most recently clicked node.
+  useOnSelectionChange({
+    onChange: ({ nodes: selectedNodes }) => setSelectedNodeIds(selectedNodes.map((n) => n.id)),
+  });
+
+  function handleConnect() {
+    if (!canConnect(selectedNodeIds)) return;
+    const [from, to] = selectedNodeIds;
+    createConnector.mutate({ from, to });
+  }
 
   // Application Components nested inside a VPC (parent_collection_id set) render as child
   // nodes of that VPC's node (002-vpc-component-nesting, spec FR-001-003). No `extent:
@@ -246,42 +317,51 @@ function CreateArchitecturePageInner() {
       }
     }
 
+    // Recurses through however many levels of nesting a Collection's subtree has (004,
+    // FR-016/FR-017) — today's data model only ever produces one level (spec Assumptions), but
+    // the height math itself makes no such assumption (research.md #6).
+    function toLayoutNode(c: Collection): LayoutNode {
+      return {
+        ownServiceCount: c.sku_selections.length,
+        children: (childrenByParent.get(c.id) ?? []).map(toLayoutNode),
+      };
+    }
+
     const nodes: Node[] = [];
     topLevel.forEach((c, i) => {
       const children = c.type === "vpc" ? (childrenByParent.get(c.id) ?? []) : [];
-      // Each child's estimated height (spec FR-007) — the VPC's own height sums these instead
-      // of 002's original fixed 50px-per-child assumption, so it fits variable-content children
-      // (spec FR-011, research.md #4).
-      const childHeights = children.map((child) =>
-        estimateComponentHeight(child.sku_selections.length),
-      );
       const width = c.type === "vpc" ? 220 : 200;
-      const height =
-        c.type === "vpc"
-          ? estimateVpcHeight(childHeights)
-          : estimateComponentHeight(c.sku_selections.length);
+      const height = estimateNodeHeight(toLayoutNode(c));
       nodes.push({
         id: c.id,
         type: c.type === "vpc" ? "vpc" : "applicationComponent",
         position: { x: (i % 4) * 260, y: Math.floor(i / 4) * 220 },
-        data:
-          c.type === "vpc"
-            ? { label: `${c.name} (${c.type})`, minHeight: height }
-            : { label: `${c.name} (${c.type})`, skuSelections: c.sku_selections },
+        data: {
+          label: `${c.name} (${c.type})`,
+          skuSelections: c.sku_selections,
+          minHeight: height,
+        },
         style: { width, height },
       });
-      // Parent must precede its children in the array — React Flow requirement.
-      let y = 40;
-      children.forEach((child, j) => {
+      // Parent must precede its children in the array — React Flow requirement. Nested
+      // children start below the VPC's own content (its header plus its own directly-attached
+      // services, FR-015) rather than a fixed offset, so they never visually overlap it.
+      let y = estimateComponentHeight(c.sku_selections.length);
+      children.forEach((child) => {
+        const childHeight = estimateNodeHeight(toLayoutNode(child));
         nodes.push({
           id: child.id,
           type: "applicationComponent",
           parentId: c.id,
           position: { x: 20, y },
-          data: { label: `${child.name} (${child.type})`, skuSelections: child.sku_selections },
-          style: { width: 180, height: childHeights[j] },
+          data: {
+            label: `${child.name} (${child.type})`,
+            skuSelections: child.sku_selections,
+            minHeight: childHeight,
+          },
+          style: { width: 180, height: childHeight },
         });
-        y += childHeights[j] + VPC_CHILD_SPACING;
+        y += childHeight + VPC_CHILD_SPACING;
       });
     });
     return nodes;
@@ -396,8 +476,33 @@ function CreateArchitecturePageInner() {
         >
           Add Collection
         </button>
+        <label>
+          Duration{" "}
+          <select
+            value={calculationDuration}
+            onChange={(e) => setCalculationDuration(e.target.value as CalculationDuration)}
+          >
+            <option value="1_day">1 day</option>
+            <option value="1_month">1 month</option>
+            <option value="1_year">1 year</option>
+          </select>
+        </label>
         <button onClick={() => calculate.mutate()} disabled={calculate.isPending}>
           Calculate
+        </button>
+        <button
+          onClick={handleConnect}
+          disabled={!canConnect(selectedNodeIds)}
+          title="Select exactly two boxes on the canvas to connect them"
+        >
+          Connect
+        </button>
+        <button
+          onClick={() => selectedConnectorId && setPendingDeleteConnectorId(selectedConnectorId)}
+          disabled={!selectedConnectorId}
+          title="Select a connector on the canvas to remove it"
+        >
+          Remove Connector
         </button>
       </section>
 
@@ -498,7 +603,10 @@ function CreateArchitecturePageInner() {
       {calculation && (
         <section aria-label="Calculation result" style={{ marginTop: 12 }}>
           <h3>Total: {calculation.total_price} {calculation.currency}</h3>
-          <p>Priced from snapshot {calculation.snapshot_date}.</p>
+          <p>
+            For {calculation.duration.replace("_", " ")}, priced from snapshot{" "}
+            {calculation.snapshot_date}.
+          </p>
           {calculation.warnings.map((w) => (
             <p key={w.code} role="alert" style={{ color: "#b45309" }}>
               ⚠ {w.message}
@@ -511,6 +619,7 @@ function CreateArchitecturePageInner() {
                 {calculation.unpriceable.map((u) => (
                   <li key={u.sku_selection_id}>
                     {u.service_code} / {u.sku} — {u.reason}
+                    {u.components.length > 0 && <> (in {u.components.join(", ")})</>}
                   </li>
                 ))}
               </ul>
@@ -524,6 +633,14 @@ function CreateArchitecturePageInner() {
           itemLabel={collectionToDelete.name}
           onCancel={() => setPendingDeleteCollectionId(null)}
           onConfirm={() => deleteCollection.mutate(collectionToDelete.id)}
+        />
+      )}
+
+      {pendingDeleteConnectorId && (
+        <ConfirmDeleteDialog
+          itemLabel="this Data Connector"
+          onCancel={() => setPendingDeleteConnectorId(null)}
+          onConfirm={() => deleteConnector.mutate(pendingDeleteConnectorId)}
         />
       )}
     </main>

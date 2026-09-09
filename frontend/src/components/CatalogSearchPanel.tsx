@@ -2,32 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { type CatalogSKU, api } from "../api/client";
+import { summarizeAttributes } from "../lib/skuDetail";
 import { ErrorMessage } from "./ErrorMessage";
 
 interface Props {
   onAdd: (sku: CatalogSKU) => void;
-}
-
-// A handful of common attribute keys shown inline in the compact list view, so similar SKUs
-// (e.g. several EC2 instance types) can be told apart at a glance (FR-001) without dumping every
-// attribute into every row (research.md #2) — the full set is shown at the confirmation step via
-// `SkuDetail`. This list is a frontend display choice, not a backend contract: adding another
-// common key later doesn't require an API change.
-const DETAIL_CANDIDATE_KEYS = [
-  "instanceType",
-  "memory",
-  "vcpu",
-  "operatingSystem",
-  "storage",
-  "group",
-  "groupDescription",
-];
-
-function detailLine(sku: CatalogSKU): string {
-  const parts = DETAIL_CANDIDATE_KEYS.filter((key) => sku.attributes[key]).map(
-    (key) => sku.attributes[key],
-  );
-  return parts.join(" · ");
 }
 
 /**
@@ -83,7 +62,7 @@ export function CatalogSearchPanel({ onAdd }: Props) {
 
       <ul>
         {search.data?.results.map((r) => {
-          const details = detailLine(r);
+          const details = summarizeAttributes(r.attributes);
           return (
             <li key={r.sku}>
               {r.service_name} — {r.product_family} — {r.summary}
