@@ -19,7 +19,7 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
@@ -35,15 +35,11 @@ import { DataConnectorPanel } from "../components/DataConnectorPanel";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { PricingInputsForm, type PricingInputs } from "../components/PricingInputsForm";
 import { SkuDetail } from "../components/SkuDetail";
+import { useMeasuredHeight } from "../hooks/useMeasuredHeight";
 import { summarizeAttributes } from "../lib/skuDetail";
 import { canConnect } from "./connectorSelection";
 import { decideNestingChange } from "./dropTargetDetection";
-import {
-  VPC_CHILD_SPACING,
-  type LayoutNode,
-  estimateComponentHeight,
-  estimateNodeHeight,
-} from "./nodeLayout";
+import { type MeasuredLayoutNode, childYOffsets, computeMeasuredHeight } from "./nodeLayout";
 
 function errorMessageOf(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
@@ -71,21 +67,46 @@ function ServiceList({ skuSelections }: { skuSelections: Collection["sku_selecti
   );
 }
 
+/** The outer node box's own vertical chrome — its top+bottom `padding: 8` plus the thicker of
+ * its two possible border widths (`2px` selected / `1px` unselected, so this stays a safe
+ * over-estimate rather than needing to react to selection changes) — that sits *outside* the
+ * content div `useMeasuredHeight` measures (its `contentRect` excludes padding/border). Without
+ * adding this back, a node's total height would be set to exactly its content's height, leaving
+ * no room for the padding/border around that content and clipping the last couple of pixels of
+ * text (found via live verification: `outerDiv.scrollHeight` exceeded `offsetHeight` by exactly
+ * the padding amount before this constant was added). A couple of px of slack when unselected is
+ * a fine tradeoff against ever under-measuring (spec FR-003's "always... without any of it being
+ * clipped"). */
+const NODE_CHROME_HEIGHT = 2 * 8 + 2 * 2; // padding top+bottom, plus worst-case (selected) border
+
 interface ApplicationComponentNodeData {
   [key: string]: unknown;
   label: string;
   skuSelections: Collection["sku_selections"];
   minHeight: number;
+  /** Reports this node's real rendered "own content" height up to the canvas so it can recompute
+   * layout from a measurement instead of an estimate (005-resizable-canvas-boxes, FR-003/FR-004). */
+  onMeasuredHeight: (height: number) => void;
 }
 
 /** Custom node type for an Application Component (spec FR-007): shows its name plus the
- * services it contains — or an empty state — and sizes itself to fit via
- * `estimateNodeHeight` (004, replacing the old fixed-formula-only sizing). Also carries a
- * `NodeResizer` for manual resize (spec FR-010, FR-011); a manual resize is superseded the next
- * time the canvas recomputes from fresh Collection data (research.md #5), so it needs no
+ * services it contains — or an empty state. Its own-content block (label + `ServiceList`) is
+ * `height: "auto"` and measured live via `useMeasuredHeight`, reported up through
+ * `onMeasuredHeight` — the canvas then sizes this node from that real measurement, not a
+ * character-count estimate, so long wrapped detail text is never clipped (005,
+ * research.md #2). Also carries a `NodeResizer` for manual *width* resize (004, spec FR-010,
+ * FR-011); a manual resize is superseded the next time the canvas recomputes from fresh content
+ * (research.md #5, now driven by measured rather than estimated heights), so it needs no
  * persistence of its own. */
 function ApplicationComponentNode({ data, selected }: NodeProps) {
-  const { label, skuSelections, minHeight } = data as unknown as ApplicationComponentNodeData;
+  const { label, skuSelections, minHeight, onMeasuredHeight } =
+    data as unknown as ApplicationComponentNodeData;
+  const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
+
+  useEffect(() => {
+    if (measuredHeight !== null) onMeasuredHeight(measuredHeight + NODE_CHROME_HEIGHT);
+  }, [measuredHeight, onMeasuredHeight]);
+
   return (
     <div
       style={{
@@ -105,8 +126,10 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
           connectors" (004, FR-011, research.md #8). */}
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
-      <strong>{label}</strong>
-      <ServiceList skuSelections={skuSelections} />
+      <div ref={contentRef} style={{ height: "auto" }}>
+        <strong>{label}</strong>
+        <ServiceList skuSelections={skuSelections} />
+      </div>
     </div>
   );
 }
@@ -116,16 +139,27 @@ interface VpcNodeData {
   label: string;
   skuSelections: Collection["sku_selections"];
   minHeight: number;
+  onMeasuredHeight: (height: number) => void;
 }
 
-/** Custom node type for a VPC: same header styling as before (002-vpc-component-nesting), now
- * also showing its own directly-attached services (004, FR-015), plus a `NodeResizer` whose
- * `minHeight` is the VPC's own content-required size from `estimateNodeHeight` — the library's
- * own resize-constraint mechanism enforces spec FR-011's "a VPC never shrinks below what its
- * nested children need" directly, now cascading through however many levels of nesting exist
- * (004, FR-016/FR-017), with no custom validation code (research.md #5, #6). */
+/** Custom node type for a VPC: same header styling as before (002-vpc-component-nesting), also
+ * showing its own directly-attached services (004, FR-015). Its own-content block is measured
+ * the same way `ApplicationComponentNode`'s is (005) — nested child boxes are separate sibling
+ * nodes (`parentId`), not DOM descendants of this div, so this measures exactly the VPC's own
+ * header/content area, which is precisely what the stacking algorithm needs as an input (see
+ * `nodeLayout.ts`'s module doc and research.md #2). `NodeResizer`'s `minHeight` is that same
+ * real-or-estimated content-required size — the library's own resize-constraint mechanism
+ * enforces spec FR-011's "a VPC never shrinks below what its nested children need" directly, now
+ * cascading through however many levels of nesting exist (004, FR-016/FR-017; 005, FR-005), with
+ * no custom validation code (research.md #5, #6). */
 function VpcNode({ data, selected }: NodeProps) {
-  const { label, skuSelections, minHeight } = data as unknown as VpcNodeData;
+  const { label, skuSelections, minHeight, onMeasuredHeight } = data as unknown as VpcNodeData;
+  const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
+
+  useEffect(() => {
+    if (measuredHeight !== null) onMeasuredHeight(measuredHeight + NODE_CHROME_HEIGHT);
+  }, [measuredHeight, onMeasuredHeight]);
+
   return (
     <div
       style={{
@@ -141,8 +175,10 @@ function VpcNode({ data, selected }: NodeProps) {
       <NodeResizer minWidth={220} minHeight={minHeight} isVisible={selected} />
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
-      <strong>{label}</strong>
-      <ServiceList skuSelections={skuSelections} />
+      <div ref={contentRef} style={{ height: "auto" }}>
+        <strong>{label}</strong>
+        <ServiceList skuSelections={skuSelections} />
+      </div>
     </div>
   );
 }
@@ -178,6 +214,18 @@ function CreateArchitecturePageInner() {
     queryFn: () => api.getArchitecture(architectureId!),
     enabled: Boolean(architectureId),
   });
+
+  // Real, browser-measured "own content" height per node id (005-resizable-canvas-boxes,
+  // FR-003/FR-004) — populated live by each node's `useMeasuredHeight`, via `reportHeight`
+  // below. Absent entries (e.g. a node's very first render) fall back to the character-count
+  // estimate inside `computeMeasuredHeight`/`childYOffsets` (research.md #2).
+  const [ownHeights, setOwnHeights] = useState<Record<string, number>>({});
+  const reportHeight = useCallback((id: string, height: number) => {
+    // Bail out (return the same object) when nothing actually changed, so a node re-reporting
+    // the same height after a parent re-render doesn't retrigger the layout recompute below —
+    // otherwise `initialNodes`' `ownHeights` dependency would never settle.
+    setOwnHeights((prev) => (prev[id] === height ? prev : { ...prev, [id]: height }));
+  }, []);
 
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
@@ -320,8 +368,9 @@ function CreateArchitecturePageInner() {
     // Recurses through however many levels of nesting a Collection's subtree has (004,
     // FR-016/FR-017) — today's data model only ever produces one level (spec Assumptions), but
     // the height math itself makes no such assumption (research.md #6).
-    function toLayoutNode(c: Collection): LayoutNode {
+    function toLayoutNode(c: Collection): MeasuredLayoutNode {
       return {
+        id: c.id,
         ownServiceCount: c.sku_selections.length,
         children: (childrenByParent.get(c.id) ?? []).map(toLayoutNode),
       };
@@ -331,7 +380,8 @@ function CreateArchitecturePageInner() {
     topLevel.forEach((c, i) => {
       const children = c.type === "vpc" ? (childrenByParent.get(c.id) ?? []) : [];
       const width = c.type === "vpc" ? 220 : 200;
-      const height = estimateNodeHeight(toLayoutNode(c));
+      const layoutNode = toLayoutNode(c);
+      const height = computeMeasuredHeight(layoutNode, ownHeights);
       nodes.push({
         id: c.id,
         type: c.type === "vpc" ? "vpc" : "applicationComponent",
@@ -340,32 +390,35 @@ function CreateArchitecturePageInner() {
           label: `${c.name} (${c.type})`,
           skuSelections: c.sku_selections,
           minHeight: height,
+          onMeasuredHeight: (h: number) => reportHeight(c.id, h),
         },
         style: { width, height },
       });
       // Parent must precede its children in the array — React Flow requirement. Nested
-      // children start below the VPC's own content (its header plus its own directly-attached
-      // services, FR-015) rather than a fixed offset, so they never visually overlap it.
-      let y = estimateComponentHeight(c.sku_selections.length);
+      // children start below the VPC's own (real-measured-or-estimated) content — its header
+      // plus its own directly-attached services, FR-015 — rather than a fixed offset, so they
+      // never visually overlap it (005: this offset is now real when a measurement exists).
+      const offsets = childYOffsets(layoutNode, ownHeights);
       children.forEach((child) => {
-        const childHeight = estimateNodeHeight(toLayoutNode(child));
+        const childLayoutNode = toLayoutNode(child);
+        const childHeight = computeMeasuredHeight(childLayoutNode, ownHeights);
         nodes.push({
           id: child.id,
           type: "applicationComponent",
           parentId: c.id,
-          position: { x: 20, y },
+          position: { x: 20, y: offsets[child.id] },
           data: {
             label: `${child.name} (${child.type})`,
             skuSelections: child.sku_selections,
             minHeight: childHeight,
+            onMeasuredHeight: (h: number) => reportHeight(child.id, h),
           },
           style: { width: 180, height: childHeight },
         });
-        y += childHeight + VPC_CHILD_SPACING;
       });
     });
     return nodes;
-  }, [collections]);
+  }, [collections, ownHeights, reportHeight]);
   const initialEdges: Edge[] = useMemo(
     () =>
       connectors.map((conn) => ({
@@ -514,11 +567,34 @@ function CreateArchitecturePageInner() {
         />
       )}
 
-      <div style={{ height: 320, border: "1px solid #ddd", marginTop: 12 }}>
+      {/* Native browser resize (005-resizable-canvas-boxes, FR-001/FR-002): the page is a
+          single-column, full-width layout with nothing beside the canvas, so "resize" only
+          meaningfully means height — `resize: vertical` gives a single-drag-gesture resize with
+          no custom drag-handle code (research.md #1). `minHeight` matches today's default so the
+          canvas can never be dragged below a usable size (spec Edge Cases); it resets to that
+          default on reload since it's just the element's own computed style, satisfying the
+          spec's non-persistence Assumption. */}
+      <div
+        style={{
+          height: 320,
+          minHeight: 320,
+          resize: "vertical",
+          overflow: "auto",
+          border: "1px solid #ddd",
+          marginTop: 12,
+        }}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          // React Flow's default "React Flow" attribution badge sits bottom-right, exactly on
+          // top of the wrapper's native `resize: vertical` grip (also bottom-right) — live
+          // verification found it was intercepting the drag before it could reach the browser's
+          // resize corner at all, silently defeating FR-001. Moving it clear of that corner is
+          // all FR-001 needs; the attribution itself is unaffected (still shown, still credits
+          // React Flow).
+          attributionPosition="bottom-left"
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
