@@ -13,8 +13,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from src.pricing_data.catalog import EmptyCatalogFilterError
+from src.pricing_data.catalog import EmptyCatalogFilterError, InvalidRegexPatternError
 from src.pricing_data.errors import PricingDataUnavailableError
+from src.services.price_calculation import EmptySnapshotError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cloud_pricing")
@@ -48,6 +49,21 @@ async def empty_catalog_filter_handler(
     request: Request, exc: EmptyCatalogFilterError
 ) -> JSONResponse:
     return JSONResponse(status_code=400, content={"error": "empty_filter", "message": str(exc)})
+
+
+@app.exception_handler(InvalidRegexPatternError)
+async def invalid_regex_pattern_handler(
+    request: Request, exc: InvalidRegexPatternError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content={"error": "invalid_regex_pattern", "message": str(exc), "field": exc.field},
+    )
+
+
+@app.exception_handler(EmptySnapshotError)
+async def empty_snapshot_handler(request: Request, exc: EmptySnapshotError) -> JSONResponse:
+    return JSONResponse(status_code=400, content={"error": "empty_snapshot", "message": str(exc)})
 
 
 @app.middleware("http")

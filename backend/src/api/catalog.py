@@ -19,7 +19,7 @@ async def search_skus(
     offset: int = 0,
 ) -> CatalogSearchResult:
     limit = min(max(limit, 1), 200)
-    rows, snapshot_date = search_catalog(
+    rows, snapshot_date, total = search_catalog(
         service_code=service_code,
         product_family=product_family,
         text=q,
@@ -29,5 +29,5 @@ async def search_skus(
     results = [CatalogSKUOut(**row) for row in rows]
     next_cursor = str(offset + limit) if len(results) == limit else None
     return CatalogSearchResult(
-        results=results, next_cursor=next_cursor, snapshot_date=snapshot_date
+        results=results, next_cursor=next_cursor, snapshot_date=snapshot_date, total=total
     )

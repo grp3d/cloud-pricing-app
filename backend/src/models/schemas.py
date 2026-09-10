@@ -172,6 +172,10 @@ class CatalogSearchResult(BaseModel):
     results: list[CatalogSKUOut]
     next_cursor: str | None = None
     snapshot_date: str
+    # 008-ui-updates-corrections, FR-024, data-model.md — the true count of every catalog
+    # row matching the current filters, independent of how many are returned in `results`
+    # (capped at 200, FR-023). Drives the "(n of m results displayed)" indicator.
+    total: int
 
 
 # --- Price calculation ---------------------------------------------------------------------
@@ -212,3 +216,34 @@ class CalculationResult(BaseModel):
     line_items: list[PriceLineItem]
     unpriceable: list[UnpriceableItem]
     warnings: list[CalculationWarning]
+
+
+# --- Snapshot calculation (008-ui-updates-corrections, FR-016a, contracts/api.md,
+# data-model.md) — prices an arbitrary, caller-supplied set of SKU selections, independent
+# of any persisted Architecture. Exists to compute a duration-adjusted comparison total for
+# Price Change (research.md §5) when both an architecture's contents and its Duration
+# selection have changed since the last accepted calculation. ---------------------------------
+
+
+class SnapshotSelection(BaseModel):
+    """One prior SKU selection's pricing inputs — a plain value, not a reference to a live
+    row (data-model.md): the row it originally came from may since have been edited or
+    deleted, so this intentionally carries no `sku_selection_id`/foreign key."""
+
+    service_code: str = Field(min_length=1)
+    sku: str = Field(min_length=1)
+    pricing_term: PricingTerm
+    purchase_option: PurchaseOption
+    usage_quantity: Decimal = Field(gt=0)
+
+
+class CalculateSnapshotRequest(BaseModel):
+    # The *new* Duration to price the snapshot at (FR-016a) — not necessarily the Duration
+    # the selections were originally priced at.
+    duration: CalculationDuration
+    # Deliberately unconstrained here (no `min_length=1`): an empty list must produce this
+    # codebase's own `{"error": "empty_snapshot", ...}` 400 shape (contracts/api.md), not
+    # FastAPI/Pydantic's generic 422 validation-error shape — so emptiness is checked and
+    # raised explicitly in the endpoint (src/api/calculate.py), matching the
+    # `EmptyCatalogFilterError` convention already used for catalog search.
+    selections: list[SnapshotSelection]

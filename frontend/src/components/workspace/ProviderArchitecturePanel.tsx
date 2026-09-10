@@ -7,6 +7,17 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { ErrorMessage } from "../ErrorMessage";
+import gcpIcon from "../../assets/providers/gcp_icon.png";
+import azureIcon from "../../assets/providers/azure_icon.png";
+
+// FR-008 (008-ui-updates-corrections, research.md §11): a provider's own icon in column 1's
+// collapsed state, replacing the generic Lucide `Cloud` icon. AWS has no equivalent asset
+// yet (spec Assumptions) — it keeps the generic icon until `aws_icon.png` is supplied; every
+// other provider falls back the same way if a code isn't in this map.
+const PROVIDER_ICONS: Record<string, string> = {
+  gcp: gcpIcon,
+  azure: azureIcon,
+};
 
 export interface ProviderArchitecturePanelProps {
   providers: Provider[];
@@ -25,6 +36,10 @@ export interface ProviderArchitecturePanelProps {
   onDeleteArchitecture: (id: string) => void;
   actionError: string | null;
   onDismissActionError: () => void;
+  /** Expanded-state width in pixels (FR-012/013, 008-ui-updates-corrections) — draggable
+   * and persisted by `WorkspacePage`; ignored while collapsed, which always uses the rail
+   * width below. */
+  width: number;
 }
 
 /**
@@ -49,17 +64,17 @@ export function ProviderArchitecturePanel({
   onDeleteArchitecture,
   actionError,
   onDismissActionError,
+  width,
 }: ProviderArchitecturePanelProps) {
   const [expanded, setExpanded] = useState(true);
 
   return (
     <aside
-      className={`flex h-full flex-col gap-3 overflow-hidden border-r border-border p-2 transition-[width] ${
-        expanded ? "w-64" : "w-14"
-      }`}
+      className="flex h-full shrink-0 flex-col gap-3 overflow-hidden border-r border-border p-2 transition-[width]"
+      style={{ width: expanded ? width : 56 }}
     >
       <div className={`flex items-center ${expanded ? "justify-between" : "justify-center"}`}>
-        {expanded && <h2 className="text-sm font-semibold">Cloud Pricing</h2>}
+        {expanded && <h2 className="text-xs font-semibold">Cloud Pricing</h2>}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -81,7 +96,7 @@ export function ProviderArchitecturePanel({
         {expanded && (
           <h3 className="px-1 text-xs font-medium text-muted-foreground">Providers</h3>
         )}
-        <div className={`flex ${expanded ? "flex-row flex-wrap gap-1.5" : "flex-col gap-1.5"}`}>
+        <div className={`flex flex-col gap-1.5`}>
           {providers.map((p) =>
             expanded ? (
               <Button
@@ -91,9 +106,9 @@ export function ProviderArchitecturePanel({
                 disabled={!p.active}
                 aria-pressed={p.code === selectedProvider}
                 onClick={() => p.active && onSelectProvider(p.code)}
+                className="justify-start"
               >
                 {p.name}
-                {!p.active && " (soon)"}
               </Button>
             ) : (
               <Tooltip key={p.code}>
@@ -106,13 +121,14 @@ export function ProviderArchitecturePanel({
                     aria-label={p.name}
                     onClick={() => p.active && onSelectProvider(p.code)}
                   >
-                    <Cloud />
+                    {PROVIDER_ICONS[p.code] ? (
+                      <img src={PROVIDER_ICONS[p.code]} alt="" className="size-4" />
+                    ) : (
+                      <Cloud />
+                    )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="right">
-                  {p.name}
-                  {!p.active && " (coming soon)"}
-                </TooltipContent>
+                <TooltipContent side="right">{p.name}</TooltipContent>
               </Tooltip>
             ),
           )}
@@ -132,12 +148,12 @@ export function ProviderArchitecturePanel({
           </h3>
         )}
 
-        {architecturesLoading && expanded && <p className="px-1 text-sm">Loading…</p>}
+        {architecturesLoading && expanded && <p className="px-1 text-xs">Loading…</p>}
         {architecturesError && expanded && (
           <ErrorMessage message={architecturesError} onRetry={onRetryArchitectures} />
         )}
         {!architecturesError && architectures.length === 0 && expanded && (
-          <p className="px-1 text-sm text-muted-foreground">No Architectures yet.</p>
+          <p className="px-1 text-xs text-muted-foreground">No Architectures yet.</p>
         )}
 
         <ScrollArea className="min-h-0 flex-1">
@@ -193,7 +209,7 @@ export function ProviderArchitecturePanel({
             }}
           >
             <input
-              className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-sm"
+              className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs"
               value={newArchitectureName}
               onChange={(e) => onNewArchitectureNameChange(e.target.value)}
               placeholder="New Architecture name"

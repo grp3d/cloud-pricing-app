@@ -1,6 +1,6 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -22,6 +22,19 @@ import {
   newServiceSelection,
 } from "../lib/serviceConfigSelection";
 import type { PricingInputs } from "../components/PricingInputsForm";
+import {
+  type ColumnId,
+  DEFAULT_WIDTHS,
+  MIN_WIDTH,
+  readColumnWidths,
+  writeColumnWidth,
+} from "../lib/columnWidths";
+import {
+  decideBaselineUpdate,
+  type PriceChangeSelection,
+  type PriorCalculation,
+} from "../lib/priceChange";
+import { readPriorCalculation, writePriorCalculation } from "../lib/priorCalculation";
 
 function errorMessageOf(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
@@ -38,7 +51,7 @@ function errorMessageOf(err: unknown): string {
  * to configure without a Collection to select one from.
  */
 function EmptyWorkspacePanels({ message }: { message: string }) {
-  const promptTextClassName = "p-4 text-center text-sm text-muted-foreground";
+  const promptTextClassName = "p-4 text-center text-xs text-muted-foreground";
   return (
     <>
       <aside
@@ -59,6 +72,43 @@ function EmptyWorkspacePanels({ message }: { message: string }) {
         {message}
       </aside>
     </>
+  );
+}
+
+/**
+ * A thin draggable divider between two adjacent columns (US4, FR-012/013, research.md §9):
+ * plain pointer-event handlers, no new dependency. `onDrag` receives each pointer-move's
+ * delta-x in pixels; the caller decides which column that delta grows or shrinks (a handle
+ * left of a column adds the delta to its width, a handle right of one subtracts it).
+ */
+function ColumnResizeHandle({ onDrag, ariaLabel }: { onDrag: (deltaX: number) => void; ariaLabel: string }) {
+  const lastXRef = useRef(0);
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={ariaLabel}
+      className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 active:bg-primary"
+      onPointerDown={(e) => {
+        e.preventDefault();
+        lastXRef.current = e.clientX;
+        const target = e.currentTarget;
+        target.setPointerCapture(e.pointerId);
+
+        const handleMove = (moveEvent: PointerEvent) => {
+          const deltaX = moveEvent.clientX - lastXRef.current;
+          lastXRef.current = moveEvent.clientX;
+          onDrag(deltaX);
+        };
+        const handleUp = () => {
+          target.removeEventListener("pointermove", handleMove);
+          target.removeEventListener("pointerup", handleUp);
+        };
+        target.addEventListener("pointermove", handleMove);
+        target.addEventListener("pointerup", handleUp);
+      }}
+    />
   );
 }
 
@@ -84,6 +134,21 @@ function WorkspacePageInner() {
   const { architectureId } = useParams<{ architectureId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // --- Column widths (US4, FR-012/013): read once on mount, one localStorage write per
+  // resize (T020 — the read/write half of columnWidths.ts). ---
+  const [columnWidths, setColumnWidths] = useState<Record<ColumnId, number>>(() => ({
+    ...DEFAULT_WIDTHS,
+    ...readColumnWidths(),
+  }));
+  const resizeColumn = useCallback((id: ColumnId, deltaX: number) => {
+    setColumnWidths((prev) => {
+      const next = Math.max(MIN_WIDTH, prev[id] + deltaX);
+      if (next === prev[id]) return prev;
+      writeColumnWidth(id, next);
+      return { ...prev, [id]: next };
+    });
+  }, []);
 
   // --- Column 1: providers + Architectures ---
   const [selectedProvider, setSelectedProvider] = useState("aws");
@@ -149,6 +214,22 @@ function WorkspacePageInner() {
     }
     return map;
   }, [collections, connectors]);
+
+  // Every SKU Selection's pricing inputs, in `priceChange.ts`'s comparison shape (US5,
+  // FR-015/016) — the same flat set `skuSelectionsById` above indexes, just re-shaped and
+  // stripped of ids (a Price Change baseline is a value, not a set of live-row references,
+  // data-model.md).
+  const currentPriceChangeSelections = useMemo<PriceChangeSelection[]>(
+    () =>
+      Array.from(skuSelectionsById.values(), ({ selection: s }) => ({
+        service_code: s.service_code,
+        sku: s.sku,
+        pricing_term: s.pricing_term,
+        purchase_option: s.purchase_option,
+        usage_quantity: s.usage_quantity,
+      })),
+    [skuSelectionsById],
+  );
 
   // --- Selection state shared across columns 2-4 ---
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
@@ -332,13 +413,56 @@ function WorkspacePageInner() {
   );
   const [calculationError, setCalculationError] = useState<string | null>(null);
 
+  // --- Price Change (US5, FR-015/016/016a/016b) ---
+  // The last-accepted baseline for the *current* Architecture, and the currently-displayed
+  // Price Change derived from it — both reloaded fresh whenever the selected Architecture
+  // changes (Edge Cases: switching Architectures never mixes baselines), and otherwise left
+  // untouched by anything except a content-changed Calculate (FR-016).
+  const [priorCalculation, setPriorCalculation] = useState<PriorCalculation | null>(null);
+  const [priceChange, setPriceChange] = useState<string | null>(null);
+  useEffect(() => {
+    setPriorCalculation(architectureId ? readPriorCalculation(architectureId) : null);
+    setPriceChange(null);
+  }, [architectureId]);
+
   const calculate = useMutation({
     mutationFn: () => api.calculate(architectureId!, calculationDuration),
     onMutate: () => {
       setCalculation(null);
       setCalculationError(null);
     },
-    onSuccess: setCalculation,
+    onSuccess: async (result) => {
+      setCalculation(result);
+
+      const decision = decideBaselineUpdate({
+        prior: priorCalculation,
+        currentSelections: currentPriceChangeSelections,
+        newDuration: calculationDuration,
+      });
+      if (decision === "unchanged") return; // leave the baseline + displayed Price Change as-is
+
+      const newBaseline: PriorCalculation = {
+        total: result.total_price,
+        duration: calculationDuration,
+        selections: currentPriceChangeSelections,
+      };
+
+      if (decision !== "establish") {
+        // "direct": compare directly against the stored baseline's own total. "duration_
+        // adjusted": the stored baseline's *content* changed AND Duration changed together
+        // (FR-016a) — the comparison total must come from repricing the *prior* selections
+        // at the *new* Duration through the real calculation, never a scaled estimate.
+        const comparisonTotal =
+          decision === "direct"
+            ? priorCalculation!.total
+            : (await api.calculateSnapshot(calculationDuration, priorCalculation!.selections))
+                .total_price;
+        setPriceChange(String(Number(result.total_price) - Number(comparisonTotal)));
+      }
+
+      setPriorCalculation(newBaseline);
+      if (architectureId) writePriorCalculation(architectureId, newBaseline);
+    },
     onError: (err) => setCalculationError(errorMessageOf(err)),
   });
 
@@ -386,6 +510,12 @@ function WorkspacePageInner() {
         onDeleteArchitecture={setPendingDeleteArchitectureId}
         actionError={actionError}
         onDismissActionError={() => setActionError(null)}
+        width={columnWidths.provider}
+      />
+
+      <ColumnResizeHandle
+        ariaLabel="Resize provider/Architecture panel"
+        onDrag={(dx) => resizeColumn("provider", dx)}
       />
 
       {!architecture.data && (
@@ -421,6 +551,12 @@ function WorkspacePageInner() {
             onDeleteCollection={setPendingDeleteCollectionId}
             onDeleteConnector={setPendingDeleteConnectorId}
             onPickSku={pickSkuFromSearch}
+            width={columnWidths.collections}
+          />
+
+          <ColumnResizeHandle
+            ariaLabel="Resize Architecture Editor panel"
+            onDrag={(dx) => resizeColumn("collections", dx)}
           />
 
           <ServiceConfigPanel
@@ -431,6 +567,12 @@ function WorkspacePageInner() {
             onRemoveExisting={removeExistingSku}
             actionError={skuActionError}
             onDismissActionError={() => setSkuActionError(null)}
+            width={columnWidths.service}
+          />
+
+          <ColumnResizeHandle
+            ariaLabel="Resize Service Editor panel"
+            onDrag={(dx) => resizeColumn("service", dx)}
           />
 
           <div className="min-w-0 flex-1 p-2">
@@ -451,6 +593,11 @@ function WorkspacePageInner() {
             />
           </div>
 
+          <ColumnResizeHandle
+            ariaLabel="Resize pricing panel"
+            onDrag={(dx) => resizeColumn("pricing", -dx)}
+          />
+
           <PricingPanel
             duration={calculationDuration}
             onDurationChange={setCalculationDuration}
@@ -459,6 +606,8 @@ function WorkspacePageInner() {
             calculation={calculation}
             calculationError={calculationError}
             onRetry={() => calculate.mutate()}
+            width={columnWidths.pricing}
+            priceChange={priceChange}
           />
         </>
       )}

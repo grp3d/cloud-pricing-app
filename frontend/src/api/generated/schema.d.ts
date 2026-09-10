@@ -188,6 +188,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/calculate-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Calculate Snapshot
+         * @description Stateless — no `architecture_id`, nothing persisted or ownership-checked beyond the
+         *     existing `CurrentUser` auth dependency (research.md §5). Prices `request.selections` via
+         *     the exact same code path every other calculation uses, so the duration-adjusted
+         *     comparison total for Price Change (FR-016a) is real, never estimated.
+         *     `EmptySnapshotError` (raised by `build_transient_architecture` for an empty list) is
+         *     mapped to a 400 by `src/main.py`'s registered handler.
+         */
+        post: operations["calculate_snapshot_api_v1_catalog_calculate_snapshot_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/architectures/{architecture_id}/connectors": {
         parameters: {
             query?: never;
@@ -303,6 +328,12 @@ export interface components {
              */
             created_at: string;
         };
+        /** CalculateSnapshotRequest */
+        CalculateSnapshotRequest: {
+            duration: components["schemas"]["CalculationDuration"];
+            /** Selections */
+            selections: components["schemas"]["SnapshotSelection"][];
+        };
         /**
          * CalculationDuration
          * @description The period a calculated total is scoped to (004, FR-001). Day-counts used for proration
@@ -366,6 +397,8 @@ export interface components {
             next_cursor?: string | null;
             /** Snapshot Date */
             snapshot_date: string;
+            /** Total */
+            total: number;
         };
         /** CollectionCreate */
         CollectionCreate: {
@@ -518,6 +551,22 @@ export interface components {
             purchase_option?: components["schemas"]["PurchaseOption"] | null;
             /** Usage Quantity */
             usage_quantity?: number | string | null;
+        };
+        /**
+         * SnapshotSelection
+         * @description One prior SKU selection's pricing inputs — a plain value, not a reference to a live
+         *     row (data-model.md): the row it originally came from may since have been edited or
+         *     deleted, so this intentionally carries no `sku_selection_id`/foreign key.
+         */
+        SnapshotSelection: {
+            /** Service Code */
+            service_code: string;
+            /** Sku */
+            sku: string;
+            pricing_term: components["schemas"]["PricingTerm"];
+            purchase_option: components["schemas"]["PurchaseOption"];
+            /** Usage Quantity */
+            usage_quantity: number | string;
         };
         /** UnpriceableItem */
         UnpriceableItem: {
@@ -993,6 +1042,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalculationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calculate_snapshot_api_v1_catalog_calculate_snapshot_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalculateSnapshotRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

@@ -18,6 +18,7 @@ export type CalculationDuration = components["schemas"]["CalculationDuration"];
 export type CollectionType = components["schemas"]["CollectionType"];
 export type PricingTerm = components["schemas"]["PricingTerm"];
 export type PurchaseOption = components["schemas"]["PurchaseOption"];
+export type SnapshotSelection = components["schemas"]["SnapshotSelection"];
 
 const BASE = "/api/v1";
 
@@ -37,6 +38,19 @@ function getUserId(): string {
  * distinct from an empty/"no results" response so the UI never conflates the two. */
 export class PricingDataUnavailableError extends Error {}
 
+/** Raised when a catalog search field's regex pattern is malformed (008-ui-updates-
+ * corrections, FR-021, contracts/api.md) — `field` names which of `service_code`/
+ * `product_family`/`text` the bad pattern came from, so the caller can show the message
+ * inline next to that field rather than as a generic banner. */
+export class InvalidRegexPatternError extends Error {
+  field: "service_code" | "product_family" | "text";
+
+  constructor(message: string, field: "service_code" | "product_family" | "text") {
+    super(message);
+    this.field = field;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
@@ -55,6 +69,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (body.error === "invalid_regex_pattern") {
+      throw new InvalidRegexPatternError(body.message ?? "Invalid pattern.", body.field);
+    }
     throw new Error(body.detail ?? body.message ?? `Request failed: ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
@@ -90,9 +107,10 @@ export const api = {
     }),
 
   searchCatalog: (params: { service_code?: string; product_family?: string; q?: string }) => {
-    const qs = new URLSearchParams(
-      Object.entries(params).filter(([, v]) => v) as [string, string][],
-    );
+    // 008-ui-updates-corrections, FR-023: request the backend's own maximum (200, matched
+    // exactly — research.md §4) instead of its 50-row default.
+    const entries = Object.entries(params).filter(([, v]) => v) as [string, string][];
+    const qs = new URLSearchParams([...entries, ["limit", "200"]]);
     return request<CatalogSearchResult>(`/catalog/skus?${qs.toString()}`);
   },
 
@@ -154,4 +172,13 @@ export const api = {
       `/architectures/${architectureId}/calculate?duration=${duration}`,
       { method: "POST" },
     ),
+
+  // 008-ui-updates-corrections, US5, FR-016a: prices an ad-hoc set of selections (the
+  // Prior Calculation's own stored selections) at a new Duration, with no persisted
+  // Architecture involved — used only for the duration-adjusted Price Change comparison.
+  calculateSnapshot: (duration: CalculationDuration, selections: SnapshotSelection[]) =>
+    request<CalculationResult>("/catalog/calculate-snapshot", {
+      method: "POST",
+      body: JSON.stringify({ duration, selections }),
+    }),
 };

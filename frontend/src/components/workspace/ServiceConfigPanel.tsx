@@ -1,8 +1,10 @@
-import { Trash2 } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
+import { useState } from "react";
 
 import type { SKUSelection } from "../../api/client";
 import type { ServiceConfigSelection } from "../../lib/serviceConfigSelection";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { ErrorMessage } from "../ErrorMessage";
 import { PricingInputsForm, type PricingInputs } from "../PricingInputsForm";
 import { SkuDetail } from "../SkuDetail";
@@ -17,13 +19,20 @@ export interface ServiceConfigPanelProps {
   onRemoveExisting: (skuSelectionId: string) => void;
   actionError: string | null;
   onDismissActionError: () => void;
+  /** Expanded-state width in pixels (FR-012/013, 008-ui-updates-corrections) — draggable
+   * and persisted by `WorkspacePage`; ignored while collapsed, which always uses the rail
+   * width below. */
+  width: number;
 }
 
 /**
- * Column 3 (007-ui-overhaul-shadcn, FR-005/012/015): a selected service's attributes and
- * pricing inputs — nothing else is shown here, and nothing is shown at all (this component
- * renders `null`) when `selection` is `null`, which is what makes the panel collapse entirely
- * rather than appearing as a visible-but-empty panel (Clarifications).
+ * Column 3 (008-ui-updates-corrections, FR-005/006/011): always present, at its normal
+ * width, regardless of what is selected — supersedes 007's FR-012, which collapsed this
+ * panel to zero width when nothing was selected (the resulting sideways content-shift on
+ * every service selection/deselection was itself the correction this feature makes, per
+ * spec User Story 2's "Why this priority"). When no service is selected, only the panel's
+ * own chrome (header, collapse control, border) renders — no service content. Collapsible
+ * to an icon rail (FR-006), mirroring `ProviderArchitecturePanel.tsx`'s 007 pattern exactly.
  */
 export function ServiceConfigPanel({
   selection,
@@ -33,57 +42,101 @@ export function ServiceConfigPanel({
   onRemoveExisting,
   actionError,
   onDismissActionError,
+  width,
 }: ServiceConfigPanelProps) {
-  if (!selection) return null;
+  const [expanded, setExpanded] = useState(true);
 
   // A stored `skuSelectionId` whose SKUSelection no longer exists (e.g. removed from another
-  // tab) — collapse rather than render broken content; `WorkspacePage` also clears the
-  // selection once this happens (see its removal handler).
-  if (selection.kind === "existing" && !resolvedExisting) return null;
+  // tab) — treat as nothing selected rather than rendering broken content; `WorkspacePage`
+  // also clears the selection once this happens (see its removal handler).
+  const hasContent = Boolean(selection && !(selection.kind === "existing" && !resolvedExisting));
 
   const attributes =
-    selection.kind === "new" ? selection.catalogSku.attributes : resolvedExisting!.attributes;
-  const unit = selection.kind === "new" ? selection.catalogSku.unit : resolvedExisting!.unit;
+    selection?.kind === "new"
+      ? selection.catalogSku.attributes
+      : hasContent
+        ? resolvedExisting!.attributes
+        : undefined;
+  const unit =
+    selection?.kind === "new"
+      ? selection.catalogSku.unit
+      : hasContent
+        ? resolvedExisting!.unit
+        : undefined;
 
   return (
-    <aside className="flex h-full w-72 min-w-0 shrink-0 flex-col gap-3 overflow-auto border-r border-border p-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">
-          {selection.kind === "new"
-            ? `${selection.catalogSku.service_name} — ${selection.catalogSku.summary}`
-            : `${resolvedExisting!.service_code} / ${resolvedExisting!.sku}`}
-        </h3>
-        {selection.kind === "existing" && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Remove this service"
-            onClick={() => onRemoveExisting(resolvedExisting!.id)}
-          >
-            <Trash2 />
-          </Button>
-        )}
+    <aside
+      className="flex h-full min-w-0 shrink-0 flex-col gap-3 overflow-hidden border-r border-border p-2 transition-[width]"
+      style={{ width: expanded ? width : 56 }}
+    >
+      <div className={`flex items-center ${expanded ? "justify-between" : "justify-center"}`}>
+        {expanded && <h2 className="text-xs font-semibold">Service Editor</h2>}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={expanded ? "Collapse panel" : "Expand panel"}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? <PanelLeftClose /> : <PanelLeftOpen />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{expanded ? "Collapse" : "Expand"}</TooltipContent>
+        </Tooltip>
       </div>
 
-      {actionError && (
-        <ErrorMessage message={actionError} onRetry={onDismissActionError} retryLabel="Dismiss" />
+      {expanded && !hasContent && (
+        <p className="text-xs text-muted-foreground">
+          Select a service on the diagram, or add one from column 2, to configure it here.
+        </p>
       )}
 
-      <SkuDetail attributes={attributes} />
+      {expanded && hasContent && (
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold">
+              {selection!.kind === "new"
+                ? `${selection!.catalogSku.service_name} — ${selection!.catalogSku.summary}`
+                : `${resolvedExisting!.service_code} / ${resolvedExisting!.sku}`}
+            </h3>
+            {selection!.kind === "existing" && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Remove this service"
+                onClick={() => onRemoveExisting(resolvedExisting!.id)}
+              >
+                <Trash2 />
+              </Button>
+            )}
+          </div>
 
-      {selection.kind === "new" ? (
-        <PricingInputsForm onSubmit={onSubmitNew} unit={unit} />
-      ) : (
-        <PricingInputsForm
-          submitLabel="Save"
-          initial={{
-            pricing_term: resolvedExisting!.pricing_term,
-            purchase_option: resolvedExisting!.purchase_option,
-            usage_quantity: resolvedExisting!.usage_quantity,
-          }}
-          unit={unit}
-          onSubmit={(inputs) => onSubmitExisting(resolvedExisting!.id, inputs)}
-        />
+          {actionError && (
+            <ErrorMessage
+              message={actionError}
+              onRetry={onDismissActionError}
+              retryLabel="Dismiss"
+            />
+          )}
+
+          <SkuDetail attributes={attributes!} />
+
+          {selection!.kind === "new" ? (
+            <PricingInputsForm onSubmit={onSubmitNew} unit={unit} />
+          ) : (
+            <PricingInputsForm
+              submitLabel="Save"
+              initial={{
+                pricing_term: resolvedExisting!.pricing_term,
+                purchase_option: resolvedExisting!.purchase_option,
+                usage_quantity: resolvedExisting!.usage_quantity,
+              }}
+              unit={unit}
+              onSubmit={(inputs) => onSubmitExisting(resolvedExisting!.id, inputs)}
+            />
+          )}
+        </div>
       )}
     </aside>
   );

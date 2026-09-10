@@ -18,19 +18,28 @@ values are retrieved.
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Sequence
 from decimal import Decimal
 
-from src.models.orm import Architecture
+from src.models.orm import Architecture, Collection, SKUSelection
 from src.models.schemas import (
     CalculationDuration,
     CalculationResult,
     CalculationWarning,
     PriceLineItem,
+    SnapshotSelection,
     UnpriceableItem,
 )
 from src.pricing_data.duration import classify_unit
 from src.pricing_data.pricing import lookup_price, lookup_reserved_price, resolve_units
 from src.pricing_data.snapshot import resolve_latest_snapshot_date
+
+
+class EmptySnapshotError(ValueError):
+    """Raised when `POST /catalog/calculate-snapshot` is called with no selections
+    (008-ui-updates-corrections, data-model.md) — an empty snapshot has no meaningful prior
+    total to adjust."""
 
 # Day-counts used for every duration-based calculation (004, FR-006) — fixed, never derived from
 # a real calendar, so results stay deterministic and reproducible.
@@ -223,6 +232,42 @@ def calculate_architecture_price(
         unpriceable=unpriceable,
         warnings=warnings,
     )
+
+
+def build_transient_architecture(selections: Sequence[SnapshotSelection]) -> Architecture:
+    """Construct a transient (never `session.add()`-ed, never committed) Architecture/
+    Collection/SKUSelection object graph from an ad-hoc list of selections
+    (008-ui-updates-corrections, US5, research.md §5) — so `calculate_architecture_price()`
+    above can price them via the exact same code path every persisted-Architecture
+    calculation uses, with no estimate/approximation (Constitution Principle I).
+
+    Every selection is placed in one throwaway Collection — `calculate_architecture_price`
+    only cares about the flat set of selections across all of an architecture's Collections,
+    never about grouping, so a single Collection is sufficient. Raises `EmptySnapshotError`
+    for an empty `selections` list (data-model.md's validation rule) before constructing
+    anything.
+    """
+    if not selections:
+        raise EmptySnapshotError("selections must contain at least one entry")
+
+    collection = Collection(id=uuid.uuid4(), type="application_component", name="snapshot")
+    collection.sku_selections = [
+        SKUSelection(
+            id=uuid.uuid4(),
+            collection_id=collection.id,
+            service_code=s.service_code,
+            sku=s.sku,
+            pricing_term=s.pricing_term.value,
+            purchase_option=s.purchase_option.value,
+            usage_quantity=Decimal(s.usage_quantity),
+        )
+        for s in selections
+    ]
+
+    architecture = Architecture(id=uuid.uuid4(), name="snapshot")
+    architecture.collections = [collection]
+    architecture.connectors = []
+    return architecture
 
 
 def _unconnected_vpc_warnings(architecture: Architecture):
