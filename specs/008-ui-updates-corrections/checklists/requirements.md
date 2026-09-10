@@ -32,6 +32,15 @@
 ## Notes
 
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`.
-- All three `[NEEDS CLARIFICATION]` markers (font-size reduction target, column-width
+- Three `[NEEDS CLARIFICATION]` markers (font-size reduction target, column-width
   persistence scope, diagram-panel rewrite scope) were resolved directly with the user
-  during `/speckit-specify` and are recorded in the spec's Clarifications section.
+  during `/speckit-specify`.
+- Three further questions were resolved during `/speckit-clarify` (2026-09-10): the
+  "architecture changed" trigger for Price Change (plus the combined architecture+Duration
+  case, FR-016a), Prior Calculation persistence scope (FR-016b), and Price per Sku sort
+  order (FR-017). All are recorded in the spec's Clarifications section.
+- User Story 7 (search: regex matching, sticky filter fields, 100-result cap, match-count
+  indicator, alphabetical sort by displayed text — FR-020 through FR-025) was added directly
+  by the user after the clarification round, with reasonable defaults for case-sensitivity,
+  invalid-pattern handling, and sort direction documented in Assumptions rather than asked
+  about, since none had more than one clearly-correct interpretation.

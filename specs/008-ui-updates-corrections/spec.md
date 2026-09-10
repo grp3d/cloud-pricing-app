@@ -21,6 +21,25 @@
 - Q: The source notes say "reduce font sizes by 70%" — read literally that's near-unreadable.
   What's the actual target? → A: One Tailwind text-size step down everywhere (e.g.
   `text-sm` → `text-xs`), not the literal 70% figure.
+- Q: For Price Change (User Story 5), what counts as "the architecture has changed" — the
+  trigger that lets the prior-total baseline update — and what happens if both the
+  architecture and the Duration selection change together between two calculates? → A: Only
+  edits to the architecture's own contents (adding/removing/editing a SKU selection,
+  Collection, or Connector, or attaching/detaching a Connector's SKU) count as a change;
+  changing Duration alone does not. When both change together, the system recalculates what
+  the *prior* architecture (its state as of the last accepted calculation) would have cost
+  at the *new* Duration, and compares that duration-adjusted prior total to the new actual
+  total — so Price Change isolates the effect of the architecture edit alone, never
+  conflating it with the effect of a Duration change. This recalculation MUST be a real,
+  authoritative price lookup at the new duration (Constitution Principle I) — never a
+  mathematical estimate/scaling of the old total, since duration doesn't scale pricing
+  linearly (006: Reserved-term pricing in particular does not).
+- Q: Does the Prior Calculation baseline (used for Price Change) need to survive a page
+  reload, or is it acceptable for it to reset on every fresh load? → A: Persisted
+  per-browser (`localStorage`, the same mechanism as column widths) — a reload keeps the
+  Prior Calculation, so Price Change keeps working across reloads in the same browser.
+- Q: Should the "Price per Sku" breakdown be sorted, or is any order acceptable? → A: Sorted
+  by price, highest first — supports quickly spotting the biggest cost driver (SC-008).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -172,8 +191,11 @@ untouched by not doing this.
 **Independent Test**: Calculate a price; confirm the total (and every other displayed
 price) is rounded to 2 decimal places. Change the architecture (e.g., add a service),
 Calculate again; confirm a Price Change value and directional arrow appear and are correct.
-Calculate again with no change; confirm the Price Change value does not reset. Confirm a
-Price per Sku breakdown lists every priced SKU with its own total.
+Calculate again with no change (or only a Duration change); confirm the Price Change value
+does not reset. Change the architecture and the Duration together, Calculate again; confirm
+Price Change reflects only the architecture edit's effect, not the Duration change's own
+effect on the total. Confirm a Price per Sku breakdown lists every priced SKU with its own
+total.
 
 **Acceptance Scenarios**:
 
@@ -189,13 +211,21 @@ Price per Sku breakdown lists every priced SKU with its own total.
    unchanged; and the "prior total" baseline used for the *next* comparison updates to this
    new total.
 4. **Given** a prior calculated total and Price Change already exist, **When** the user
-   clicks Calculate again with no architecture change since the last calculation, **Then**
-   the Price Change value and arrow remain exactly what they were before this click (the
-   "prior total" baseline does not silently reset to the current total just because
-   Calculate was clicked again).
-5. **Given** a calculated price, **When** the user views the pricing panel, **Then** a
+   clicks Calculate again with no change to the architecture's own contents since the last
+   calculation — whether nothing changed at all, or only the Duration selection changed —
+   **Then** the Price Change value and arrow remain exactly what they were before this click
+   (the prior-total baseline does not silently reset just because Calculate was clicked
+   again, and a Duration-only change is not treated as an architecture change).
+5. **Given** a prior calculation exists, **When** the user changes both the architecture's
+   contents *and* the Duration selection before clicking Calculate again, **Then** the
+   system recalculates the prior architecture's own contents at the new Duration to get a
+   duration-adjusted comparison total, and the displayed Price Change reflects (new total −
+   duration-adjusted comparison total) — isolating the effect of the architecture edit from
+   the effect of the Duration change.
+6. **Given** a calculated price, **When** the user views the pricing panel, **Then** a
    "Price per Sku" section appears below the main pricing results, separated by a visible
-   divider, listing every priced SKU in the architecture with its own total price.
+   divider, listing every priced SKU in the architecture with its own total price, sorted
+   with the highest-cost SKU first.
 
 ---
 
@@ -225,6 +255,51 @@ after. Text is one Tailwind text-size step smaller everywhere (e.g. `text-sm` �
 
 ---
 
+### User Story 7 - Finding a service in search is faster and clearer (Priority: P2)
+
+A user searching for an AWS service in column 2's "Add a Service" section needs to write
+more powerful search patterns, see more results at once without losing track of the search
+fields themselves while scrolling, know when there are more matches than are currently
+shown, and see the results in a predictable order.
+
+**Why this priority**: A direct usability improvement to an already-functional search
+experience — valuable for anyone searching a large catalog, but the search already works
+today without it.
+
+**Independent Test**: In the "Add a Service" section, enter a regex pattern in each of the
+three fields in turn and confirm matching results are returned; enter an invalid pattern and
+confirm a clear, in-place error rather than a crash or silently empty results; scroll a long
+result list and confirm the three fields stay in view; confirm up to 200 results can be
+shown and, when more exist, a "(n of m results displayed)" note appears; confirm results are
+sorted by the same text shown for each of them.
+
+**Acceptance Scenarios**:
+
+1. **Given** the "Add a Service" section, **When** the user types a regex pattern into the
+   service code, product family, or search text field, **Then** results are filtered by
+   that field matching the pattern (not only an exact or literal-substring match), for each
+   of the three fields independently.
+2. **Given** the user has typed a syntactically invalid regex pattern into one of the three
+   fields, **When** results would otherwise be searched, **Then** a clear message appears
+   next to that field explaining the pattern is invalid, and no broken or misleading results
+   are shown.
+3. **Given** a results list long enough to scroll, **When** the user scrolls it, **Then**
+   the three filter fields remain visible and usable at the top of the section — only the
+   results below them scroll.
+4. **Given** a search that matches many services, **When** results are returned, **Then** up
+   to 200 results are shown (raised from the current 50, matching the backend's existing
+   maximum — no backend change needed for this part).
+5. **Given** a search where more matching services exist than are currently displayed,
+   **When** the user views the results, **Then** a "(n of m results displayed)" note is
+   shown, where n is the number currently displayed and m is the total number that match;
+   when every match is already displayed, no such note is shown. (Paging through the
+   remaining results is explicitly out of scope for this feature — a later version.)
+6. **Given** a set of search results, **When** the user views them, **Then** they are
+   ordered by the same text shown for each result (the summary line already used today),
+   not by an unrelated internal order.
+
+---
+
 ### Edge Cases
 
 - What happens to a box's resize state (User Story 1) if that box is deleted and a new box
@@ -244,9 +319,35 @@ after. Text is one Tailwind text-size step smaller everywhere (e.g. `text-sm` �
   between two calculations? The total used for both the current and prior values is the
   same "priced total" already shown today (excluding unpriceable items, per 006); the
   Price Change reflects the difference in that same total.
+- What happens to Price Change if the Duration selection changes but the architecture's own
+  contents do not (User Story 5, FR-016)? The prior-total baseline is left exactly as it
+  was — a Duration-only change never counts as "the architecture changed."
+- What happens if both the architecture and Duration change together before the next
+  Calculate (User Story 5, FR-016a)? The system recalculates the prior architecture's own
+  contents at the new Duration to get a fair, duration-adjusted comparison point, rather
+  than comparing totals computed at two different durations directly.
+- What happens to Price Change (FR-016b) if browser storage is unavailable or was cleared
+  (e.g., a private/incognito window)? The next Calculate behaves as if it were the first one
+  ever for that Architecture — a total is shown with no Price Change, exactly as described
+  in Acceptance Scenario 2 — rather than failing or showing an incorrect value.
+- What happens to a deleted Architecture's stored Prior Calculation (FR-016b)? It becomes
+  orphaned, unreachable data with no user-visible effect (the Architecture it was keyed to
+  no longer exists to display it against); cleaning it up is an implementation housekeeping
+  concern, not a user-facing behavior this spec constrains.
 - What happens to the "(soon)" removal (User Story 3) given GCP/Azure still aren't
   implemented providers? The buttons remain disabled/non-functional exactly as they are
   today (007's behavior) — only the "(soon)" text is removed, not the disabled state.
+- What happens when a search field (User Story 7) is left empty? An empty field is not a
+  pattern to evaluate — it behaves exactly as it does today (that field simply isn't used to
+  filter), not as a regex that matches everything.
+- What happens when a regex pattern in one field (User Story 7) matches zero services? The
+  existing "No matching services found." state is shown, the same as any other search with
+  no matches today — this is not treated as an error.
+- What happens to the "(n of m results displayed)" note (User Story 7) when a search's
+  filters are broad enough that determining the exact total is expensive? The total shown is
+  still the true total, not an estimate or a capped placeholder (Constitution Principle I) —
+  performance of computing it is an implementation concern, not a reason to show an
+  inaccurate count.
 
 ## Requirements *(mandatory)*
 
@@ -313,17 +414,33 @@ after. Text is one Tailwind text-size step smaller everywhere (e.g. `text-sm` �
   future or existing per-item price) MUST be rounded to exactly 2 decimal places for
   display.
 - **FR-015**: After a Calculate action, if a prior calculated total exists for the current
-  Architecture and the architecture has changed since that prior calculation, the system
-  MUST show a "Price Change" value equal to (new total − prior total), with a red upward
-  indicator when positive, a green downward indicator when negative, and no indicator when
-  zero.
-- **FR-016**: The "prior total" baseline used for Price Change MUST only be updated to a new
-  value when the Architecture has actually changed since it was last set — clicking
-  Calculate again with no intervening change MUST leave the existing Price Change value and
-  baseline exactly as they were.
+  Architecture and the architecture's own contents have changed since that prior
+  calculation (per FR-016's definition of "changed"), the system MUST show a "Price Change"
+  value equal to (new total − comparison total), with a red upward indicator when positive,
+  a green downward indicator when negative, and no indicator when zero. "Comparison total"
+  is the prior total itself, unless the Duration selection has also changed since the prior
+  calculation (FR-016a), in which case it is the duration-adjusted prior total.
+- **FR-016**: Only a change to the architecture's own contents — adding, removing, or
+  editing a SKU selection; adding or removing a Collection or Data Connector; or
+  attaching/detaching a Connector's SKU — counts as the architecture having "changed" for
+  Price Change purposes. Changing the Duration selection alone, with no other edit, does
+  NOT count as a change: clicking Calculate again after only changing Duration (or after no
+  change at all) MUST leave the existing Price Change value and its prior-total baseline
+  exactly as they were.
+- **FR-016a**: When the architecture's contents *and* the Duration selection have both
+  changed since the prior calculation, the system MUST derive the "comparison total" (FR-015)
+  by recalculating the *prior* architecture's contents (its state as of the last accepted
+  calculation) at the *new* Duration, using the same authoritative pricing calculation used
+  for any other price (Constitution Principle I) — never by mathematically scaling or
+  estimating the old total, since price does not scale linearly with duration in general
+  (006: Reserved-term pricing in particular does not).
+- **FR-016b**: The Prior Calculation (FR-015/016/016a) MUST persist per-browser (same
+  mechanism as column widths, FR-013), keyed by Architecture, so that reloading the page
+  does not lose the baseline Price Change depends on.
 - **FR-017**: The pricing panel MUST show a "Price per Sku" section, visually separated from
   the main result, listing every priced SKU in the Architecture together with that SKU's
-  own total price.
+  own total price, sorted by that price highest-first (Clarifications) so the biggest cost
+  driver is always at the top.
 
 **Visual style (User Story 6)**
 
@@ -334,16 +451,45 @@ after. Text is one Tailwind text-size step smaller everywhere (e.g. `text-sm` �
   adopted through shadcn/ui, applied consistently across every panel, with the same
   diagram-internals exception already established in 007 (FR-009/SC-004).
 
+**Service search (User Story 7)**
+
+- **FR-020**: Each of the three "Add a Service" filter fields (service code, product family,
+  search text) MUST independently support the user entering a regex pattern, matched against
+  that field's corresponding data, rather than only an exact or literal-substring match.
+- **FR-021**: An invalid regex pattern in any of the three fields MUST produce a clear,
+  in-place validation message next to that field, and MUST NOT produce a crash, an
+  unrelated error, or a silently-empty/misleading result set.
+- **FR-022**: Within the "Add a Service" section, the three filter fields MUST stay fixed in
+  view while the results list beneath them scrolls independently — this mirrors 007's
+  FR-004 fixed-top-controls pattern, applied to this section's own fields.
+- **FR-023**: A search MUST return up to 200 results (raised from the current 50, matching
+  the backend catalog search's existing maximum).
+- **FR-024**: When the number of matching results exceeds the number displayed, the search
+  MUST show a "(n of m results displayed)" indicator (n = displayed count, m = true total
+  matching count); when every match is displayed, no such indicator is shown. Paging through
+  the remainder is explicitly out of scope for this feature.
+- **FR-025**: Search results MUST be sorted alphabetically (ascending) by the same text
+  displayed to the user for each result (the existing summary line), rather than today's
+  underlying data order.
+
 ### Key Entities
 
 - **Column width preference**: a per-column width value the user has chosen by dragging a
-  boundary; persists per the Clarifications answer below.
-- **Prior Total**: the most recently "locked in" calculated total for a given Architecture,
-  used as the baseline for the next Price Change; updates only when the Architecture has
-  changed since it was last set (see FR-016).
+  boundary; persists per-browser (Clarifications).
+- **Prior Calculation**: the most recently "locked in" calculation for a given Architecture
+  — its resulting total, the Duration it was calculated at, and enough of the architecture's
+  own state (its SKU selections and their inputs) to re-run that same calculation at a
+  different Duration later. Used as the baseline for the next Price Change (FR-015); updates
+  only when the architecture's own contents have changed since it was last set (FR-016), and
+  is itself recalculated at a new Duration, rather than replaced, when only Duration changed
+  alongside a content change (FR-016a). Persists per-browser, keyed by Architecture, so it
+  survives a page reload (FR-016b).
 - **Price per Sku entry**: a derived, display-only pairing of a SKU Selection to its own
   contribution to the Architecture's total price — not a new stored entity, computed at
   calculation time from data the pricing calculation (004/006) already produces.
+- **Search match total**: the true count of catalog services matching the current search
+  filters, independent of how many are actually displayed (FR-024) — derived at search
+  time, not stored.
 
 ## Success Criteria *(mandatory)*
 
@@ -363,11 +509,18 @@ after. Text is one Tailwind text-size step smaller everywhere (e.g. `text-sm` �
 - **SC-006**: 100% of displayed prices show exactly 2 decimal places, with no long
   floating-point remainders visible anywhere in the pricing panel.
 - **SC-007**: After any architecture change followed by a Calculate, the displayed Price
-  Change value exactly matches (new total − prior total) to the cent, with the correct
-  direction indicator.
+  Change value exactly matches (new total − comparison total) to the cent, with the correct
+  direction indicator — including when a Duration change accompanied the architecture
+  change, where the comparison total is the duration-adjusted prior total (FR-016a), not
+  the original prior total.
 - **SC-008**: A user can identify the highest-cost individual SKU in an architecture in
   under 10 seconds using the Price per Sku breakdown, without needing to inspect each
   service individually.
+- **SC-009**: A user can express a search filter today's exact/literal matching can't (e.g.,
+  "any instance type starting with r7") using a regex pattern in any of the three search
+  fields, and get correct results.
+- **SC-010**: When a search has more matches than are displayed, 100% of the time the user
+  is shown accurately how many total matches exist, not just how many are on screen.
 
 ## Assumptions
 
@@ -392,3 +545,14 @@ after. Text is one Tailwind text-size step smaller everywhere (e.g. `text-sm` �
 - Reducing font size (FR-018) and adopting the sky color scale (FR-019) apply to this
   application's own UI only; nothing about vendor pricing data, its precision, or its
   presentation format changes.
+- Today, the service-code and product-family search fields match exactly, and only the free
+  -text field does a substring match — regex support (FR-020) changes all three fields to
+  pattern-based matching, which is a strictly more permissive behavior than today's, not a
+  narrower one; existing plain-text searches keep working, since ordinary text is itself a
+  valid literal regex pattern. Regex matching is case-insensitive, consistent with today's
+  free-text field.
+- Determining the true total match count (FR-024, "m" in "n of m") is new: today's search
+  only signals "the returned page was full, so there might be more," not an exact total —
+  computing an exact total requires the backend catalog search to run an additional query.
+  This is this feature's one backend touch-point; the 200-result cap (FR-023) itself needs
+  no backend change, since it exactly matches the backend catalog search's existing maximum.
