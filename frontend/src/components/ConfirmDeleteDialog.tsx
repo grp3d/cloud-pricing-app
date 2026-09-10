@@ -1,3 +1,7 @@
+import { Trash2 } from "lucide-react";
+
+import { Button } from "./ui/button";
+
 interface Props {
   itemLabel: string;
   onConfirm: () => void;
@@ -12,24 +16,19 @@ export function ConfirmDeleteDialog({ itemLabel, onConfirm, onCancel }: Props) {
     <div
       role="dialog"
       aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+      className="fixed inset-0 flex items-center justify-center bg-black/40"
     >
-      <div style={{ background: "white", padding: 24, borderRadius: 8, minWidth: 280 }}>
-        <p>
+      <div className="min-w-70 rounded-lg border border-border bg-card p-6 shadow-lg">
+        <p className="text-sm">
           Delete <strong>{itemLabel}</strong>? This can&apos;t be undone from the UI.
         </p>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={onCancel}>Cancel</button>
-          <button onClick={onConfirm} autoFocus>
-            Delete
-          </button>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="button" variant="destructive" size="sm" onClick={onConfirm} autoFocus>
+            <Trash2 /> Delete
+          </Button>
         </div>
       </div>
     </div>

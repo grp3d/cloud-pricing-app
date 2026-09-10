@@ -1,7 +1,9 @@
+import { Plus, Save } from "lucide-react";
 import { useState } from "react";
 
 import type { PricingTerm, PurchaseOption } from "../api/client";
 import { usageQuantityHint } from "../lib/usageQuantityHint";
+import { Button } from "./ui/button";
 
 export interface PricingInputs {
   pricing_term: PricingTerm;
@@ -20,6 +22,9 @@ interface Props {
   unit?: string | null;
 }
 
+const selectClassName = "rounded border border-border bg-background px-1.5 py-1 text-sm";
+const labelClassName = "flex flex-col gap-1 text-sm";
+
 /** Pricing inputs (FR-007): commitment term, purchase option, and usage quantity — the three
  * things a SKU selection needs beyond which SKU it is. Also reused, via `initial`, to edit an
  * existing SKU Selection's inputs. */
@@ -37,14 +42,16 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
 
   return (
     <form
+      className="flex flex-col gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({ pricing_term: term, purchase_option: purchaseOption, usage_quantity: quantity });
       }}
     >
-      <label>
-        Term{" "}
+      <label className={labelClassName}>
+        Term
         <select
+          className={selectClassName}
           value={term}
           onChange={(e) => {
             const value = e.target.value as PricingTerm;
@@ -68,9 +75,10 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
       </label>
 
       {term !== "on_demand" && (
-        <label>
-          Purchase option{" "}
+        <label className={labelClassName}>
+          Purchase option
           <select
+            className={selectClassName}
             value={purchaseOption}
             onChange={(e) => setPurchaseOption(e.target.value as PurchaseOption)}
           >
@@ -86,9 +94,10 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
           bug report, so it's hidden outright rather than shown with different guidance. */}
       {term === "on_demand" && (
         <>
-          <label>
-            Usage quantity{unit ? ` (${unit})` : ""}{" "}
+          <label className={labelClassName}>
+            Usage quantity{unit ? ` (${unit})` : ""}
             <input
+              className="rounded border border-border bg-background px-1.5 py-1 text-sm"
               type="number"
               min="0"
               step="any"
@@ -97,19 +106,21 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
             />
           </label>
           {hint === "per_day_estimate" && (
-            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
+            <p className="text-xs text-muted-foreground">
               Enter a steady daily rate — the Calculate duration scales this up.
             </p>
           )}
           {hint === "period_denominated" && (
-            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#6b7280" }}>
+            <p className="text-xs text-muted-foreground">
               Enter the SKU's own quantity for its billing period — not scaled by duration.
             </p>
           )}
         </>
       )}
 
-      <button type="submit">{submitLabel}</button>
+      <Button type="submit" size="sm" className="self-start">
+        {submitLabel === "Save" ? <Save /> : <Plus />} {submitLabel}
+      </Button>
     </form>
   );
 }

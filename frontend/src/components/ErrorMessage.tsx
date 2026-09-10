@@ -1,3 +1,7 @@
+import { AlertTriangle } from "lucide-react";
+
+import { Button } from "./ui/button";
+
 interface Props {
   message: string;
   onRetry?: () => void;
@@ -13,12 +17,12 @@ interface Props {
  */
 export function ErrorMessage({ message, onRetry, retryLabel = "Retry" }: Props) {
   return (
-    <p role="alert" style={{ color: "#b91c1c" }}>
-      ⚠ {message}
+    <p role="alert" className="flex items-center gap-1.5 text-sm text-destructive">
+      <AlertTriangle className="size-4 shrink-0" /> {message}
       {onRetry && (
-        <button onClick={onRetry} style={{ marginLeft: 8 }}>
+        <Button type="button" size="sm" variant="outline" onClick={onRetry}>
           {retryLabel}
-        </button>
+        </Button>
       )}
     </p>
   );
