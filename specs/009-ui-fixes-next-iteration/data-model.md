@@ -75,6 +75,11 @@ The stored `PriorCalculation.duration` field (unchanged shape) advances to the n
 both `"duration_adjusted"` and the new `"duration_only"` outcome — `WorkspacePage.tsx`'s caller
 logic, not `priceChange.ts` itself, is what actually calls the snapshot-calculation endpoint and
 writes the new baseline; `priceChange.ts` only decides which of the (now five) outcomes applies.
+Note this means switching back to the original duration (FR-004) fires `"duration_only"` a
+*second* time (the just-advanced baseline's duration no longer equals the newly-selected one
+either) — not `"unchanged"` — which is exactly what's wanted: another real recalculation at the
+original duration, naturally reproducing the original Price Change value, with no separate
+"remembered original duration" state required.
 
 ### `DiagramLayout` (new — `lib/diagramLayout.ts`, FR-024, research.md §7a)
 

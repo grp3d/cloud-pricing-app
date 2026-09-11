@@ -61,9 +61,11 @@ never counts as a 'change'"*. That is precisely the bug. The fix: when content i
 (pricing `prior.selections` at `newDuration`) — never a client-side multiply-by-ratio estimate,
 even though the ratio happens to be a simple 12× (12 months) in this app's two-duration world.
 The stored baseline's `duration` also advances to the new duration on this path, matching
-`"duration_adjusted"`'s existing behavior, so switching back to the original duration
-(FR-004) is just another `decideBaselineUpdate` call that finds `prior.duration === newDuration`
-again after the user switches back — no separate "remembered original" state needed.
+`"duration_adjusted"`'s existing behavior, so switching back to the original duration (FR-004)
+is just another `decideBaselineUpdate` call — content still unchanged, duration changed again
+(since the baseline's duration already advanced) — which fires `"duration_only"` a second time
+and triggers another real recalculation, naturally reproducing the original Price Change value.
+No separate "remembered original duration" state is needed either way.
 
 **Rationale**: This keeps the fix inside the one pure, already-unit-tested module built for
 exactly this kind of decision (US5/FR-016 in 008), rather than adding duration-branching logic
