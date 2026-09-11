@@ -21,6 +21,13 @@ from src.pricing_data.snapshot import resolve_latest_snapshot_date
 
 KNOWN_SERVICE_CODE = "AmazonEC2"
 KNOWN_PRODUCT_FAMILY = "Compute Instance"
+# A real m5.16xlarge instance SKU (009-ui-fixes-next-iteration, US1) whose own `product_dim` row
+# is unreachable via free-text search before this fix — its own attributes_json says nothing
+# about "2AB37QDFJZBGQ5YP" (that string only appears as its `sku` column value), while two
+# *other* SKUs (Capacity-Reservation variants of the same instance type) reference it inside
+# their own attributes_json as `instancesku`, so a naive fix that widened the match without also
+# covering `p.sku` itself would keep finding the wrong rows.
+KNOWN_SKU = "2AB37QDFJZBGQ5YP"
 
 
 def test_service_code_regex_matches_case_insensitively():
@@ -43,6 +50,28 @@ def test_text_regex_matches_service_name():
     results, _snapshot_date, total = search_catalog(text="Elastic Compute", limit=5)
     assert total > 0
     assert len(results) > 0
+
+
+def test_text_regex_matches_the_skus_own_sku_column():
+    """009-ui-fixes-next-iteration, US1, FR-001/research.md §1: searching free text for a SKU's
+    own identifier MUST find that SKU's own `product_dim` row — before this fix, `text` only
+    matched `service_name`/`attributes_json`, never the `sku` column itself, so pasting an exact
+    SKU into search (a natural thing to do with a SKU ID in hand) silently failed to find it at
+    all (while confusingly matching *other*, unrelated SKUs that happen to reference it inside
+    their own attributes — see `KNOWN_SKU`'s docstring)."""
+    results, _snapshot_date, total = search_catalog(text=KNOWN_SKU, limit=10)
+    assert total >= 1
+    assert any(r["sku"] == KNOWN_SKU for r in results)
+
+
+def test_text_regex_sku_match_is_additive_not_a_replacement():
+    """The same search must still surface the two other SKUs that legitimately mention this one
+    in their `attributes_json` (`instancesku`) — the fix adds `sku` to the matched columns, it
+    doesn't remove the existing `attributes_json` match (both are real, useful matches)."""
+    results, _snapshot_date, _total = search_catalog(text=KNOWN_SKU, limit=10)
+    skus_found = {r["sku"] for r in results}
+    assert KNOWN_SKU in skus_found
+    assert len(skus_found) >= 2  # the SKU itself, plus at least one attributes_json match
 
 
 def test_invalid_service_code_pattern_raises_with_field_name():

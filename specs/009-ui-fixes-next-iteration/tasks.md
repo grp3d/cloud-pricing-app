@@ -58,7 +58,7 @@ never a hard failure.
 
 **Independent Test**: `quickstart.md` US1 scenario.
 
-- [ ] T001 [US1] Live-reproduce the failure via `claude-in-chrome` against the running dev app:
+- [X] T001 [US1] Live-reproduce the failure via `claude-in-chrome` against the running dev app:
       search for SKU `2AB37QDFJZBGQ5YP`, add it to a Collection, configure it, and run a
       calculation — repeat across on-demand and at least two Reserved term/purchase-option
       combinations. Capture the exact failure point and any console error
@@ -66,7 +66,24 @@ never a hard failure.
       `calculate_architecture_price()` itself (direct backend reproduction succeeded for all
       seven combinations against the live snapshot) — this task's job is to find where in the
       live app the failure actually occurs. Do not start T002 until this is recorded.
-- [ ] T002 [US1] Based on T001's findings, implement the minimal fix at the actual failure point
+      **Findings**: Added the exact SKU directly (`POST /collections/{id}/sku-selections`) and
+      calculated via the real, persisted-Architecture endpoint and via the live browser UI
+      (search → select service → set Term/Purchase option in the Service Editor → Save →
+      Calculate): on-demand ($105,433.17/mo) and all three 1-year Reserved purchase options
+      (No/Partial/All Upfront: $2,621.11 / $2,779.87 / $2,524.76 per month) all price
+      successfully with zero errors, zero console errors, zero unpriceable entries — confirming
+      research.md §1's calculation-engine finding end-to-end through the real app, not just in
+      isolation. **The actual defect is a search-discoverability gap, not a pricing failure**:
+      `search_catalog()`'s free-text filter (`backend/src/pricing_data/catalog.py`) only
+      matches `service_name`/`attributes_json`, never the `sku` column itself. Searching the
+      free-text field for `2AB37QDFJZBGQ5YP` (a natural thing to do when you have a SKU ID in
+      hand) returns **zero results for the SKU itself** — instead it incidentally matches two
+      *different* SKUs (`2C4ZUG7R49UEMPGV`, `K4VFPXXYQNRNMN6P`, both Capacity-Reservation
+      variants of the same instance type) that happen to reference `2AB37QDFJZBGQ5YP` inside
+      their own `attributes.instancesku` field. A user pasting this SKU into search cannot find
+      or select the actual SKU at all — a real, reproducible usability failure that plausibly
+      reads as "failure to price this SKU" from the user's side. Redirecting T002 accordingly.
+- [X] T002 [US1] Based on T001's findings, implement the minimal fix at the actual failure point
       identified (frontend or backend file, whichever T001 pointed to). **If the fix lands in
       backend pricing-calculation or DuckDB-query logic, write a failing test for that specific
       defect first (Constitution Principle V — NON-NEGOTIABLE for this category) before
@@ -75,12 +92,30 @@ never a hard failure.
       direct-backend finding), document that explicitly in this task's notes rather than
       guessing at a fix — matching 008's T002 precedent for an unreproducible bug. Depends on
       T001.
-- [ ] T003 [P] [US1] Add a regression test in `backend/tests/unit/test_price_calculation.py`
+      **Done**: T001 found the defect in `search_catalog()`'s DuckDB text filter (catalog-query
+      logic) — wrote two failing tests first
+      (`test_text_regex_matches_the_skus_own_sku_column`,
+      `test_text_regex_sku_match_is_additive_not_a_replacement` in
+      `backend/tests/unit/test_catalog_search.py`), confirmed both failed, then added
+      `OR regexp_matches(p.sku, ?, 'i')` to the text filter's clause in
+      `backend/src/pricing_data/catalog.py::search_catalog`. Both new tests pass; all 8
+      pre-existing tests in the file still pass. Verified live against the running dev backend:
+      `GET /catalog/skus?q=2AB37QDFJZBGQ5YP` now returns `total: 3` including the SKU itself
+      (previously `total: 2`, neither being the SKU itself).
+- [X] T003 [P] [US1] Add a regression test in `backend/tests/unit/test_price_calculation.py`
       asserting SKU `2AB37QDFJZBGQ5YP` prices successfully (non-null total, no unpriceable
       entry) for on-demand and at least two Reserved combinations, locking in research.md §1's
       confirmed-working calculation-engine behavior against the known upstream duplicate-row
       data anomaly regressing silently. Depends on T002 (so a fix, if T001/T002 found one
       outside this function, is captured too).
+      **Done, with a corrected file target**: `test_price_calculation.py` mocks/monkeypatches
+      DuckDB entirely (confirmed by reading it) — the wrong place for a real-data regression
+      test. Added `test_duplicate_row_sku_on_demand_still_prices` and
+      `test_duplicate_row_sku_every_reserved_combination_still_prices` (parametrized, all 6
+      Reserved combinations) to `backend/tests/unit/test_pricing_units.py` instead, which
+      already runs `lookup_price`/`lookup_reserved_price` against real Parquet data (matching
+      006's own precedent file for exactly this kind of regression). All 17 tests in that file
+      pass.
 
 **Checkpoint**: SKU `2AB37QDFJZBGQ5YP` prices correctly (or is explicitly reported
 unpriceable), with a regression test locking in the confirmed-working path.

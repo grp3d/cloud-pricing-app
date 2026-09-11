@@ -109,11 +109,17 @@ def search_catalog(
         where.append("regexp_matches(p.product_family, ?, 'i')")
         params.append(product_family)
     if text:
+        # 009-ui-fixes-next-iteration, US1, FR-001/research.md §1: matches `p.sku` too, not
+        # only `service_name`/`attributes_json` — before this, searching free text for a SKU's
+        # own identifier found nothing for that SKU (only other rows that happen to mention it
+        # inside their own attributes), so a user with a SKU id in hand had no way to find and
+        # select the actual SKU via search.
         where.append(
             "(regexp_matches(s.service_name, ?, 'i') "
-            "OR regexp_matches(p.attributes_json, ?, 'i'))"
+            "OR regexp_matches(p.attributes_json, ?, 'i') "
+            "OR regexp_matches(p.sku, ?, 'i'))"
         )
-        params.extend([text, text])
+        params.extend([text, text, text])
     where_clause = " AND ".join(where)
 
     query = f"""

@@ -11,6 +11,16 @@ import pytest
 
 from src.pricing_data.pricing import lookup_price, lookup_reserved_price, resolve_units
 
+# 009-ui-fixes-next-iteration, US1, FR-001: this SKU's price_fact data has a genuine upstream
+# duplicate-row anomaly — every Reserved term/purchase_option combination has two rows with two
+# different prices (research.md §1), unlike KNOWN_RESERVED_SKU's clean single-row-per-combination
+# data below. `lookup_price`/`lookup_reserved_price` already have deterministic "first row wins"
+# semantics for exactly this situation (006's own precedent) rather than crashing or returning
+# `None` — these tests lock that confirmed-working behavior in as a regression guard, without
+# pinning an exact duplicate-dependent value neither duplicate row is more "correct" than the
+# other.
+KNOWN_DUPLICATE_ROW_SKU = "2AB37QDFJZBGQ5YP"
+
 # Known SKUs from the real AWS pricing data (also used by tests/contract/test_sku_selections.py
 # and tests/unit/test_price_calculation.py's real-data counterparts).
 KNOWN_ON_DEMAND_SKU = "NN4EGUUQRWVYP98C"
@@ -113,6 +123,48 @@ def test_reserved_price_lookup_rejects_on_demand_term():
         lookup_reserved_price(
             sku=KNOWN_ON_DEMAND_SKU, pricing_term="on_demand", purchase_option="not_applicable"
         )
+
+
+# --- 009-ui-fixes-next-iteration, US1: KNOWN_DUPLICATE_ROW_SKU regression (research.md §1) ---
+
+
+def test_duplicate_row_sku_on_demand_still_prices():
+    price = lookup_price(
+        sku=KNOWN_DUPLICATE_ROW_SKU, pricing_term="on_demand", purchase_option="not_applicable"
+    )
+    assert price is not None
+    assert price > 0
+
+
+@pytest.mark.parametrize(
+    "pricing_term,purchase_option",
+    [
+        ("reserved_1yr", "no_upfront"),
+        ("reserved_1yr", "partial_upfront"),
+        ("reserved_1yr", "all_upfront"),
+        ("reserved_3yr", "no_upfront"),
+        ("reserved_3yr", "partial_upfront"),
+        ("reserved_3yr", "all_upfront"),
+    ],
+)
+def test_duplicate_row_sku_every_reserved_combination_still_prices(
+    pricing_term: str, purchase_option: str
+):
+    """Every Reserved combination for this SKU has duplicate price_fact rows (research.md §1) —
+    none of them may resolve to `None`/a crash; `recurring_rate` is always present (a real
+    number, `0.0` is valid for some All-Upfront rows), and `upfront_fee` is present whenever the
+    purchase option isn't `no_upfront`."""
+    result = lookup_reserved_price(
+        sku=KNOWN_DUPLICATE_ROW_SKU, pricing_term=pricing_term, purchase_option=purchase_option
+    )
+    assert result is not None
+    assert result.recurring_rate is not None
+    assert result.recurring_rate >= 0
+    if purchase_option == "no_upfront":
+        assert result.upfront_fee is None
+    else:
+        assert result.upfront_fee is not None
+        assert result.upfront_fee > 0
 
 
 def test_unit_matches_the_row_lookup_price_actually_prices():
