@@ -67,10 +67,14 @@ never a hard failure.
       seven combinations against the live snapshot) — this task's job is to find where in the
       live app the failure actually occurs. Do not start T002 until this is recorded.
 - [ ] T002 [US1] Based on T001's findings, implement the minimal fix at the actual failure point
-      identified (frontend or backend file, whichever T001 pointed to). If T001 finds no
-      reproducible failure (consistent with research.md §1's own direct-backend finding),
-      document that explicitly in this task's notes rather than guessing at a fix — matching
-      008's T002 precedent for an unreproducible bug. Depends on T001.
+      identified (frontend or backend file, whichever T001 pointed to). **If the fix lands in
+      backend pricing-calculation or DuckDB-query logic, write a failing test for that specific
+      defect first (Constitution Principle V — NON-NEGOTIABLE for this category) before
+      implementing** — only presentational/frontend fixes may skip straight to implementation.
+      If T001 finds no reproducible failure (consistent with research.md §1's own
+      direct-backend finding), document that explicitly in this task's notes rather than
+      guessing at a fix — matching 008's T002 precedent for an unreproducible bug. Depends on
+      T001.
 - [ ] T003 [P] [US1] Add a regression test in `backend/tests/unit/test_price_calculation.py`
       asserting SKU `2AB37QDFJZBGQ5YP` prices successfully (non-null total, no unpriceable
       entry) for on-demand and at least two Reserved combinations, locking in research.md §1's
@@ -261,10 +265,13 @@ spacing, smaller diagram text, underlined selection, and size/position that surv
       resize-affordance indicator consistently with the diagram panel's existing whole-panel
       `resize-y` handle (FR-020/021).
 - [ ] T027 [US7] In the same file: reduce node/edge label Tailwind text-size utility classes by
-      three steps from 008's sizing (FR-022, diagram half); separately, reduce every other
-      touched component's text-size utility classes by one further step from 008's sizing
-      (FR-022, app-wide half) — following 008's established per-class step-down convention
-      (research.md §7/§10 there), never a global CSS `font-size` override.
+      three steps from 008's sizing (FR-022, diagram half). Separately — app-wide, not only in
+      files this feature otherwise touches — reduce every remaining text-size utility class by
+      one further step from 008's sizing (FR-022, app-wide half: columns 1-5 in full, including
+      ProviderArchitecturePanel.tsx, CollectionsPanel.tsx, and ServiceConfigPanel.tsx even
+      though no other task in this feature touches them) — following 008's established
+      per-class step-down convention (research.md §7/§10 there), never a global CSS
+      `font-size` override.
 - [ ] T028 [US7] Increase `VPC_CHILD_SPACING` in `frontend/src/pages/nodeLayout.ts` and the
       top-level layout's grid-spacing constants in `ArchitectureDiagramPanel.tsx`'s
       `initialNodes` positioning to a visibly larger fixed value (FR-023).
@@ -298,7 +305,9 @@ user's manual size/position adjustments survive a reload.
       `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx` (or a small sibling
       component it renders): "From Collection"/"To Collection" `<Select>` dropdowns (reusing
       the existing `components/ui/select.tsx`) populated from the `collections` prop already
-      available; disable/reject confirming with the same Collection chosen in both (FR-026a);
+      available; disable/reject confirming with the same Collection chosen in both (FR-026a),
+      and disable confirming whenever fewer than two distinct Collections exist in the
+      Architecture (Edge Cases);
       on confirm, call the existing `onCreateConnector(from, to)` prop verbatim (the same
       mutation `WorkspacePage.tsx`'s pre-existing `handleConnect()` already uses). Depends on
       T032.

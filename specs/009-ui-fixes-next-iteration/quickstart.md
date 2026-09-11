@@ -109,6 +109,8 @@ dev app.
 2. **Expected**: a dialog opens with "From Collection"/"To Collection" dropdowns listing every
    Application Component and VPC (FR-026).
 3. Pick the same Collection in both dropdowns. **Expected**: cannot confirm (FR-026a).
+3a. With fewer than two Collections in the Architecture, open the dialog. **Expected**: the
+    button stays available but the dialog cannot be confirmed (Edge Cases).
 4. Pick two different Collections and confirm. **Expected**: a new Connector is created between
    them, dialog closes.
 5. Confirm the pre-existing select-two-and-connect flow still works unchanged.
