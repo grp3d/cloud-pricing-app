@@ -180,7 +180,7 @@ test-first covered.
 
 **Independent Test**: `quickstart.md` US3 scenario.
 
-- [ ] T008 [US3] Live-reproduce via `claude-in-chrome` with the console open: (1) the user's
+- [X] T008 [US3] Live-reproduce via `claude-in-chrome` with the console open: (1) the user's
       scripted sequence — add an Application Component, add a Service to it, delete the
       Service, delete the Application Component; (2) repeated clicking through diagram elements
       (select, deselect, resize) in varied sequences. This is a continuation of 008's own
@@ -192,16 +192,38 @@ test-first covered.
       candidate mechanisms (stale `manualSizeRef`/`ownHeights` entries after a delete; a
       render→effect→parent-state-update loop during rapid add/delete). Record exact findings.
       Do not start T009 until this is recorded.
-- [ ] T009 [US3] Based on T008's findings, implement the fix — likely pruning
+      **Findings**: Attempted the user's exact scripted sequence four ways: (a) as a single
+      Application Component (the only content) — resulted in a correct, empty-but-rendered
+      canvas (grid + controls intact), matching the documented non-bug Edge Case, not the
+      reported bug; (b) with a second, untouched Application Component present so the
+      architecture isn't fully emptied — the second component rendered correctly after the
+      full add-service→delete-service→delete-component sequence; (c) the same sequence nested
+      inside a VPC (a more complex parent/child state transition) — the VPC rendered correctly,
+      empty, after the nested component was deleted; (d) ~10 rapid alternating select/deselect
+      clicks across multiple nodes, plus a resize-handle drag and a drag-to-nest operation, in
+      varied sequences. Zero console errors/exceptions across all four; zero blank-outs. This
+      extends 008's own 5-attempt non-reproduction with 4 more targeted variants (9 total
+      across both features) using the newly-available specific repro steps — still
+      unreproducible via `claude-in-chrome`.
+- [X] T009 [US3] Based on T008's findings, implement the fix — likely pruning
       `manualSizeRef`/`ownHeights` entries for deleted Collection ids and/or guarding the
       `initialNodes`-recompute effect against firing mid-delete, in
       `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx` and
       `frontend/src/pages/WorkspacePage.tsx` as T008's findings indicate. If not reproducible
       after a good-faith attempt, document that explicitly (matching 008's own precedent for
       this exact bug) rather than shipping a guess. Depends on T008.
-- [ ] T010 [US3] Live-verify via `quickstart.md` US3 scenario, repeating both the scripted
+      **No fix applied** — matching 008's own precedent for this exact bug: shipping a
+      speculative code change against an unreproduced failure risks a no-op "fix" (008's own
+      documented mistake) and violates Constitution Principle VI (no unjustified complexity).
+      The two candidate mechanisms from research.md §3 remain plausible but unconfirmed;
+      flagged for the user to verify against their own exact repro (browser, extensions,
+      timing, or a data shape this tool's `claude-in-chrome` session couldn't reproduce),
+      per 008's own conclusion for this identical bug.
+- [X] T010 [US3] Live-verify via `quickstart.md` US3 scenario, repeating both the scripted
       sequence and the repeated-click sequence several times to confirm no blank-out. Depends
       on T009.
+      **Already covered by T008** — its four-variant investigation *is* this verification (no
+      blank-out across any attempt); no additional pass needed since no code changed.
 
 **Checkpoint**: The diagram survives the user's scripted repro and repeated interaction without
 going blank (or the investigation's findings are explicitly documented if unreproducible).
