@@ -39,10 +39,11 @@ export type BaselineDecision =
   // No Prior Calculation exists yet for this Architecture — nothing to compare Price Change
   // against, but this calculation becomes the first baseline.
   | "establish"
-  // The architecture's contents are unchanged since the Prior Calculation (FR-016) — true
-  // whether or not the Duration selection also changed, since Duration alone never counts
-  // as a "change" for this purpose. The caller must leave both the stored baseline and
-  // whatever Price Change value is currently displayed exactly as they were.
+  // Neither the architecture's contents nor the Duration selection changed since the Prior
+  // Calculation — a true no-op Calculate (009 corrects 008's original FR-016, which treated a
+  // duration-only change as "unchanged" too — see "duration_only" below). The caller must
+  // leave both the stored baseline and whatever Price Change value is currently displayed
+  // exactly as they were.
   | "unchanged"
   // Contents changed; Duration did not — Price Change is (new total − prior total) directly
   // (FR-015), and the baseline advances to this calculation.
@@ -51,7 +52,16 @@ export type BaselineDecision =
   // recalculating the *prior* selections at the *new* Duration (the snapshot-calculation
   // endpoint), never a direct diff against the un-adjusted prior total. The baseline still
   // advances to this calculation.
-  | "duration_adjusted";
+  | "duration_adjusted"
+  // Contents unchanged; Duration alone changed (009-ui-fixes-next-iteration, US2, FR-002/003 —
+  // supersedes 008's original "Duration alone never counts as a change" decision, which was the
+  // bug: Price Change stayed frozen at the old duration's value). Uses the exact same real
+  // recalculation path as "duration_adjusted" (the prior selections, priced at the new
+  // Duration via the snapshot-calculation endpoint) — never a client-side ratio multiply, even
+  // though the ratio happens to be a simple 12x in this app's two-duration world. The baseline
+  // still advances to this calculation, so switching back to the original duration fires this
+  // same outcome again (not "unchanged") and naturally restores the original value.
+  | "duration_only";
 
 /** Two selections are the same content, field-by-field — no `sku_selection_id` in this
  * shape, so identity is entirely by value (data-model.md). */
@@ -85,8 +95,9 @@ export function decideBaselineUpdate(params: {
   if (prior === null) return "establish";
 
   const contentChanged = !selectionsEqual(prior.selections, currentSelections);
-  if (!contentChanged) return "unchanged";
-
   const durationChanged = prior.duration !== newDuration;
+
+  if (!contentChanged) return durationChanged ? "duration_only" : "unchanged";
+
   return durationChanged ? "duration_adjusted" : "direct";
 }

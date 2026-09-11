@@ -129,24 +129,45 @@ duration-adjusted comparison.
 
 **Independent Test**: `quickstart.md` US2 scenario.
 
-- [ ] T004 [P] [US2] Test-first: add `"duration_only"` cases to
+- [X] T004 [P] [US2] Test-first: add `"duration_only"` cases to
       `frontend/tests/unit/priceChange.test.ts` per data-model.md — (a) content unchanged,
       `prior.duration !== newDuration` → `"duration_only"`; (b) a second call after the
       baseline has already advanced to the new duration, switching back to the original
       duration with content still unchanged → `"duration_only"` again (not `"unchanged"` —
       data-model.md/research.md §2's correction). Confirm these fail against the current
       implementation before proceeding.
-- [ ] T005 [US2] Implement the `"duration_only"` branch in
+- [X] T005 [US2] Implement the `"duration_only"` branch in
       `frontend/src/lib/priceChange.ts`'s `decideBaselineUpdate()` per data-model.md's
       decision table. Depends on T004 (tests must fail first, then pass).
-- [ ] T006 [US2] Wire the new outcome into `frontend/src/pages/WorkspacePage.tsx`: on
+- [X] T006 [US2] Wire the new outcome into `frontend/src/pages/WorkspacePage.tsx`: on
       `"duration_only"`, call the existing `calculate-snapshot` endpoint with the prior
       selections at the new duration (the same call already made for `"duration_adjusted"`),
       update the displayed Price Change from that real result, and advance the stored
       `PriorCalculation.duration`. Depends on T005.
-- [ ] T007 [US2] Live-verify via `quickstart.md` US2 scenario (establish baseline at 1 month,
+      **Done**: no new branch was actually needed — the existing `calculate.onSuccess` logic
+      already special-cased only `"unchanged"` (early return) and `"direct"` (compare against
+      the stored total directly); every other decision, including the new `"duration_only"`,
+      already fell through to the real `calculateSnapshot()` recalculation generically. Updated
+      the surrounding comment to name `"duration_only"` explicitly so this isn't a silent
+      coincidence for the next reader. `tsc -b` clean.
+- [X] T007 [US2] Live-verify via `quickstart.md` US2 scenario (establish baseline at 1 month,
       switch to 1 year with no other change, confirm Price Change updates; switch back to 1
       month, confirm it returns to the original value). Depends on T006.
+      **Findings + resolution (paused mid-task for user input)**: live-verified via
+      `claude-in-chrome` — after a real content change (Price Change: +$3,711.32 at 1 month),
+      switching Duration to 1 year alone produced **$0.00**, not a ~12x-scaled amount. Traced
+      this to a structural property, not a bug: the stored baseline's `selections` always
+      advance to match current content on every non-"unchanged" calculate, so by the time
+      `"duration_only"` can fire at all, `prior.selections` is *already* identical to
+      `currentSelections` — repricing identical content at a new duration is mathematically
+      guaranteed to equal the actual new total, i.e. Price Change = $0, always, for every
+      possible duration-only transition under this baseline model. The spec's original
+      "-100 → -1200" framing is not achievable without a larger baseline-tracking redesign.
+      Presented this to the user with the tradeoff; **decision: ship $0.00 as the correct,
+      honest answer** (still a real fix over today's bug — the old behavior left Price Change
+      frozen at a stale, disconnected number). Updated spec.md (US2 narrative, Independent
+      Test, AC1/AC2, FR-002, FR-004) and quickstart.md's US2 section to match this confirmed
+      behavior.
 
 **Checkpoint**: A duration-only change updates Price Change correctly in both directions,
 test-first covered.

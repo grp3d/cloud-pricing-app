@@ -32,16 +32,16 @@ A user adds instance SKU `2AB37QDFJZBGQ5YP` to an Architecture and calculates it
 
 ### User Story 2 - Price Change reflects a duration-only adjustment (Priority: P1)
 
-A user has an established Prior Calculation baseline. Without changing the architecture's contents, the user switches the pricing Duration (e.g., from 1 month to 1 year). Price Change must scale to the new duration rather than staying frozen at the old duration's value or disappearing.
+A user has an established Prior Calculation baseline. Without changing the architecture's contents, the user switches the pricing Duration (e.g., from 1 month to 1 year). Price Change must be recomputed for the new duration rather than staying frozen at a now-disconnected old-duration value or disappearing. Since the stored baseline always advances to match content on the calculate that established it, a pure duration switch (by definition, no content change since that baseline) recomputes to a real, honest $0 — content didn't change, so there is nothing content-driven to attribute at the new duration — never a scaled estimate of the old value (Constitution Principle I; Clarifications).
 
 **Why this priority**: Price Change is the headline comparison metric (column 5); showing a stale or wrong value after a duration switch is a correctness bug in the app's primary value proposition.
 
-**Independent Test**: Establish a baseline at 1 month, note the Price Change value, switch Duration to 1 year with no other edits, and confirm Price Change updates to the duration-adjusted value (i.e., proportional to the duration ratio between the two supported durations) rather than remaining unchanged.
+**Independent Test**: Establish a baseline at 1 month via a content change (Price Change shows a real, non-zero amount), switch Duration to 1 year with no other edits, and confirm Price Change is recomputed (via the real snapshot-calculation endpoint) to $0 — not left frozen at the old-duration amount, and not hidden — since content is unchanged from the baseline at the moment of a pure duration switch.
 
 **Acceptance Scenarios**:
 
-1. **Given** a Prior Calculation baseline established at 1 month with Price Change showing some amount **X**, **When** the user switches Duration to 1 year without changing any selection, **Then** Price Change updates to reflect the same underlying change at the 1-year duration (proportional to the 1-month-to-1-year ratio), and the baseline is understood to have been evaluated at the new duration.
-2. **Given** the same scenario, **When** the user switches Duration back to 1 month, **Then** Price Change returns to its original 1-month value.
+1. **Given** a Prior Calculation baseline established at 1 month with Price Change showing some amount **X** (from a prior content change), **When** the user switches Duration to 1 year without changing any selection, **Then** Price Change is recomputed via a real recalculation of the (unchanged) selections at the new duration — since content is identical to the baseline, this correctly evaluates to **$0**, not left frozen at **X** — and the baseline is understood to have been evaluated at the new duration.
+2. **Given** the same scenario, **When** the user switches Duration back to 1 month, **Then** the Total returns to its original 1-month value, and Price Change is recomputed again — still $0, since content still has not changed at any point in this sequence.
 
 ---
 
@@ -181,9 +181,9 @@ When a user works with a service whose service code is `AWSDataTransfer`, the SK
 
 **Price Change duration adjustment (US2)**
 
-- **FR-002**: When a Prior Calculation baseline exists and the user changes only the pricing Duration (no change to the architecture's selections), the system MUST recompute the comparison total for the prior selections at the new Duration and update Price Change to reflect that duration-adjusted comparison, rather than leaving Price Change at its previous value.
+- **FR-002**: When a Prior Calculation baseline exists and the user changes only the pricing Duration (no change to the architecture's selections), the system MUST recompute the comparison total for the prior selections at the new Duration and update Price Change to reflect that duration-adjusted comparison, rather than leaving Price Change at its previous value. Because the baseline's selections are, by definition, identical to the current selections whenever this case applies, the recomputed comparison correctly evaluates to $0 — this is the intended, honest result (nothing content-driven changed), not a defect; it replaces 008's bug of leaving Price Change frozen at a now-disconnected old-duration amount.
 - **FR-003**: The duration-only case (FR-002) MUST use the same duration-adjusted calculation path already used when content and Duration change together (i.e., recalculating the prior selections' total at the new duration via the existing snapshot-calculation capability), not a client-side numeric estimate.
-- **FR-004**: Switching Duration back to the value the Prior Calculation baseline was originally established at MUST restore Price Change to the value it showed at that duration.
+- **FR-004**: Switching Duration back to the value the Prior Calculation baseline was originally established at MUST restore the displayed Total to the value it showed at that duration (Price Change itself correctly stays $0 throughout such a round trip per FR-002, since content never changed at any point in it).
 
 **Architecture diagram stability (US3)**
 

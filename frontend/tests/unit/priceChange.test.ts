@@ -41,13 +41,25 @@ describe("decideBaselineUpdate", () => {
     expect(decision).toBe("unchanged");
   });
 
-  it("leaves the baseline unchanged when only the Duration selection changed (FR-016)", () => {
+  it("flags a duration-only adjustment when only the Duration selection changed (009, FR-002/003 — supersedes 008's FR-016, which wrongly left this case as \"unchanged\")", () => {
     const decision = decideBaselineUpdate({
       prior: prior({ duration: "1_month" }),
       currentSelections: [selection()], // identical content
       newDuration: "1_year", // duration alone differs
     });
-    expect(decision).toBe("unchanged");
+    expect(decision).toBe("duration_only");
+  });
+
+  it("flags duration-only a second time when switching back to the original duration, since the baseline's duration already advanced on the first switch (009, FR-004, data-model.md's correction)", () => {
+    // Simulates the caller's two-step flow: first switch (1_month -> 1_year) advances the
+    // stored baseline's duration to 1_year; switching back (1_year -> 1_month) compares
+    // against that already-advanced baseline, so it's "duration_only" again, not "unchanged".
+    const decision = decideBaselineUpdate({
+      prior: prior({ duration: "1_year" }), // baseline already advanced by the first switch
+      currentSelections: [selection()], // still identical content
+      newDuration: "1_month", // switching back
+    });
+    expect(decision).toBe("duration_only");
   });
 
   it("treats reordered-but-identical selections as unchanged (multiset, not positional)", () => {

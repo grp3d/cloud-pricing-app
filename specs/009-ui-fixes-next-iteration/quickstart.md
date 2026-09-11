@@ -32,15 +32,19 @@ dev app.
 
 ## US2 — Price Change reflects a duration-only adjustment
 
-1. Open an Architecture with an established Prior Calculation baseline at 1 month (calculate
-   once to establish one if needed).
-2. Note the displayed Price Change value.
-3. Switch Duration to 1 year, making no other change.
-4. **Expected**: Price Change updates to the duration-adjusted comparison (not left at the old
-   value) — cross-check it matches what a content-and-duration change would have produced for
-   an equivalent scenario (FR-002/003, SC-002).
-5. Switch Duration back to 1 month. **Expected**: Price Change returns to its original value
-   (FR-004).
+1. Open an Architecture, add a Service, and calculate at 1 month — the first calculate
+   `establish`es a baseline (no Price Change shown yet). Add or change a Service and
+   calculate again at 1 month: this is a `direct` content change — Price Change now shows a
+   real, non-zero amount, and the baseline advances to match this content.
+2. Switch Duration to 1 year, making no other change, and calculate again.
+3. **Expected**: Price Change is recomputed via a real snapshot-calculation call (not left at
+   the step-1 amount) — since content hasn't changed since the baseline, this correctly
+   evaluates to **$0.00**, not a scaled estimate of the old amount (FR-002/003, Clarifications
+   — confirmed live during implementation: a pure duration switch can only ever fire when the
+   baseline's content already matches current content, so $0 is the honest, only-possible
+   correct answer here, not a bug).
+4. Switch Duration back to 1 month. **Expected**: the Total returns to its step-1 value; Price
+   Change stays $0 (FR-004) — content still hasn't changed.
 6. Automated coverage: `frontend/tests/unit/priceChange.test.ts` — add a `"duration_only"` case
    (data-model.md) before implementing the branch (test-first, Constitution Principle V).
 

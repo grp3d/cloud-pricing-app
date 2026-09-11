@@ -449,9 +449,11 @@ function WorkspacePageInner() {
 
       if (decision !== "establish") {
         // "direct": compare directly against the stored baseline's own total. "duration_
-        // adjusted": the stored baseline's *content* changed AND Duration changed together
-        // (FR-016a) — the comparison total must come from repricing the *prior* selections
-        // at the *new* Duration through the real calculation, never a scaled estimate.
+        // adjusted" (content AND Duration both changed, FR-016a) and "duration_only" (Duration
+        // alone changed, 009 FR-002/003) both need the comparison total repriced from the
+        // *prior* selections at the *new* Duration through the real calculation, never a
+        // scaled estimate — this ternary already routes any non-"direct" decision there, so
+        // "duration_only" needed no new branch here.
         const comparisonTotal =
           decision === "direct"
             ? priorCalculation!.total
