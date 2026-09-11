@@ -31,7 +31,11 @@
 
 ## Notes
 
-- Two clarification questions were presented and resolved by the user: FR-008 (Connector
-  conflict → refuse addition, direct user to create a new Connector) and FR-029 (AWSDataTransfer
-  region filter → dedicated From/To region selector fields). Everything else in the spec uses
-  documented reasonable defaults (see Assumptions).
+- Specify-phase clarifications: FR-008 (Connector conflict → refuse addition, direct user to
+  create a new Connector) and FR-029 (AWSDataTransfer region filter → dedicated From/To region
+  selector fields).
+- `/speckit-clarify` session (2026-09-11): FR-026/FR-026a (Add Connector → dialog with From/To
+  Collection dropdowns, same-Collection selection rejected). One additional gap (FR-008's
+  refusal-message mechanism) was resolved via an existing codebase precedent (the app's
+  established inline `ErrorMessage` pattern) rather than a user question — recorded in
+  Assumptions. Everything else in the spec uses documented reasonable defaults.

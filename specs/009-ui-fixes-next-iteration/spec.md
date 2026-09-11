@@ -8,6 +8,12 @@
 
 **Input**: User description: "Based on docs/functionality_2026-09-11.md, create a new feature spec for the next iteration of UI fixes and enhancements." The source document lists bug-fix Issues and new-functionality Updates spanning the five-column workspace (column 2 = Architecture Editor, column 4 = Architecture Diagram, column 5 = Pricing), covering: a SKU that fails to price, a connector/service data-model correction, two architecture-diagram blank-screen bugs, a price-change duration-adjustment bug, a service-search coverage indicator, pricing display formatting, architecture-diagram styling and persistence, an explicit "Add Connector" control, and AWSDataTransfer-specific filtering and display.
 
+## Clarifications
+
+### Session 2026-09-11
+
+- Q: When a user clicks the new "Add Connector" button, how do they pick the two Collections to connect? → A: Open a dialog with "From Collection" / "To Collection" dropdowns, populated with all Application Components and VPCs, then confirm.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - A specific SKU prices successfully (Priority: P1)
@@ -120,16 +126,17 @@ A user styling and arranging their architecture diagram in column 4 needs less v
 
 ### User Story 8 - Adding a Connector doesn't require selecting two Collections first (Priority: P3)
 
-A user wants to add a Connector between two Collections via an explicit "Add Connector" action, without first having to multi-select both Collections and then find the connect action.
+A user wants to add a Connector between two Collections via an explicit "Add Connector" action, without first having to multi-select both Collections and then find the connect action. Clicking the button opens a small dialog with "From Collection" and "To Collection" dropdowns — each populated with every Application Component and VPC in the Architecture — that the user fills in and confirms.
 
 **Why this priority**: A discoverability/ergonomics improvement to an existing capability (connecting is already possible today) — valuable but not correctness-critical.
 
-**Independent Test**: Click "Add Connector" without pre-selecting anything and confirm a way to create a Connector is presented; the existing select-two-then-connect flow keeps working unchanged.
+**Independent Test**: Click "Add Connector" without pre-selecting anything, confirm a dialog appears with "From Collection" and "To Collection" dropdowns listing all Collections, pick two and confirm, and verify a Connector is created between them; the existing select-two-then-connect flow keeps working unchanged.
 
 **Acceptance Scenarios**:
 
-1. **Given** a diagram with at least two Collections and no pre-selection, **When** the user clicks the new "Add Connector" button, **Then** the user is able to create a new Connector between two Collections of their choosing without having pre-selected them.
-2. **Given** the pre-existing flow, **When** the user selects two Collections and clicks the existing connect action, **Then** a Connector is created exactly as it is today.
+1. **Given** a diagram with at least two Collections and no pre-selection, **When** the user clicks the new "Add Connector" button, **Then** a dialog opens with "From Collection" and "To Collection" dropdowns, each populated with every Application Component and VPC in the Architecture.
+2. **Given** the "Add Connector" dialog is open, **When** the user selects a Collection in each dropdown and confirms, **Then** a new Connector is created between the two chosen Collections and the dialog closes.
+3. **Given** the pre-existing flow, **When** the user selects two Collections and clicks the existing connect action, **Then** a Connector is created exactly as it is today.
 
 ---
 
@@ -161,6 +168,8 @@ When a user works with a service whose service code is `AWSDataTransfer`, the SK
 - Pricing formatting (US6): thousand separators apply to whole and fractional values alike (e.g., "1,234.56"); values under 1,000 are unaffected in appearance.
 - Diagram resize (US7): the bottom-right-only resize constraint applies to Collection boxes; it does not change how individual Service or Application Component nodes are sized (if they are not independently resizable today, this story does not make them resizable).
 - AWSDataTransfer (US9): a service whose code is not `AWSDataTransfer` is entirely unaffected by this story — it keeps showing its SKU/name as it does today.
+- Add Connector dialog (US8): selecting the same Collection in both "From" and "To" dropdowns is rejected — the dialog cannot be confirmed in that state.
+- Add Connector dialog (US8): with fewer than two Collections in the Architecture, the "Add Connector" button remains available but the dialog cannot be confirmed (fewer than two distinct choices exist).
 
 ## Requirements *(mandatory)*
 
@@ -211,7 +220,8 @@ When a user works with a service whose service code is `AWSDataTransfer`, the SK
 - **FR-023**: Spacing between components in the architecture diagram MUST be visibly increased from its 008 sizing.
 - **FR-024**: When a user resizes a Collection box, adjusts diagram spacing, or repositions diagram elements, those adjustments MUST persist across a page reload, using the same per-browser, per-Architecture persistence mechanism the diagram already uses for its content (005/007/008 precedent).
 - **FR-025**: The name of whichever Application Component, Connector, or Service is currently selected in the diagram MUST render underlined; no unselected object's name may render underlined.
-- **FR-026**: The diagram MUST provide an explicit "Add Connector" action that lets the user create a new Connector between two Collections of their choosing without first pre-selecting them, in addition to the existing select-two-and-connect flow, which MUST continue to work unchanged.
+- **FR-026**: The diagram MUST provide an explicit "Add Connector" button that opens a dialog with "From Collection" and "To Collection" dropdown fields, each populated with every Application Component and VPC in the Architecture, letting the user create a new Connector between two Collections of their choosing without first pre-selecting them on the canvas — in addition to the existing select-two-and-connect flow, which MUST continue to work unchanged.
+- **FR-026a**: The "Add Connector" dialog MUST prevent confirming with the same Collection chosen in both the "From" and "To" dropdowns.
 
 **AWSDataTransfer handling (US9)**
 
@@ -249,3 +259,4 @@ When a user works with a service whose service code is `AWSDataTransfer`, the SK
 - The `AWSDataTransfer` region-pair label (US9) is presentational only; it does not change which SKU is actually selected, priced, or stored — only how it is displayed.
 - Persisting Collection-box size/spacing/position adjustments (FR-024) reuses the existing per-browser, per-Architecture `localStorage`-based diagram-layout persistence already established in 005/007/008, not a new Postgres-backed mechanism (Constitution Principle II: this is UI/session state, not user-defined domain data).
 - Removing a Connector's only Service does not delete the Connector itself; connector deletion remains a separate, unchanged, explicit user action.
+- FR-008's refusal message reuses the app's existing inline `ErrorMessage` pattern (already used consistently across every panel for validation/action errors) rather than introducing a toast/notification mechanism.
