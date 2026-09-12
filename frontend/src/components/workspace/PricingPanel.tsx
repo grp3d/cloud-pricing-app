@@ -62,10 +62,10 @@ export function PricingPanel({
       style={{ width }}
     >
       <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1.5 text-xs">
+        <label className="flex items-center gap-1.5 text-2xs">
           Duration
           <select
-            className="rounded border border-border bg-background px-1.5 py-1 text-xs"
+            className="rounded border border-border bg-background px-1.5 py-1 text-2xs"
             value={duration}
             onChange={(e) => onDurationChange(e.target.value as CalculationDuration)}
           >
@@ -83,7 +83,7 @@ export function PricingPanel({
 
       {calculation && (
         <section aria-label="Calculation result" className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">
+          <h3 className="text-xs font-semibold">
             Total: {formatPrice(calculation.total_price)} {calculation.currency}
           </h3>
 
@@ -93,13 +93,13 @@ export function PricingPanel({
             <p
               key={w.code}
               role="alert"
-              className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-500"
+              className="flex items-center gap-1.5 text-2xs text-amber-700 dark:text-amber-500"
             >
               <AlertTriangle className="size-4 shrink-0" /> {w.message}
             </p>
           ))}
           {calculation.unpriceable.length > 0 && (
-            <div role="alert" className="text-xs text-destructive">
+            <div role="alert" className="text-2xs text-destructive">
               <p className="flex items-center gap-1.5">
                 <AlertTriangle className="size-4 shrink-0" /> Some SKUs could not be priced and
                 are excluded from the total:
@@ -120,7 +120,7 @@ export function PricingPanel({
           {/* 009-ui-fixes-next-iteration, US6, FR-015/016: replaces the removed
               "For {duration}, priced from snapshot {date}." sentence — same
               `calculation.snapshot_date` value, at the bottom of the column. */}
-          <p className="text-xs text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Data Timestamp: {calculation.snapshot_date}
           </p>
         </section>
@@ -139,7 +139,7 @@ function PriceChangeIndicator({ amount }: { amount: string }) {
 
   return (
     <p
-      className={`flex items-center gap-1.5 text-xs ${
+      className={`flex items-center gap-1.5 text-2xs ${
         isIncrease
           ? "text-red-600 dark:text-red-500"
           : isDecrease
@@ -169,12 +169,12 @@ function PricePerSkuSection({ calculation }: { calculation: CalculationResult })
     <>
       <Separator />
       <section aria-label="Price per Sku" className="flex flex-col gap-1.5">
-        <h4 className="text-xs font-semibold">Price per Sku</h4>
+        <h4 className="text-2xs font-semibold">Price per Sku</h4>
         <ul className="flex flex-col gap-1">
           {priced.map((item) => (
             <li
               key={item.sku_selection_id}
-              className="flex items-center justify-between gap-2 text-xs"
+              className="flex items-center justify-between gap-2 text-2xs"
             >
               <span className="truncate">
                 {item.service_code} / {item.sku}

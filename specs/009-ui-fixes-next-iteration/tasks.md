@@ -351,25 +351,30 @@ spacing, smaller diagram text, underlined selection, and size/position that surv
 
 **Independent Test**: `quickstart.md` US7 scenario.
 
-- [ ] T022 [P] [US7] Test-first: add `frontend/tests/unit/diagramLayout.test.ts` for the new
+- [X] T022 [P] [US7] Test-first: add `frontend/tests/unit/diagramLayout.test.ts` for the new
       `diagramLayout.ts` module (data-model.md) — read/write round-trip for one Architecture's
       layout, the `try/catch`-guarded no-op behavior when `localStorage` throws, and the
       per-Architecture key scoping (`cloud-pricing-diagram-layout-{architectureId}`). Confirm
       it fails (module doesn't exist yet) before proceeding.
-- [ ] T023 [US7] Implement `frontend/src/lib/diagramLayout.ts` per data-model.md's
+- [X] T023 [US7] Implement `frontend/src/lib/diagramLayout.ts` per data-model.md's
       `DiagramLayout`/`CollectionLayoutOverride` shapes, modeled on `columnWidths.ts`'s existing
       pattern. Depends on T022.
-- [ ] T024 [P] [US7] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`: drop
+- [X] T024 [P] [US7] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`: drop
       the `` (${c.type})` `` suffix from both node-label call sites (top-level and nested
       children) (FR-017).
-- [ ] T025 [P] [US7] In the same file: darken `VpcNode`'s and `ApplicationComponentNode`'s
+- [X] T025 [P] [US7] In the same file: darken `VpcNode`'s and `ApplicationComponentNode`'s
       border classes (verified live against both light and dark theme); add a border class to
       each `ServiceList` item (FR-018/019).
-- [ ] T026 [US7] In the same file: restrict `<NodeResizer>` to only its bottom-right handle
+- [X] T026 [US7] In the same file: restrict `<NodeResizer>` to only its bottom-right handle
       (dropping the default all-eight-handle set) for both node types, and style its visual
       resize-affordance indicator consistently with the diagram panel's existing whole-panel
       `resize-y` handle (FR-020/021).
-- [ ] T027 [US7] In the same file: reduce node/edge label Tailwind text-size utility classes by
+      **Done, with a mechanism change**: `<NodeResizer>` has no way to render only one handle
+      (that's `<NodeResizeControl>`'s job, the lower-level primitive) — switched to a shared
+      `BottomRightResizeControl` wrapper using `<NodeResizeControl position="bottom-right">`
+      with a custom corner-grip `<div>` as its visible indicator, conditionally rendered only
+      when `selected` (since `NodeResizeControl`, unlike `NodeResizer`, has no `isVisible` prop).
+- [X] T027 [US7] In the same file: reduce node/edge label Tailwind text-size utility classes by
       three steps from 008's sizing (FR-022, diagram half). Separately — app-wide, not only in
       files this feature otherwise touches — reduce every remaining text-size utility class by
       one further step from 008's sizing (FR-022, app-wide half: columns 1-5 in full, including
@@ -377,20 +382,51 @@ spacing, smaller diagram text, underlined selection, and size/position that surv
       though no other task in this feature touches them) — following 008's established
       per-class step-down convention (research.md §7/§10 there), never a global CSS
       `font-size` override.
-- [ ] T028 [US7] Increase `VPC_CHILD_SPACING` in `frontend/src/pages/nodeLayout.ts` and the
+      **Done**: Tailwind's built-in scale bottoms out at `text-xs` — 008 already used that
+      floor almost everywhere, so a further reduction needed new utility classes. Added
+      `--text-2xs`/`--text-3xs`/`--text-4xs` to `index.css`'s `@theme inline` block (11px/10px/
+      9px), matching the existing "add a utility class" convention over an arbitrary value or
+      global override. Diagram node/service labels and the Connector edge label now use
+      `text-4xs` (3 steps below `text-xs`). App-wide (10 files: both workspace panels not
+      otherwise touched by this feature, `CatalogSearchPanel.tsx`, `WorkspacePage.tsx`,
+      `ConfirmDeleteDialog.tsx`, `SkuDetail.tsx`, `PricingInputsForm.tsx`, `ErrorMessage.tsx`,
+      `PricingPanel.tsx`): `text-xs`→`text-2xs`, `text-sm`→`text-xs` (order matters — done via
+      two sequential passes so the newly-created `text-xs` from `text-sm` isn't re-converted).
+      Deliberately scoped to app-specific files, not `components/ui/*` shadcn primitives (shared
+      building blocks whose own base size is typically overridden by callers already).
+- [X] T028 [US7] Increase `VPC_CHILD_SPACING` in `frontend/src/pages/nodeLayout.ts` and the
       top-level layout's grid-spacing constants in `ArchitectureDiagramPanel.tsx`'s
       `initialNodes` positioning to a visibly larger fixed value (FR-023).
-- [ ] T029 [US7] Wire `diagramLayout.ts` into `ArchitectureDiagramPanel.tsx`: read the stored
+- [X] T029 [US7] Wire `diagramLayout.ts` into `ArchitectureDiagramPanel.tsx`: read the stored
       layout on load to seed the manual-override map (extended to carry `x`/`y` alongside the
       existing `width`/`height`); write on `<NodeResizer>`'s `onResizeEnd` and on
       `onNodeDragStop` (FR-024, also fixing the in-session position-loss noted in research.md
       §7a as a byproduct). Depends on T023.
-- [ ] T030 [US7] In the same file: apply `underline` to whichever Application Component's,
+      **Done**: added `architectureId` and `diagramSelection` props to
+      `ArchitectureDiagramPanelProps` (threaded from `WorkspacePage.tsx`); the manual-override
+      map now reseeds synchronously (in the render body) whenever `architectureId` changes, from
+      `readDiagramLayout()`. `onManualResize(id, width, height, x, y)` writes through
+      `writeCollectionLayout()` on every resize-end and node-drag-stop (top-level Collections
+      only — nested children stay auto-stacked, not independently positionable).
+- [X] T030 [US7] In the same file: apply `underline` to whichever Application Component's,
       Connector's, or Service's name is currently selected, based on the existing
       `selected`/id-comparison props each already receives; no other name may be underlined at
       the same time (FR-025).
-- [ ] T031 [US7] Live-verify via `quickstart.md` US7 scenario, including a page reload to
+      **Done, with a correction**: React Flow's own node `selected` prop turned out to be the
+      wrong signal — `WorkspacePage.tsx`'s `selectService()` also sets `selectedCollectionId` to
+      the service's *containing* Collection (so column 3 keeps showing that Collection's
+      context), so using it directly would underline the container too when a Service is
+      selected, violating "no unselected object's name." Added a precise `diagramSelection`
+      discriminated value (`{kind: "collection"|"connector"|"service", id}` or `null`) in
+      `WorkspacePage.tsx` instead, threaded down as a new prop.
+- [X] T031 [US7] Live-verify via `quickstart.md` US7 scenario, including a page reload to
       confirm size/position persistence. Depends on T024, T025, T026, T027, T028, T029, T030.
+      **Verified**: no collection-type suffix; resized+moved a box, confirmed via
+      `localStorage` inspection and a page reload that both survived; underline appears on the
+      selected Collection's name and disappears on deselect; a resize-handle indicator renders
+      at the bottom-right corner only, and dragging from the top-left corner moves the node
+      instead of resizing it; each Service item has its own visible border; text is visibly
+      smaller throughout, most noticeably in the diagram.
 
 **Checkpoint**: The diagram reads more clearly, resizes only from its indicated corner, and a
 user's manual size/position adjustments survive a reload.

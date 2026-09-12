@@ -51,7 +51,7 @@ function errorMessageOf(err: unknown): string {
  * to configure without a Collection to select one from.
  */
 function EmptyWorkspacePanels({ message }: { message: string }) {
-  const promptTextClassName = "p-4 text-center text-xs text-muted-foreground";
+  const promptTextClassName = "p-4 text-center text-2xs text-muted-foreground";
   return (
     <>
       <aside
@@ -493,6 +493,22 @@ function WorkspacePageInner() {
       ? (skuSelectionsById.get(serviceConfigSelection.skuSelectionId)?.selection ?? null)
       : null;
 
+  // 009-ui-fixes-next-iteration, US7, FR-025: precisely which ONE diagram object (Collection,
+  // Connector, or Service) is currently selected, for underlining its name — deliberately NOT
+  // just `selectedCollectionId`/`selectedConnectorId` directly, since `selectService` also sets
+  // `selectedCollectionId` to the service's *containing* Collection (so column 3 stays showing
+  // that Collection's context); underlining that container too would violate FR-025's "no
+  // unselected object's name" rule. An in-progress "new" service (not yet an existing
+  // SKUSelection) has no diagram object of its own to underline.
+  const diagramSelection: { kind: "collection" | "connector" | "service"; id: string } | null =
+    serviceConfigSelection?.kind === "existing"
+      ? { kind: "service", id: serviceConfigSelection.skuSelectionId }
+      : selectedConnectorId
+        ? { kind: "connector", id: selectedConnectorId }
+        : selectedCollectionId
+          ? { kind: "collection", id: selectedCollectionId }
+          : null;
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <ProviderArchitecturePanel
@@ -579,10 +595,12 @@ function WorkspacePageInner() {
 
           <div className="min-w-0 flex-1 p-2">
             <ArchitectureDiagramPanel
+              architectureId={architectureId!}
               collections={collections}
               connectors={connectors}
               ownHeights={ownHeights}
               reportHeight={reportHeight}
+              diagramSelection={diagramSelection}
               onSelectedNodeIdsChange={setSelectedNodeIds}
               onSelectCollection={selectCollection}
               onSelectConnector={selectConnector}

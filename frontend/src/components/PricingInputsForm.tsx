@@ -22,8 +22,8 @@ interface Props {
   unit?: string | null;
 }
 
-const selectClassName = "rounded border border-border bg-background px-1.5 py-1 text-sm";
-const labelClassName = "flex flex-col gap-1 text-sm";
+const selectClassName = "rounded border border-border bg-background px-1.5 py-1 text-xs";
+const labelClassName = "flex flex-col gap-1 text-xs";
 
 /** Pricing inputs (FR-007): commitment term, purchase option, and usage quantity — the three
  * things a SKU selection needs beyond which SKU it is. Also reused, via `initial`, to edit an
@@ -97,7 +97,7 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
           <label className={labelClassName}>
             Usage quantity{unit ? ` (${unit})` : ""}
             <input
-              className="rounded border border-border bg-background px-1.5 py-1 text-sm"
+              className="rounded border border-border bg-background px-1.5 py-1 text-xs"
               type="number"
               min="0"
               step="any"
@@ -106,12 +106,12 @@ export function PricingInputsForm({ onSubmit, submitLabel = "Add", initial, unit
             />
           </label>
           {hint === "per_day_estimate" && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Enter a steady daily rate — the Calculate duration scales this up.
             </p>
           )}
           {hint === "period_denominated" && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Enter the SKU's own quantity for its billing period — not scaled by duration.
             </p>
           )}

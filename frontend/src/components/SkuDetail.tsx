@@ -12,7 +12,7 @@ export function SkuDetail({ attributes }: Props) {
   const entries = Object.entries(attributes);
 
   if (entries.length === 0) {
-    return <p className="text-sm italic text-muted-foreground">No additional details available.</p>;
+    return <p className="text-xs italic text-muted-foreground">No additional details available.</p>;
   }
 
   return (
@@ -27,8 +27,8 @@ export function SkuDetail({ attributes }: Props) {
     <dl aria-label="Service details" className="my-2 min-w-0">
       {entries.map(([key, value]) => (
         <div key={key} className="mb-1.5">
-          <dt className="text-xs font-semibold text-muted-foreground">{key}</dt>
-          <dd className="m-0 break-words text-sm">{value}</dd>
+          <dt className="text-2xs font-semibold text-muted-foreground">{key}</dt>
+          <dd className="m-0 break-words text-xs">{value}</dd>
         </div>
       ))}
     </dl>

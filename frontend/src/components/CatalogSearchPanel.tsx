@@ -64,8 +64,8 @@ export function CatalogSearchPanel({ onAdd }: Props) {
     : [];
 
   const inputClassName =
-    "w-full min-w-0 rounded border border-border bg-background px-1.5 py-1 text-xs";
-  const fieldErrorClassName = "text-xs text-destructive";
+    "w-full min-w-0 rounded border border-border bg-background px-1.5 py-1 text-2xs";
+  const fieldErrorClassName = "text-2xs text-destructive";
 
   return (
     <div aria-label="AWS catalog search" className="flex h-full min-h-0 flex-col gap-2">
@@ -108,12 +108,12 @@ export function CatalogSearchPanel({ onAdd }: Props) {
       </div>
 
       {!hasFilter && (
-        <p className="shrink-0 text-xs text-muted-foreground">
+        <p className="shrink-0 text-2xs text-muted-foreground">
           Enter at least one filter to search.
         </p>
       )}
       {search.isLoading && (
-        <p className="shrink-0 text-xs text-muted-foreground">Searching…</p>
+        <p className="shrink-0 text-2xs text-muted-foreground">Searching…</p>
       )}
       {otherError && (
         <div className="shrink-0">
@@ -124,7 +124,7 @@ export function CatalogSearchPanel({ onAdd }: Props) {
         </div>
       )}
       {!search.isError && search.data?.results.length === 0 && (
-        <p className="shrink-0 text-xs text-muted-foreground">No matching services found.</p>
+        <p className="shrink-0 text-2xs text-muted-foreground">No matching services found.</p>
       )}
       {/* 009-ui-fixes-next-iteration, US5, FR-011/012/013: "n of m services displayed" —
           reworded from 008's "(n of m results displayed)" and moved above the results list
@@ -133,7 +133,7 @@ export function CatalogSearchPanel({ onAdd }: Props) {
           truncated (n < m, FR-012) — still shown, unstyled, when every match is displayed. */}
       {search.data && search.data.total > 0 && (
         <p
-          className={`shrink-0 text-xs ${
+          className={`shrink-0 text-2xs ${
             sortedResults.length < search.data.total
               ? "text-destructive"
               : "text-muted-foreground"
@@ -148,7 +148,7 @@ export function CatalogSearchPanel({ onAdd }: Props) {
           {sortedResults.map((r) => (
             <li
               key={r.sku}
-              className="flex items-start justify-between gap-2 rounded border border-transparent px-1 py-1 text-xs hover:border-border"
+              className="flex items-start justify-between gap-2 rounded border border-transparent px-1 py-1 text-2xs hover:border-border"
             >
               <span className="min-w-0 break-words">{summaryText(r)}</span>
               <Button type="button" size="sm" variant="outline" onClick={() => onAdd(r)}>

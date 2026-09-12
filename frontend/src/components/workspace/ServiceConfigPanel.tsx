@@ -70,7 +70,7 @@ export function ServiceConfigPanel({
       style={{ width: expanded ? width : 56 }}
     >
       <div className={`flex items-center ${expanded ? "justify-between" : "justify-center"}`}>
-        {expanded && <h2 className="text-xs font-semibold">Service Editor</h2>}
+        {expanded && <h2 className="text-2xs font-semibold">Service Editor</h2>}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -87,7 +87,7 @@ export function ServiceConfigPanel({
       </div>
 
       {expanded && !hasContent && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Select a service on the diagram, or add one from column 2, to configure it here.
         </p>
       )}
@@ -95,7 +95,7 @@ export function ServiceConfigPanel({
       {expanded && hasContent && (
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold">
+            <h3 className="text-2xs font-semibold">
               {selection!.kind === "new"
                 ? `${selection!.catalogSku.service_name} — ${selection!.catalogSku.summary}`
                 : `${resolvedExisting!.service_code} / ${resolvedExisting!.sku}`}

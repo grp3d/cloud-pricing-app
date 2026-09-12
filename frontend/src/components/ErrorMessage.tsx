@@ -17,7 +17,7 @@ interface Props {
  */
 export function ErrorMessage({ message, onRetry, retryLabel = "Retry" }: Props) {
   return (
-    <p role="alert" className="flex items-center gap-1.5 text-sm text-destructive">
+    <p role="alert" className="flex items-center gap-1.5 text-xs text-destructive">
       <AlertTriangle className="size-4 shrink-0" /> {message}
       {onRetry && (
         <Button type="button" size="sm" variant="outline" onClick={onRetry}>

@@ -22,8 +22,11 @@
 export const COMPONENT_BASE_HEIGHT = 60;
 export const COMPONENT_ROW_HEIGHT = 24;
 
-/** Spacing added below each nested child when summing a container's height. */
-export const VPC_CHILD_SPACING = 10;
+/** Spacing added below each nested child when summing a container's height.
+ * 009-ui-fixes-next-iteration, US7, FR-023: increased from 008's `10` — visibly more
+ * breathing room between diagram components, a static code-level constant (not an
+ * independently user-adjustable/persisted setting — see spec.md's Assumptions). */
+export const VPC_CHILD_SPACING = 24;
 
 /** Estimated height for a leaf box (no nested children), given how many of its own SKU
  * Selections it has. Also used, via `estimateNodeHeight`, as the "own content" contribution for

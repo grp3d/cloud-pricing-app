@@ -77,7 +77,7 @@ export function CollectionsPanel({
       style={{ width: expanded ? width : 56 }}
     >
       <div className={`flex items-center ${expanded ? "justify-between" : "justify-center"}`}>
-        {expanded && <h2 className="text-xs font-semibold">Architecture Editor</h2>}
+        {expanded && <h2 className="text-2xs font-semibold">Architecture Editor</h2>}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -98,7 +98,7 @@ export function CollectionsPanel({
           {/* "Collections" section (FR-009) — fixed, never scrolls out of view (FR-004,
               unchanged from 007). */}
           <div className="flex flex-col gap-2">
-            <h3 className="text-xs font-medium text-muted-foreground">Collections</h3>
+            <h3 className="text-2xs font-medium text-muted-foreground">Collections</h3>
             <form
               className="flex flex-wrap items-center gap-1.5"
               onSubmit={(e) => {
@@ -107,7 +107,7 @@ export function CollectionsPanel({
               }}
             >
               <select
-                className="rounded border border-border bg-background px-1.5 py-1 text-xs"
+                className="rounded border border-border bg-background px-1.5 py-1 text-2xs"
                 value={newCollectionType}
                 onChange={(e) => onNewCollectionTypeChange(e.target.value as CollectionType)}
               >
@@ -115,7 +115,7 @@ export function CollectionsPanel({
                 <option value="vpc">VPC</option>
               </select>
               <input
-                className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs"
+                className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-2xs"
                 placeholder="Collection name"
                 value={newCollectionName}
                 onChange={(e) => onNewCollectionNameChange(e.target.value)}
@@ -164,9 +164,9 @@ export function CollectionsPanel({
               even when nothing is selected (FR-010: the separators bracketing it never
               disappear). */}
           <div className="flex flex-col gap-2">
-            <h3 className="text-xs font-medium text-muted-foreground">Selected Collection</h3>
+            <h3 className="text-2xs font-medium text-muted-foreground">Selected Collection</h3>
             {!selection && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 Select a Collection or Connector on the diagram.
               </p>
             )}
@@ -187,7 +187,7 @@ export function CollectionsPanel({
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-medium">Data Connector</h4>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     {selection.attachedSkuSummary
                       ? `Attached service: ${selection.attachedSkuSummary}`
                       : "No connecting service attached (optional — e.g. a NAT/Internet/Transit Gateway)."}
@@ -213,11 +213,11 @@ export function CollectionsPanel({
               scroll region so its filter row can stay fixed while only its results list
               scrolls (FR-022) — a second scroll container here would fight that. */}
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-            <h3 className="shrink-0 text-xs font-medium text-muted-foreground">Add a Service</h3>
+            <h3 className="shrink-0 text-2xs font-medium text-muted-foreground">Add a Service</h3>
             {selection ? (
               <CatalogSearchPanel onAdd={onPickSku} />
             ) : (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 Select a Collection or Connector first.
               </p>
             )}

@@ -5,7 +5,7 @@ import {
   Background,
   Controls,
   Handle,
-  NodeResizer,
+  NodeResizeControl,
   Position,
   ReactFlow,
   addEdge,
@@ -32,30 +32,43 @@ import {
 } from "../../pages/nodeLayout";
 import { summarizeAttributes } from "../../lib/skuDetail";
 import { edgeOffsetIndex } from "../../lib/edgeOffset";
+import {
+  readDiagramLayout,
+  writeCollectionLayout,
+  type CollectionLayoutOverride,
+} from "../../lib/diagramLayout";
 
 /** Shared service-list rendering for both node types (004, FR-015). Each listed service is now
  * independently clickable (007-ui-overhaul-shadcn, FR-014) — `stopPropagation` keeps that click
  * from also being interpreted as a click on the containing box (which selects the Collection as
- * a whole, unchanged from 002-006). */
+ * a whole, unchanged from 002-006).
+ *
+ * 009-ui-fixes-next-iteration, US7: `text-4xs` (three steps below 008's `text-xs`, FR-022);
+ * each item gets its own border (FR-019); the currently-selected service's name is underlined,
+ * exclusively (FR-025, `selectedServiceId` — see `WorkspacePage.tsx`'s `diagramSelection`). */
 function ServiceList({
   skuSelections,
+  selectedServiceId,
   onSelectService,
 }: {
   skuSelections: Collection["sku_selections"];
+  selectedServiceId?: string;
   onSelectService: (skuSelectionId: string) => void;
 }) {
   if (skuSelections.length === 0) {
-    return <p className="mt-1 text-xs text-muted-foreground">No services yet.</p>;
+    return <p className="mt-1 text-4xs text-muted-foreground">No services yet.</p>;
   }
   return (
-    <ul className="mt-1 list-none pl-0 text-xs">
+    <ul className="mt-1 list-none pl-0 text-4xs">
       {skuSelections.map((s) => {
         const detail = summarizeAttributes(s.attributes);
         return (
           <li key={s.id}>
             <button
               type="button"
-              className="w-full rounded px-1 py-0.5 text-left hover:bg-accent hover:text-accent-foreground"
+              className={`w-full rounded border border-border px-1 py-0.5 text-left hover:bg-accent hover:text-accent-foreground ${
+                s.id === selectedServiceId ? "underline" : ""
+              }`}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelectService(s.id);
@@ -74,14 +87,45 @@ function ServiceList({
 /** The outer node box's own vertical chrome (unchanged from 005/006 — see nodeLayout.ts). */
 const NODE_CHROME_HEIGHT = 2 * 8 + 2 * 2;
 
+/** 009-ui-fixes-next-iteration, US7, FR-020/021: a single resize control at the bottom-right
+ * corner only (dropping `<NodeResizer>`'s default all-eight-handle set), with a visible
+ * corner-grip affordance styled consistently across both node types. Shared so both components
+ * render it identically. */
+function BottomRightResizeControl({
+  minWidth,
+  minHeight,
+  onResizeEnd,
+}: {
+  minWidth: number;
+  minHeight: number;
+  onResizeEnd: (width: number, height: number, x: number, y: number) => void;
+}) {
+  return (
+    <NodeResizeControl
+      position="bottom-right"
+      minWidth={minWidth}
+      minHeight={minHeight}
+      onResizeEnd={(_, params) => onResizeEnd(params.width, params.height, params.x, params.y)}
+      style={{ background: "transparent", border: "none" }}
+    >
+      <div
+        aria-hidden
+        className="absolute right-0 bottom-0 size-2.5 translate-x-1/2 translate-y-1/2 cursor-se-resize rounded-[2px] border border-primary bg-background"
+      />
+    </NodeResizeControl>
+  );
+}
+
 interface ApplicationComponentNodeData {
   [key: string]: unknown;
   label: string;
   skuSelections: Collection["sku_selections"];
   minHeight: number;
+  isSelected: boolean;
+  selectedServiceId?: string;
   onMeasuredHeight: (height: number) => void;
   onSelectService: (skuSelectionId: string) => void;
-  onManualResize: (width: number, height: number) => void;
+  onManualResize: (width: number, height: number, x: number, y: number) => void;
 }
 
 /** Custom node type for an Application Component (spec FR-007, 005, 006). See prior features'
@@ -100,8 +144,16 @@ interface ApplicationComponentNodeData {
  * resize "didn't work" at all, confirmed by zooming into a selected node's corners live and
  * finding no handle rendered there for *any* node, nested or top-level. */
 function ApplicationComponentNode({ data, selected }: NodeProps) {
-  const { label, skuSelections, minHeight, onMeasuredHeight, onSelectService, onManualResize } =
-    data as unknown as ApplicationComponentNodeData;
+  const {
+    label,
+    skuSelections,
+    minHeight,
+    isSelected,
+    selectedServiceId,
+    onMeasuredHeight,
+    onSelectService,
+    onManualResize,
+  } = data as unknown as ApplicationComponentNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
   useEffect(() => {
@@ -110,22 +162,25 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
 
   return (
     <div className="relative h-full w-full">
-      <NodeResizer
-        minWidth={160}
-        minHeight={minHeight}
-        isVisible={selected}
-        onResizeEnd={(_, params) => onManualResize(params.width, params.height)}
-      />
+      {selected && (
+        <BottomRightResizeControl minWidth={160} minHeight={minHeight} onResizeEnd={onManualResize} />
+      )}
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
       <div
+        // 009-ui-fixes-next-iteration, US7, FR-018: darker border shade than 008's
+        // `border-border` (verified live against both light and dark theme).
         className={`box-border h-full w-full overflow-auto rounded bg-card p-2 ${
-          selected ? "border-2 border-primary" : "border border-border"
+          selected ? "border-2 border-primary" : "border border-gray-400 dark:border-gray-600"
         }`}
       >
         <div ref={contentRef} className="h-auto">
-          <strong className="text-xs">{label}</strong>
-          <ServiceList skuSelections={skuSelections} onSelectService={onSelectService} />
+          <strong className={`text-4xs ${isSelected ? "underline" : ""}`}>{label}</strong>
+          <ServiceList
+            skuSelections={skuSelections}
+            selectedServiceId={selectedServiceId}
+            onSelectService={onSelectService}
+          />
         </div>
       </div>
     </div>
@@ -137,17 +192,27 @@ interface VpcNodeData {
   label: string;
   skuSelections: Collection["sku_selections"];
   minHeight: number;
+  isSelected: boolean;
+  selectedServiceId?: string;
   onMeasuredHeight: (height: number) => void;
   onSelectService: (skuSelectionId: string) => void;
-  onManualResize: (width: number, height: number) => void;
+  onManualResize: (width: number, height: number, x: number, y: number) => void;
 }
 
 /** Custom node type for a VPC (002-006). 007 adds the same per-service click targets; 008
  * adds `onManualResize` and moves `<NodeResizer>` out of the scrollable content box — see
  * `ApplicationComponentNode`'s comment above for both (FR-001). */
 function VpcNode({ data, selected }: NodeProps) {
-  const { label, skuSelections, minHeight, onMeasuredHeight, onSelectService, onManualResize } =
-    data as unknown as VpcNodeData;
+  const {
+    label,
+    skuSelections,
+    minHeight,
+    isSelected,
+    selectedServiceId,
+    onMeasuredHeight,
+    onSelectService,
+    onManualResize,
+  } = data as unknown as VpcNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
   useEffect(() => {
@@ -156,18 +221,26 @@ function VpcNode({ data, selected }: NodeProps) {
 
   return (
     <div className="relative h-full w-full">
-      <NodeResizer
-        minWidth={220}
-        minHeight={minHeight}
-        isVisible={selected}
-        onResizeEnd={(_, params) => onManualResize(params.width, params.height)}
-      />
+      {selected && (
+        <BottomRightResizeControl minWidth={220} minHeight={minHeight} onResizeEnd={onManualResize} />
+      )}
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
-      <div className="box-border h-full w-full overflow-auto rounded border-2 border-primary p-2">
+      <div
+        // 009-ui-fixes-next-iteration, US7, FR-018: darker resting border than 008's
+        // `border-primary` alone (which didn't otherwise distinguish selected from
+        // unselected); selection still highlights via `border-primary`.
+        className={`box-border h-full w-full overflow-auto rounded p-2 ${
+          selected ? "border-2 border-primary" : "border-2 border-gray-600 dark:border-gray-400"
+        }`}
+      >
         <div ref={contentRef} className="h-auto">
-          <strong className="text-xs">{label}</strong>
-          <ServiceList skuSelections={skuSelections} onSelectService={onSelectService} />
+          <strong className={`text-4xs ${isSelected ? "underline" : ""}`}>{label}</strong>
+          <ServiceList
+            skuSelections={skuSelections}
+            selectedServiceId={selectedServiceId}
+            onSelectService={onSelectService}
+          />
         </div>
       </div>
     </div>
@@ -240,10 +313,18 @@ const edgeTypes = {
 };
 
 export interface ArchitectureDiagramPanelProps {
+  /** 009-ui-fixes-next-iteration, US7, FR-024: scopes the new diagram-layout persistence to
+   * this Architecture (`lib/diagramLayout.ts`). */
+  architectureId: string;
   collections: Collection[];
   connectors: DataConnector[];
   ownHeights: Record<string, number>;
   reportHeight: (id: string, height: number) => void;
+  /** 009-ui-fixes-next-iteration, US7, FR-025: precisely which one diagram object is
+   * currently selected (for underlining its name) — see `WorkspacePage.tsx`'s
+   * `diagramSelection`, which is NOT simply "whichever Collection/Connector id is set" since
+   * selecting a Service also sets its containing Collection's id for column-3 purposes. */
+  diagramSelection: { kind: "collection" | "connector" | "service"; id: string } | null;
   onSelectedNodeIdsChange: (ids: string[]) => void;
   onSelectCollection: (id: string) => void;
   onSelectConnector: (id: string) => void;
@@ -263,10 +344,12 @@ export interface ArchitectureDiagramPanelProps {
  * the canvas rendering, not cross-panel application state.
  */
 export function ArchitectureDiagramPanel({
+  architectureId,
   collections,
   connectors,
   ownHeights,
   reportHeight,
+  diagramSelection,
   onSelectedNodeIdsChange,
   onSelectCollection,
   onSelectConnector,
@@ -292,10 +375,33 @@ export function ArchitectureDiagramPanel({
   // *live* `nodes` state showing the just-applied resize in the moment; this ref only needs
   // to be read the *next* time `initialNodes` recomputes for some unrelated reason, so that
   // recompute preserves a manually-set size instead of overwriting it.
-  const manualSizeRef = useRef<Map<string, { width: number; height: number }>>(new Map());
-  const onManualResize = useCallback((id: string, width: number, height: number) => {
-    manualSizeRef.current.set(id, { width, height });
-  }, []);
+  // 009-ui-fixes-next-iteration, US7, FR-024: now also carries `x`/`y` (previously just
+  // `width`/`height`) and is seeded from `diagramLayout.ts`'s per-Architecture `localStorage`
+  // persistence — new, not a reuse of an existing mechanism (research.md §7a corrects an
+  // earlier wrong assumption that 005/007/008 already persisted this across reloads; they
+  // only ever kept it in-memory for the current session). Reseeded synchronously in the render
+  // body (not an effect) whenever `architectureId` changes, so the very first `initialNodes`
+  // compute for a newly-opened Architecture already reflects its stored layout.
+  const manualSizeRef = useRef<Map<string, CollectionLayoutOverride>>(new Map());
+  const lastArchitectureIdRef = useRef<string | null>(null);
+  if (lastArchitectureIdRef.current !== architectureId) {
+    lastArchitectureIdRef.current = architectureId;
+    manualSizeRef.current = new Map(Object.entries(readDiagramLayout(architectureId)));
+  }
+  // Shared by both the resize control (which reports width/height/x/y together) and
+  // `onNodeDragStop` below (which reports a move — see there for how it fills in width/height
+  // from the node's own current size rather than guessing).
+  const onManualResize = useCallback(
+    (id: string, width: number, height: number, x: number, y: number) => {
+      const layout: CollectionLayoutOverride = { width, height, x, y };
+      manualSizeRef.current.set(id, layout);
+      writeCollectionLayout(architectureId, id, layout);
+    },
+    [architectureId],
+  );
+
+  const selectedServiceId =
+    diagramSelection?.kind === "service" ? diagramSelection.id : undefined;
 
   const initialNodes: Node[] = useMemo(() => {
     const topLevel = collections.filter((c) => !c.parent_collection_id);
@@ -329,17 +435,28 @@ export function ArchitectureDiagramPanel({
       const manualSize = manualSizeRef.current.get(c.id);
       const finalWidth = manualSize?.width ?? width;
       const finalHeight = manualSize ? Math.max(manualSize.height, height) : height;
+      // 009-ui-fixes-next-iteration, US7, FR-024: a stored position overrides the computed
+      // grid slot — only meaningful for top-level Collections (nested children are always
+      // auto-stacked within their parent via `childYOffsets` below, unrelated to this).
+      // 009-ui-fixes-next-iteration, US7, FR-023: grid spacing increased from 008's 260/220.
+      const finalX = manualSize?.x ?? (i % 4) * 300;
+      const finalY = manualSize?.y ?? Math.floor(i / 4) * 260;
       nodes.push({
         id: c.id,
         type: c.type === "vpc" ? "vpc" : "applicationComponent",
-        position: { x: (i % 4) * 260, y: Math.floor(i / 4) * 220 },
+        position: { x: finalX, y: finalY },
         data: {
-          label: `${c.name} (${c.type})`,
+          // 009-ui-fixes-next-iteration, US7, FR-017: no longer appends "(${c.type})" — the
+          // collection type is redundant visual clutter, per spec.
+          label: c.name,
           skuSelections: c.sku_selections,
           minHeight: height,
+          isSelected: diagramSelection?.kind === "collection" && diagramSelection.id === c.id,
+          selectedServiceId,
           onMeasuredHeight: (h: number) => reportHeight(c.id, h),
           onSelectService: (skuSelectionId: string) => onSelectService(skuSelectionId, c.id),
-          onManualResize: (w: number, h: number) => onManualResize(c.id, w, h),
+          onManualResize: (w: number, h: number, x: number, y: number) =>
+            onManualResize(c.id, w, h, x, y),
         },
         style: { width: finalWidth, height: finalHeight },
       });
@@ -358,39 +475,60 @@ export function ArchitectureDiagramPanel({
           parentId: c.id,
           position: { x: 20, y: offsets[child.id] },
           data: {
-            label: `${child.name} (${child.type})`,
+            label: child.name,
             skuSelections: child.sku_selections,
             minHeight: childHeight,
+            isSelected:
+              diagramSelection?.kind === "collection" && diagramSelection.id === child.id,
+            selectedServiceId,
             onMeasuredHeight: (h: number) => reportHeight(child.id, h),
             onSelectService: (skuSelectionId: string) =>
               onSelectService(skuSelectionId, child.id),
-            onManualResize: (w: number, h: number) => onManualResize(child.id, w, h),
+            onManualResize: (w: number, h: number, x: number, y: number) =>
+              onManualResize(child.id, w, h, x, y),
           },
           style: { width: childFinalWidth, height: childFinalHeight },
         });
       });
     });
     return nodes;
-  }, [collections, ownHeights, reportHeight, onSelectService, onManualResize]);
+  }, [
+    collections,
+    ownHeights,
+    reportHeight,
+    onSelectService,
+    onManualResize,
+    diagramSelection,
+    selectedServiceId,
+  ]);
 
   // 009-ui-fixes-next-iteration, US4, FR-010: multiple Connectors between the same pair of
   // Collections would otherwise render exactly on top of each other (React Flow's default for
   // edges sharing a source/target) — offset each one's bezier curvature by its index within its
   // own pair group so they render as distinct, independently clickable paths.
   const initialEdges: Edge[] = useMemo(() => {
-    const rawEdges = connectors.map((conn) => ({
-      id: conn.id,
-      source: conn.from_collection_id,
-      target: conn.to_collection_id,
-      label: conn.sku_selection ? conn.sku_selection.sku : undefined,
-    }));
+    const rawEdges = connectors.map((conn) => {
+      const isSelected = diagramSelection?.kind === "connector" && diagramSelection.id === conn.id;
+      return {
+        id: conn.id,
+        source: conn.from_collection_id,
+        target: conn.to_collection_id,
+        // 009-ui-fixes-next-iteration, US7, FR-022/FR-025: three-step-reduced font, underlined
+        // when this Connector is the current selection.
+        label: conn.sku_selection ? (
+          <span className={`text-4xs ${isSelected ? "underline" : ""}`}>
+            {conn.sku_selection.sku}
+          </span>
+        ) : undefined,
+      };
+    });
     const offsets = edgeOffsetIndex(rawEdges);
     return rawEdges.map((edge) => ({
       ...edge,
       type: "offset",
       data: { offsetIndex: offsets[edge.id] ?? 0 },
     }));
-  }, [connectors]);
+  }, [connectors, diagramSelection]);
 
   const [nodes, setNodes, rawOnNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, rawOnEdgesChange] = useEdgesState(initialEdges);
@@ -422,7 +560,22 @@ export function ArchitectureDiagramPanel({
 
   const onNodeDragStop = (_event: MouseEvent | TouchEvent, node: Node) => {
     const dragged = collections.find((c) => c.id === node.id);
-    if (!dragged || dragged.type !== "application_component") return;
+    if (!dragged) return;
+
+    // 009-ui-fixes-next-iteration, US7, FR-024: persist the new position for a top-level
+    // Collection (both types — VPC and Application Component) — nested children stay
+    // auto-stacked within their parent (`childYOffsets` above), so their position isn't a
+    // meaningful, independently-persistable thing to drag. Width/height come from whatever
+    // this node's current size already is (an unrelated prior resize, or its computed
+    // default) — a plain move never changes size, so there's nothing new to measure here.
+    if (!dragged.parent_collection_id) {
+      const width = node.width ?? node.measured?.width ?? manualSizeRef.current.get(node.id)?.width ?? 0;
+      const height =
+        node.height ?? node.measured?.height ?? manualSizeRef.current.get(node.id)?.height ?? 0;
+      onManualResize(node.id, width, height, node.position.x, node.position.y);
+    }
+
+    if (dragged.type !== "application_component") return;
 
     const intersectingVpcIds = getIntersectingNodes(node)
       .filter((n) => collections.find((c) => c.id === n.id)?.type === "vpc")

@@ -74,7 +74,7 @@ export function ProviderArchitecturePanel({
       style={{ width: expanded ? width : 56 }}
     >
       <div className={`flex items-center ${expanded ? "justify-between" : "justify-center"}`}>
-        {expanded && <h2 className="text-xs font-semibold">Cloud Pricing</h2>}
+        {expanded && <h2 className="text-2xs font-semibold">Cloud Pricing</h2>}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -94,7 +94,7 @@ export function ProviderArchitecturePanel({
 
       <section aria-label="Cloud providers" className="flex flex-col gap-1">
         {expanded && (
-          <h3 className="px-1 text-xs font-medium text-muted-foreground">Providers</h3>
+          <h3 className="px-1 text-2xs font-medium text-muted-foreground">Providers</h3>
         )}
         <div className={`flex flex-col gap-1.5`}>
           {providers.map((p) =>
@@ -143,17 +143,17 @@ export function ProviderArchitecturePanel({
 
       <section aria-label="Architectures" className="flex min-h-0 flex-1 flex-col gap-1">
         {expanded && (
-          <h3 className="px-1 text-xs font-medium text-muted-foreground">
+          <h3 className="px-1 text-2xs font-medium text-muted-foreground">
             {selectedProvider.toUpperCase()} Architectures
           </h3>
         )}
 
-        {architecturesLoading && expanded && <p className="px-1 text-xs">Loading…</p>}
+        {architecturesLoading && expanded && <p className="px-1 text-2xs">Loading…</p>}
         {architecturesError && expanded && (
           <ErrorMessage message={architecturesError} onRetry={onRetryArchitectures} />
         )}
         {!architecturesError && architectures.length === 0 && expanded && (
-          <p className="px-1 text-xs text-muted-foreground">No Architectures yet.</p>
+          <p className="px-1 text-2xs text-muted-foreground">No Architectures yet.</p>
         )}
 
         <ScrollArea className="min-h-0 flex-1">
@@ -209,7 +209,7 @@ export function ProviderArchitecturePanel({
             }}
           >
             <input
-              className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs"
+              className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-2xs"
               value={newArchitectureName}
               onChange={(e) => onNewArchitectureNameChange(e.target.value)}
               placeholder="New Architecture name"

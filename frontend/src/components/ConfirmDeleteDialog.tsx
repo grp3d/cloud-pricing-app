@@ -19,7 +19,7 @@ export function ConfirmDeleteDialog({ itemLabel, onConfirm, onCancel }: Props) {
       className="fixed inset-0 flex items-center justify-center bg-black/40"
     >
       <div className="min-w-70 rounded-lg border border-border bg-card p-6 shadow-lg">
-        <p className="text-sm">
+        <p className="text-xs">
           Delete <strong>{itemLabel}</strong>? This can&apos;t be undone from the UI.
         </p>
         <div className="mt-4 flex justify-end gap-2">
