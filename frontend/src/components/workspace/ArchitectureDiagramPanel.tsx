@@ -1,6 +1,7 @@
 import "@xyflow/react/dist/style.css";
 
 import {
+  BaseEdge,
   Background,
   Controls,
   Handle,
@@ -8,10 +9,12 @@ import {
   Position,
   ReactFlow,
   addEdge,
+  getBezierPath,
   useOnSelectionChange,
   useReactFlow,
   type Connection,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
   useEdgesState,
@@ -28,6 +31,7 @@ import {
   computeMeasuredHeight,
 } from "../../pages/nodeLayout";
 import { summarizeAttributes } from "../../lib/skuDetail";
+import { edgeOffsetIndex } from "../../lib/edgeOffset";
 
 /** Shared service-list rendering for both node types (004, FR-015). Each listed service is now
  * independently clickable (007-ui-overhaul-shadcn, FR-014) — `stopPropagation` keeps that click
@@ -175,6 +179,66 @@ const nodeTypes = {
   vpc: VpcNode,
 };
 
+/** Custom edge renderer for parallel Connectors (009-ui-fixes-next-iteration, US4, FR-010,
+ * research.md §4). The first edge in a source/target pair group (`offsetIndex` 0) renders as
+ * React Flow's normal bezier path, unchanged. Every subsequent one is displaced perpendicular
+ * to the straight line between the two endpoints — this works regardless of node orientation
+ * (horizontal, vertical, diagonal), unlike `pathOptions.curvature` (tried first, rejected: for
+ * `Position.Left`/`Position.Right` handles on horizontally-aligned nodes — this diagram's most
+ * common layout — curvature only extends the control points horizontally, producing an
+ * identical-looking path for every offset; confirmed live by inspecting the rendered SVG `d`
+ * attributes, which were byte-for-byte identical across differently-curved edges). */
+function OffsetEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  markerEnd,
+  style,
+  label,
+  data,
+}: EdgeProps) {
+  const offsetIndex = (data?.offsetIndex as number | undefined) ?? 0;
+
+  if (offsetIndex === 0) {
+    const [path, labelX, labelY] = getBezierPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+    });
+    return (
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} label={label} labelX={labelX} labelY={labelY} />
+    );
+  }
+
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const length = Math.hypot(dx, dy) || 1;
+  // Unit normal to the source->target line, so the offset is perpendicular regardless of the
+  // line's own angle.
+  const nx = -dy / length;
+  const ny = dx / length;
+  const direction = offsetIndex % 2 === 1 ? 1 : -1;
+  const magnitude = 24 * Math.ceil(offsetIndex / 2) * direction;
+  const midX = (sourceX + targetX) / 2 + nx * magnitude;
+  const midY = (sourceY + targetY) / 2 + ny * magnitude;
+  const path = `M${sourceX},${sourceY} Q${midX},${midY} ${targetX},${targetY}`;
+
+  return (
+    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} label={label} labelX={midX} labelY={midY} />
+  );
+}
+
+const edgeTypes = {
+  offset: OffsetEdge,
+};
+
 export interface ArchitectureDiagramPanelProps {
   collections: Collection[];
   connectors: DataConnector[];
@@ -309,16 +373,24 @@ export function ArchitectureDiagramPanel({
     return nodes;
   }, [collections, ownHeights, reportHeight, onSelectService, onManualResize]);
 
-  const initialEdges: Edge[] = useMemo(
-    () =>
-      connectors.map((conn) => ({
-        id: conn.id,
-        source: conn.from_collection_id,
-        target: conn.to_collection_id,
-        label: conn.sku_selection ? conn.sku_selection.sku : undefined,
-      })),
-    [connectors],
-  );
+  // 009-ui-fixes-next-iteration, US4, FR-010: multiple Connectors between the same pair of
+  // Collections would otherwise render exactly on top of each other (React Flow's default for
+  // edges sharing a source/target) — offset each one's bezier curvature by its index within its
+  // own pair group so they render as distinct, independently clickable paths.
+  const initialEdges: Edge[] = useMemo(() => {
+    const rawEdges = connectors.map((conn) => ({
+      id: conn.id,
+      source: conn.from_collection_id,
+      target: conn.to_collection_id,
+      label: conn.sku_selection ? conn.sku_selection.sku : undefined,
+    }));
+    const offsets = edgeOffsetIndex(rawEdges);
+    return rawEdges.map((edge) => ({
+      ...edge,
+      type: "offset",
+      data: { offsetIndex: offsets[edge.id] ?? 0 },
+    }));
+  }, [connectors]);
 
   const [nodes, setNodes, rawOnNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, rawOnEdgesChange] = useEdgesState(initialEdges);
@@ -415,6 +487,7 @@ export function ArchitectureDiagramPanel({
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         attributionPosition="bottom-left"
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}

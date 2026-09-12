@@ -239,34 +239,54 @@ multiple Connectors between the same Collections render as distinct edges.
 
 ### Backend (test-first, Constitution Principle V)
 
-- [ ] T011 [P] [US4] Test-first: extend `backend/tests/integration/test_us2_connectors.py`
+- [X] T011 [P] [US4] Test-first: extend `backend/tests/integration/test_us2_connectors.py`
       with a case asserting `POST /connectors/{connector_id}/sku-selection` returns `409` with
       a clear `detail` message when the Connector already has a `SKUSelection`, and that the
       existing selection is unchanged afterward (contracts/api.md §1). Confirm it fails against
       the current replace-on-conflict behavior before proceeding.
-- [ ] T012 [US4] Implement the `409`-on-conflict behavior in
+- [X] T012 [US4] Implement the `409`-on-conflict behavior in
       `backend/src/api/connectors.py::attach_connector_sku`, replacing the existing
       delete-then-insert logic. Depends on T011.
+      **Done**: also updated `backend/tests/contract/test_connector_sku_selection.py`'s
+      `test_reattaching_sku_replaces_the_previous_one` (renamed to
+      `test_reattaching_sku_is_refused_not_replaced`), which had explicitly asserted the old
+      replace behavior and now correctly failed after the fix — a necessary consequence of the
+      intentional behavior change, not new test-first work. Full backend suite: 156/156 pass.
 
 ### Frontend
 
-- [ ] T013 [P] [US4] Test-first: add `frontend/tests/unit/edgeOffset.test.ts` for the new
+- [X] T013 [P] [US4] Test-first: add `frontend/tests/unit/edgeOffset.test.ts` for the new
       `edgeOffsetIndex()` helper (data-model.md) — asserts the first edge in a
       source/target-pair group gets offset `0`, subsequent edges in the same (order-independent)
       pair get increasing offsets, and edges with distinct pairs are unaffected by each other.
       Confirm it fails (module doesn't exist yet) before proceeding.
-- [ ] T014 [US4] Implement `edgeOffsetIndex()` in `frontend/src/lib/edgeOffset.ts` per
+- [X] T014 [US4] Implement `edgeOffsetIndex()` in `frontend/src/lib/edgeOffset.ts` per
       data-model.md. Depends on T013.
-- [ ] T015 [US4] Wire `edgeOffsetIndex()` into
+- [X] T015 [US4] Wire `edgeOffsetIndex()` into
       `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`'s `initialEdges`
       construction, applying a perpendicular curve offset per edge's computed index so parallel
       Connectors between the same Collection pair render as visually distinct, independently
       clickable paths (FR-010). Depends on T014.
-- [ ] T016 [US4] Live-verify via `quickstart.md` US4 scenario: confirm a second-Service attempt
+      **Correction found live**: `pathOptions.curvature` (the originally-planned mechanism,
+      per research.md §4) does NOT work for this diagram's common horizontally-aligned layout —
+      confirmed by inspecting the rendered SVG `d` attributes of two differently-curved edges,
+      which were byte-for-byte identical. For `Position.Left`/`Position.Right` handles,
+      curvature only extends bezier control points horizontally, producing no visual
+      divergence when source/target share the same Y. Replaced with a custom `OffsetEdge`
+      component (`edgeTypes`) that displaces the path perpendicular to the straight
+      source→target line by the edge's `offsetIndex` — verified live to produce genuinely
+      distinct, visibly separated paths regardless of node orientation.
+- [X] T016 [US4] Live-verify via `quickstart.md` US4 scenario: confirm a second-Service attempt
       is refused with the `409`'s message rendered via the existing `ErrorMessage`/
       `skuActionError` path in `frontend/src/components/workspace/ServiceConfigPanel.tsx`
       (research.md §4 — no new frontend error-handling code expected here); confirm two
       Connectors between the same Collections render distinctly. Depends on T012, T015.
+      **Verified**: attempting a second Service on an occupied Connector shows "This Connector
+      already has a Service. Create a new Connector to add another." via the existing
+      `ErrorMessage` component (red, with Dismiss), original selection untouched. Two
+      Connectors between the same pair render as visibly distinct curved/straight paths,
+      confirmed both visually and via the underlying SVG path data. Full frontend suite:
+      70/70 pass; `tsc -b` clean.
 
 **Checkpoint**: Connector/Service conflicts are refused with a clear message; multiple parallel
 Connectors are visually distinguishable.

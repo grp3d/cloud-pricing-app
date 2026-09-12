@@ -67,17 +67,20 @@ async def create_connector(
 async def attach_connector_sku(
     connector_id: uuid.UUID, body: SKUSelectionCreate, session: DbSession, user: CurrentUser
 ) -> SKUSelectionOut:
-    """Attach (or replace) the single AWS SKU on a Data Connector (FR-009)."""
+    """Attach the single AWS SKU on a Data Connector (FR-009).
+
+    009-ui-fixes-next-iteration, US4, FR-008/contracts/api.md §1: refuses (409) when the
+    Connector already has a SKUSelection, rather than silently deleting it and inserting the
+    new one — the prior "attach (or replace)" behavior was the actual bug behind "add a second
+    service, only one shows up" (research.md §4): the second add silently replaced the first.
+    """
     connector = await get_owned_connector(connector_id, session, user)
 
-    existing = (
-        await session.get(SKUSelection, connector.sku_selection.id)
-        if connector.sku_selection
-        else None
-    )
-    if existing is not None:
-        await session.delete(existing)
-        await session.flush()
+    if connector.sku_selection is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="This Connector already has a Service. Create a new Connector to add another.",
+        )
 
     selection = SKUSelection(
         connector_id=connector.id,

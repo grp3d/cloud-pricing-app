@@ -52,7 +52,10 @@ async def test_attach_sku_to_connector(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_reattaching_sku_replaces_the_previous_one(client, auth_headers):
+async def test_reattaching_sku_is_refused_not_replaced(client, auth_headers):
+    """009-ui-fixes-next-iteration, US4, FR-008: superseded 008's "replace" behavior — a second
+    attach on an already-occupied Connector is now refused (409), and the original selection is
+    left unchanged, rather than silently replaced. See contracts/api.md §1."""
     _arch_id, conn_id = await _create_connector(client, auth_headers)
     payload = {
         "service_code": KNOWN_SERVICE_CODE,
@@ -69,9 +72,15 @@ async def test_reattaching_sku_replaces_the_previous_one(client, auth_headers):
         json={**payload, "usage_quantity": "200"},
         headers=auth_headers,
     )
-    assert second.status_code == 201
-    assert second.json()["id"] != first.json()["id"]
-    assert second.json()["usage_quantity"] == "200.0000"
+    assert second.status_code == 409
+    assert "detail" in second.json()
+
+    # The original selection is untouched.
+    detail = await client.get(f"/api/v1/architectures/{_arch_id}", headers=auth_headers)
+    connectors = detail.json()["connectors"]
+    assert len(connectors) == 1
+    assert connectors[0]["sku_selection"]["id"] == first.json()["id"]
+    assert connectors[0]["sku_selection"]["usage_quantity"] == "100.0000"
 
 
 @pytest.mark.asyncio
