@@ -439,10 +439,19 @@ user's manual size/position adjustments survive a reload.
 
 **Independent Test**: `quickstart.md` US8 scenario.
 
-- [ ] T032 [US8] Add the shadcn `Dialog` primitive at `frontend/src/components/ui/dialog.tsx`
+- [X] T032 [US8] Add the shadcn `Dialog` primitive at `frontend/src/components/ui/dialog.tsx`
       (research.md §8 — a copied-in source file per this project's existing shadcn convention,
       alongside `select.tsx`/`button.tsx`; no new npm dependency).
-- [ ] T033 [US8] Build the "Add Connector" dialog in
+      **Findings**: `npx shadcn@latest add dialog` hung on an interactive "overwrite button.tsx?"
+      prompt (this environment can't answer interactive prompts); killed it and confirmed via
+      `git status` that nothing had been written. Investigated instead of retrying: the
+      project's unified `radix-ui` package (already a dependency, used by `select.tsx`/
+      `tooltip.tsx`) already re-exports `Dialog` — no new npm dependency was ever needed. Hand-
+      wrote `dialog.tsx` following the exact structure/conventions of `tooltip.tsx`/`select.tsx`
+      (`data-slot` attributes, `cn` from `"cn"`, `Dialog`/`DialogTrigger`/`DialogPortal`/
+      `DialogClose`/`DialogOverlay`/`DialogContent`/`DialogHeader`/`DialogFooter`/`DialogTitle`/
+      `DialogDescription`).
+- [X] T033 [US8] Build the "Add Connector" dialog in
       `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx` (or a small sibling
       component it renders): "From Collection"/"To Collection" `<Select>` dropdowns (reusing
       the existing `components/ui/select.tsx`) populated from the `collections` prop already
@@ -452,10 +461,36 @@ user's manual size/position adjustments survive a reload.
       on confirm, call the existing `onCreateConnector(from, to)` prop verbatim (the same
       mutation `WorkspacePage.tsx`'s pre-existing `handleConnect()` already uses). Depends on
       T032.
-- [ ] T034 [US8] Add the "Add Connector" button to the diagram panel's UI, opening the new
+      **Done**: new `AddConnectorDialog` component; `canConfirm = Boolean(from) && Boolean(to)
+      && from !== to`; both dropdowns always list every Collection (FR-026a is enforced by
+      disabling confirm + an inline "From and To must be different Collections." message, not
+      by filtering the To options) — live-verified below.
+- [X] T034 [US8] Add the "Add Connector" button to the diagram panel's UI, opening the new
       dialog with no pre-selection required (FR-026). Depends on T033.
-- [ ] T035 [US8] Live-verify via `quickstart.md` US8 scenario, including confirming the
+      **Done**: rendered as a `<Panel position="top-right">` inside `<ReactFlow>`, alongside
+      `<Controls />`.
+- [X] T035 [US8] Live-verify via `quickstart.md` US8 scenario, including confirming the
       pre-existing select-two-and-connect flow still works unchanged. Depends on T034.
+      **Findings** (claude-in-chrome against a fresh "009 US8 Add Connector Test" Architecture
+      with two Application Components, AC-X/AC-Y):
+      - Dialog opens via the button with both dropdowns unset and Confirm disabled.
+      - Selecting AC-X (From) / AC-Y (To) enables Confirm; confirming created a Connector
+        between them, visible on the diagram and persisted (re-fit-view showed the edge).
+      - Re-opening the dialog and picking AC-X for both From and To disabled Confirm and
+        showed "From and To must be different Collections." (FR-026a).
+      - The pre-existing select-two-nodes-then-click-"Connect" flow (Architecture Editor
+        panel, column 2) was **not** re-verified live via automation this session — this
+        session's browser-automation tool sends synthetic Shift/Cmd-click and drag-select
+        events that React Flow's own native multi-select does not appear to pick up
+        (`selectedNodeIds` stayed at length 1 across several attempts), which reads as an
+        automation/synthetic-event limitation of the tool rather than an app regression: this
+        session made no change to `onNodeClick`/`safeOnNodeClick`
+        (`git diff d327565 -- .../ArchitectureDiagramPanel.tsx` shows zero diff on those
+        lines since the 008 commit), and `canConnect`/`connectorSelection.ts` is untouched,
+        pre-existing logic from feature 004 with its own passing unit tests
+        (`connectorSelection.test.ts`). Recommend a quick manual (non-automated) click-through
+        of this one flow before shipping, since it could not be positively confirmed live.
+      - Cleaned up: deleted the "009 US8 Add Connector Test" Architecture from the UI.
 
 **Checkpoint**: A Connector can be created via the new dialog, with the same-Collection guard
 enforced, without disturbing the existing connect flow.

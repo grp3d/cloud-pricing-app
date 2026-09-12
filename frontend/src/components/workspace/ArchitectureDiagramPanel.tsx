@@ -6,6 +6,7 @@ import {
   Controls,
   Handle,
   NodeResizeControl,
+  Panel,
   Position,
   ReactFlow,
   addEdge,
@@ -20,7 +21,7 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type Collection, type DataConnector } from "../../api/client";
 import { useMeasuredHeight } from "../../hooks/useMeasuredHeight";
@@ -37,6 +38,21 @@ import {
   writeCollectionLayout,
   type CollectionLayoutOverride,
 } from "../../lib/diagramLayout";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 /** Shared service-list rendering for both node types (004, FR-015). Each listed service is now
  * independently clickable (007-ui-overhaul-shadcn, FR-014) — `stopPropagation` keeps that click
@@ -311,6 +327,105 @@ function OffsetEdge({
 const edgeTypes = {
   offset: OffsetEdge,
 };
+
+/** 009-ui-fixes-next-iteration, US8, FR-026/026a: lets the user create a Connector via two
+ * "From Collection"/"To Collection" dropdowns instead of first pre-selecting two Collections
+ * on the canvas — the same `onCreateConnector` mutation the existing select-two-and-connect
+ * flow already uses (research.md §8), so this is purely a second, more discoverable entry
+ * point into it, not a new backend interaction. */
+function AddConnectorDialog({
+  collections,
+  onCreateConnector,
+}: {
+  collections: Collection[];
+  onCreateConnector: (from: string, to: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [from, setFrom] = useState<string | undefined>(undefined);
+  const [to, setTo] = useState<string | undefined>(undefined);
+
+  // FR-026a: the same Collection can't be chosen in both dropdowns.
+  const canConfirm = Boolean(from) && Boolean(to) && from !== to;
+
+  function reset() {
+    setFrom(undefined);
+    setTo(undefined);
+  }
+
+  function handleConfirm() {
+    if (!canConfirm || !from || !to) return;
+    onCreateConnector(from, to);
+    setOpen(false);
+    reset();
+  }
+
+  return (
+    <Panel position="top-right">
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) reset();
+        }}
+      >
+        <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
+          Add Connector
+        </Button>
+        <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Connector</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium" htmlFor="add-connector-from">
+              From Collection
+            </label>
+            <Select value={from} onValueChange={setFrom}>
+              <SelectTrigger id="add-connector-from" className="w-full">
+                <SelectValue placeholder="Select a Collection" />
+              </SelectTrigger>
+              <SelectContent>
+                {collections.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium" htmlFor="add-connector-to">
+              To Collection
+            </label>
+            <Select value={to} onValueChange={setTo}>
+              <SelectTrigger id="add-connector-to" className="w-full">
+                <SelectValue placeholder="Select a Collection" />
+              </SelectTrigger>
+              <SelectContent>
+                {collections.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {from && to && from === to && (
+            <p className="text-xs text-destructive">
+              From and To must be different Collections.
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" onClick={handleConfirm} disabled={!canConfirm}>
+            Add Connector
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+      </Dialog>
+    </Panel>
+  );
+}
 
 export interface ArchitectureDiagramPanelProps {
   /** 009-ui-fixes-next-iteration, US7, FR-024: scopes the new diagram-layout persistence to
@@ -652,6 +767,7 @@ export function ArchitectureDiagramPanel({
       >
         <Background />
         <Controls />
+        <AddConnectorDialog collections={collections} onCreateConnector={onCreateConnector} />
       </ReactFlow>
     </div>
   );
