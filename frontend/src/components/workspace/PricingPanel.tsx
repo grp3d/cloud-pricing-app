@@ -8,10 +8,16 @@ import { ErrorMessage } from "../ErrorMessage";
 /** Round a decimal string (as every price in `CalculationResult` is serialized) to exactly
  * 2 decimal places for display (FR-014) — display-only; the underlying Decimal value and
  * every calculation stay full-precision (spec Assumptions). Falls back to the raw string
- * for anything that doesn't parse as a finite number, rather than showing "NaN". */
+ * for anything that doesn't parse as a finite number, rather than showing "NaN".
+ *
+ * 009-ui-fixes-next-iteration, US6, FR-014: also groups with comma thousand separators
+ * (`toLocaleString`, native — no new dependency) — applied at every call site (total, Price
+ * Change, and the per-SKU breakdown loop below) since all three share this one function. */
 function formatPrice(value: string): string {
   const n = Number(value);
-  return Number.isFinite(n) ? n.toFixed(2) : value;
+  return Number.isFinite(n)
+    ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : value;
 }
 
 export interface PricingPanelProps {
@@ -83,10 +89,6 @@ export function PricingPanel({
 
           {priceChange !== null && <PriceChangeIndicator amount={priceChange} />}
 
-          <p className="text-xs text-muted-foreground">
-            For {calculation.duration.replace("_", " ")}, priced from snapshot{" "}
-            {calculation.snapshot_date}.
-          </p>
           {calculation.warnings.map((w) => (
             <p
               key={w.code}
@@ -114,6 +116,13 @@ export function PricingPanel({
           )}
 
           <PricePerSkuSection calculation={calculation} />
+
+          {/* 009-ui-fixes-next-iteration, US6, FR-015/016: replaces the removed
+              "For {duration}, priced from snapshot {date}." sentence — same
+              `calculation.snapshot_date` value, at the bottom of the column. */}
+          <p className="text-xs text-muted-foreground">
+            Data Timestamp: {calculation.snapshot_date}
+          </p>
         </section>
       )}
     </aside>

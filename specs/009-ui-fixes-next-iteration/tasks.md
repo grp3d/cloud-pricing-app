@@ -324,17 +324,20 @@ a "Data Timestamp" line.
 
 **Independent Test**: `quickstart.md` US6 scenario.
 
-- [ ] T019 [US6] Add thousand-separator grouping to `formatPrice()` in
+- [X] T019 [US6] Add thousand-separator grouping to `formatPrice()` in
       `frontend/src/components/workspace/PricingPanel.tsx` (e.g.
       `Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })`),
       reused at all three existing call sites (total, Price Change, per-SKU breakdown) (FR-014).
-- [ ] T020 [US6] In the same file: remove the
+- [X] T020 [US6] In the same file: remove the
       `"For {duration}, priced from snapshot {date}"` paragraph; add a
       `"Data Timestamp: {date}"` line at the bottom of the column, reading the same
       `calculation.snapshot_date` field (FR-015/016).
-- [ ] T021 [US6] Live-verify via `quickstart.md` US6 scenario (a total in the thousands or
+- [X] T021 [US6] Live-verify via `quickstart.md` US6 scenario (a total in the thousands or
       more; confirm the old sentence is gone and the new line is present with the correct
       date).
+      **Verified**: "Total: 105,433.17 USD" and per-SKU line both show thousand separators;
+      the old "For 1 month, priced from snapshot..." sentence is gone; "Data Timestamp:
+      2026-09-11" appears at the bottom of the column.
 
 **Checkpoint**: Pricing values are grouped and the column shows the corrected data-timestamp
 copy.
