@@ -126,6 +126,22 @@ export function CatalogSearchPanel({ onAdd }: Props) {
       {!search.isError && search.data?.results.length === 0 && (
         <p className="shrink-0 text-xs text-muted-foreground">No matching services found.</p>
       )}
+      {/* 009-ui-fixes-next-iteration, US5, FR-011/012/013: "n of m services displayed" —
+          reworded from 008's "(n of m results displayed)" and moved above the results list
+          (a fixed element, not inside the scrolling area below) so it's visible without
+          scrolling. Hidden entirely at zero total matches (FR-013); red only when the page is
+          truncated (n < m, FR-012) — still shown, unstyled, when every match is displayed. */}
+      {search.data && search.data.total > 0 && (
+        <p
+          className={`shrink-0 text-xs ${
+            sortedResults.length < search.data.total
+              ? "text-destructive"
+              : "text-muted-foreground"
+          }`}
+        >
+          {sortedResults.length} of {search.data.total} services displayed
+        </p>
+      )}
 
       <div className="min-h-0 flex-1 overflow-auto">
         <ul className="flex flex-col gap-1">
@@ -141,12 +157,6 @@ export function CatalogSearchPanel({ onAdd }: Props) {
             </li>
           ))}
         </ul>
-
-        {search.data && sortedResults.length < search.data.total && (
-          <p className="pt-1 text-xs text-muted-foreground">
-            ({sortedResults.length} of {search.data.total} results displayed)
-          </p>
-        )}
       </div>
     </div>
   );

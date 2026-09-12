@@ -300,14 +300,18 @@ indicator.
 
 **Independent Test**: `quickstart.md` US5 scenario.
 
-- [ ] T017 [US5] In `frontend/src/components/CatalogSearchPanel.tsx`: reword the existing
+- [X] T017 [US5] In `frontend/src/components/CatalogSearchPanel.tsx`: reword the existing
       indicator from `"({n} of {m} results displayed)"` to `"n of m services displayed"`; move
       it out of the scrolling results `<div>` to directly below the three filter inputs
       (matching 008's FR-022 fixed-filter-row precedent one `<div>` up); apply the red/warning
       style only when `n < m`, continuing to render unstyled when `n === m`; keep it hidden
       entirely when the search's total match count is zero (FR-011/012/013).
-- [ ] T018 [US5] Live-verify via `quickstart.md` US5 scenario (a search with more matches than
+- [X] T018 [US5] Live-verify via `quickstart.md` US5 scenario (a search with more matches than
       shown, a search where all matches are shown, and a zero-match search).
+      **Verified**: broad search → "200 of 120646 services displayed" in red, fixed above the
+      results list; narrowed to an exact match → "129 of 129 services displayed" in muted gray
+      (not red); zero-match search → indicator hidden entirely, only "No matching services
+      found." shown.
 
 **Checkpoint**: The coverage indicator matches FR-011-013 exactly.
 
