@@ -590,15 +590,24 @@ appear, with working region filters.
 
 ## Phase 12: Polish & Cross-Cutting Concerns
 
-- [ ] T044 [P] Run the full backend suite (`cd backend && pytest`) and fix any regressions
+- [X] T044 [P] Run the full backend suite (`cd backend && pytest`) and fix any regressions
       surfaced by this feature's changes.
-- [ ] T045 [P] Run the full frontend suite (`cd frontend && npm test`) and fix any regressions.
-- [ ] T046 Run `cd frontend && npm run check-api-types` end-to-end and confirm it's clean
+      **Done**: 164 passed, 0 regressions.
+- [X] T045 [P] Run the full frontend suite (`cd frontend && npm test`) and fix any regressions.
+      **Done**: 84 passed (14 files), 0 regressions.
+- [X] T046 Run `cd frontend && npm run check-api-types` end-to-end and confirm it's clean
       (Constitution Principle IV) — a final check after both backend contract changes (T012's
       sibling schema stays unchanged; T037's new query params).
-- [ ] T047 Walk `quickstart.md`'s full "Regression check" section end-to-end.
-- [ ] T048 [P] Review every file touched during the live-repro tasks (T001, T008) for stray
+      **Done**: clean (no diff) — `schema.d.ts` was regenerated once already during T040 and
+      is fully in sync.
+- [X] T047 Walk `quickstart.md`'s full "Regression check" section end-to-end.
+      **Done**: it's exactly the three commands above (T044/T045/T046) — all green.
+- [X] T048 [P] Review every file touched during the live-repro tasks (T001, T008) for stray
       `console.log`/debug instrumentation added while investigating, and remove it.
+      **Done**: `git diff d327565 -- frontend/src backend/src` (the full 009 diff) contains
+      zero added `console.log`/`debugger`/`print(` lines. The one `console.error` present in
+      `ArchitectureDiagramPanel.tsx`'s new `safely()` wrapper is intentional, documented,
+      shipped error-handling from T002/T003 (FR-003) — not investigation debris — and is kept.
 
 ---
 
