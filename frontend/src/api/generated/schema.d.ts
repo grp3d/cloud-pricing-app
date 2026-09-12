@@ -241,7 +241,12 @@ export interface paths {
         put?: never;
         /**
          * Attach Connector Sku
-         * @description Attach (or replace) the single AWS SKU on a Data Connector (FR-009).
+         * @description Attach the single AWS SKU on a Data Connector (FR-009).
+         *
+         *     009-ui-fixes-next-iteration, US4, FR-008/contracts/api.md §1: refuses (409) when the
+         *     Connector already has a SKUSelection, rather than silently deleting it and inserting the
+         *     new one — the prior "attach (or replace)" behavior was the actual bug behind "add a second
+         *     service, only one shows up" (research.md §4): the second add silently replaced the first.
          */
         post: operations["attach_connector_sku_api_v1_connectors__connector_id__sku_selection_post"];
         delete?: never;
@@ -657,6 +662,8 @@ export interface operations {
                 service_code?: string | null;
                 product_family?: string | null;
                 q?: string | null;
+                from_region_code?: string | null;
+                to_region_code?: string | null;
                 limit?: number;
                 offset?: number;
             };

@@ -215,6 +215,18 @@ function WorkspacePageInner() {
     return map;
   }, [collections, connectors]);
 
+  // 009-ui-fixes-next-iteration, US9, FR-028: `PricingPanel`'s per-SKU breakdown line only has
+  // `CalculationResult.line_items` (service_code/sku/price — no `attributes`, per contracts/
+  // api.md §2's "response shape unchanged") to work with, so it can't derive the AWSDataTransfer
+  // label itself the way `ArchitectureDiagramPanel`'s `ServiceList` can from its own `Collection`
+  // prop. Re-shaped from the `skuSelectionsById` map already built above for exactly this kind
+  // of cross-referencing.
+  const skuAttributesById = useMemo(() => {
+    const map = new Map<string, Record<string, string>>();
+    for (const [id, { selection }] of skuSelectionsById) map.set(id, selection.attributes);
+    return map;
+  }, [skuSelectionsById]);
+
   // Every SKU Selection's pricing inputs, in `priceChange.ts`'s comparison shape (US5,
   // FR-015/016) — the same flat set `skuSelectionsById` above indexes, just re-shaped and
   // stripped of ids (a Price Change baseline is a value, not a set of live-row references,
@@ -628,6 +640,7 @@ function WorkspacePageInner() {
             onRetry={() => calculate.mutate()}
             width={columnWidths.pricing}
             priceChange={priceChange}
+            skuAttributesById={skuAttributesById}
           />
         </>
       )}

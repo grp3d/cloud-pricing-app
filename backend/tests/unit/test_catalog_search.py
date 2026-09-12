@@ -28,6 +28,11 @@ KNOWN_PRODUCT_FAMILY = "Compute Instance"
 # their own attributes_json as `instancesku`, so a naive fix that widened the match without also
 # covering `p.sku` itself would keep finding the wrong rows.
 KNOWN_SKU = "2AB37QDFJZBGQ5YP"
+# Real AWSDataTransfer rows (009-ui-fixes-next-iteration, US9) used to exercise the new
+# from_region_code/to_region_code filters against the live Parquet data.
+KNOWN_FROM_REGION_CODE = "ap-southeast-2-per-1"
+KNOWN_TO_REGION_CODE = "us-west-2-pdx-1"
+KNOWN_FROM_TO_SKU = "28EK9CZBYC9JU7KW"  # fromRegionCode=us-east-1, toRegionCode=us-west-2-pdx-1
 
 
 def test_service_code_regex_matches_case_insensitively():
@@ -121,3 +126,80 @@ def test_total_matches_independent_count_query():
     _results, _snapshot_date, total = search_catalog(service_code="^AmazonEC2$", limit=1)
 
     assert total == expected_total
+
+
+# 009-ui-fixes-next-iteration, US9, FR-029/contracts/api.md §2: from_region_code/to_region_code
+# — two new optional filters, same case-insensitive RE2 regex convention as every existing
+# filter, AND-combined with each other and with every other active filter.
+
+
+def test_from_region_code_filters_matching_rows():
+    results, _snapshot_date, total = search_catalog(
+        service_code="^AWSDataTransfer$", from_region_code=f"^{KNOWN_FROM_REGION_CODE}$", limit=10
+    )
+    assert total > 0
+    assert all(r["attributes"].get("fromRegionCode") == KNOWN_FROM_REGION_CODE for r in results)
+
+
+def test_to_region_code_filters_matching_rows():
+    results, _snapshot_date, total = search_catalog(
+        service_code="^AWSDataTransfer$", to_region_code=f"^{KNOWN_TO_REGION_CODE}$", limit=10
+    )
+    assert total > 0
+    assert all(r["attributes"].get("toRegionCode") == KNOWN_TO_REGION_CODE for r in results)
+
+
+def test_from_and_to_region_code_and_combine():
+    """Both filters together narrow to only rows matching *both* (AND, not OR) — proven by a
+    known SKU whose from/to pair uniquely identifies it among the broader from-only/to-only
+    result sets above."""
+    results, _snapshot_date, total = search_catalog(
+        service_code="^AWSDataTransfer$",
+        from_region_code="^us-east-1$",
+        to_region_code=f"^{KNOWN_TO_REGION_CODE}$",
+        limit=10,
+    )
+    assert total > 0
+    assert any(r["sku"] == KNOWN_FROM_TO_SKU for r in results)
+    assert all(
+        r["attributes"].get("fromRegionCode") == "us-east-1"
+        and r["attributes"].get("toRegionCode") == KNOWN_TO_REGION_CODE
+        for r in results
+    )
+
+
+def test_region_code_combines_with_existing_text_filter():
+    """AND-combines with a pre-existing filter kind (text), not just with each other."""
+    results, _snapshot_date, total = search_catalog(
+        text="AWSDataTransfer", from_region_code=f"^{KNOWN_FROM_REGION_CODE}$", limit=10
+    )
+    assert total > 0
+    assert all(r["attributes"].get("fromRegionCode") == KNOWN_FROM_REGION_CODE for r in results)
+
+
+def test_from_region_code_alone_satisfies_the_at_least_one_filter_requirement():
+    """Setting only from_region_code (no service_code/product_family/text/to_region_code) must
+    not raise EmptyCatalogFilterError — it counts as a filter in its own right."""
+    results, _snapshot_date, total = search_catalog(
+        from_region_code=f"^{KNOWN_FROM_REGION_CODE}$", limit=5
+    )
+    assert total > 0
+
+
+def test_to_region_code_alone_satisfies_the_at_least_one_filter_requirement():
+    results, _snapshot_date, total = search_catalog(
+        to_region_code=f"^{KNOWN_TO_REGION_CODE}$", limit=5
+    )
+    assert total > 0
+
+
+def test_invalid_from_region_code_pattern_raises_with_field_name():
+    with pytest.raises(InvalidRegexPatternError) as excinfo:
+        search_catalog(from_region_code="(unclosed")
+    assert excinfo.value.field == "from_region_code"
+
+
+def test_invalid_to_region_code_pattern_raises_with_field_name():
+    with pytest.raises(InvalidRegexPatternError) as excinfo:
+        search_catalog(to_region_code="(unclosed")
+    assert excinfo.value.field == "to_region_code"

@@ -33,6 +33,7 @@ import {
 } from "../../pages/nodeLayout";
 import { summarizeAttributes } from "../../lib/skuDetail";
 import { edgeOffsetIndex } from "../../lib/edgeOffset";
+import { awsDataTransferLabel } from "../../lib/awsDataTransfer";
 import {
   readDiagramLayout,
   writeCollectionLayout,
@@ -78,6 +79,10 @@ function ServiceList({
     <ul className="mt-1 list-none pl-0 text-4xs">
       {skuSelections.map((s) => {
         const detail = summarizeAttributes(s.attributes);
+        // 009-ui-fixes-next-iteration, US9, FR-027/028: the derived region-pair label
+        // replaces the raw SKU here for AWSDataTransfer Services; every other Service is
+        // unaffected (FR-030) since this is `null` for them.
+        const dataTransferLabel = awsDataTransferLabel(s.service_code, s.attributes);
         return (
           <li key={s.id}>
             <button
@@ -90,7 +95,7 @@ function ServiceList({
                 onSelectService(s.id);
               }}
             >
-              {s.service_code} / {s.sku}
+              {s.service_code} / {dataTransferLabel ?? s.sku}
               {detail && <> — {detail}</>}
             </button>
           </li>

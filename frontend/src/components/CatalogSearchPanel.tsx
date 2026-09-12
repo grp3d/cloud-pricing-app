@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { type CatalogSKU, InvalidRegexPatternError, api } from "../api/client";
 import { summarizeAttributes } from "../lib/skuDetail";
+import { awsDataTransferLabel } from "../lib/awsDataTransfer";
 import { Button } from "./ui/button";
 import { ErrorMessage } from "./ErrorMessage";
 
@@ -12,10 +13,16 @@ interface Props {
 }
 
 /** The exact text shown for one result (FR-025) — sorting uses this same string so the
- * displayed order always matches what a user reads, not some hidden field. */
+ * displayed order always matches what a user reads, not some hidden field.
+ *
+ * 009-ui-fixes-next-iteration, US9, FR-027/028: for an `AWSDataTransfer` result, the derived
+ * region-pair label replaces `r.summary` (otherwise just its `product_family` again here, with
+ * no `instanceType` to fall back to — indistinguishable from every other AWSDataTransfer row);
+ * every other service is unaffected (FR-030) since the label is `null` for them. */
 function summaryText(r: CatalogSKU): string {
   const details = summarizeAttributes(r.attributes);
-  return `${r.service_name} — ${r.product_family} — ${r.summary}${
+  const summary = awsDataTransferLabel(r.service_code, r.attributes) ?? r.summary;
+  return `${r.service_name} — ${r.product_family} — ${summary}${
     details ? ` — ${details}` : ""
   }${r.unit ? ` (${r.unit})` : ""}`;
 }
@@ -44,13 +51,26 @@ export function CatalogSearchPanel({ onAdd }: Props) {
   const [serviceCode, setServiceCode] = useState("");
   const [productFamily, setProductFamily] = useState("");
   const [text, setText] = useState("");
+  // 009-ui-fixes-next-iteration, US9, FR-029: dedicated region filters, distinct from the
+  // three general fields above, shown only for AWSDataTransfer-relevant searches.
+  const [fromRegionCode, setFromRegionCode] = useState("");
+  const [toRegionCode, setToRegionCode] = useState("");
+  const showRegionFields = /awsdatatransfer/i.test(serviceCode);
 
-  const hasFilter = Boolean(serviceCode || productFamily || text);
+  const hasFilter = Boolean(
+    serviceCode || productFamily || text || fromRegionCode || toRegionCode,
+  );
 
   const search = useQuery({
-    queryKey: ["catalog", serviceCode, productFamily, text],
+    queryKey: ["catalog", serviceCode, productFamily, text, fromRegionCode, toRegionCode],
     queryFn: () =>
-      api.searchCatalog({ service_code: serviceCode, product_family: productFamily, q: text }),
+      api.searchCatalog({
+        service_code: serviceCode,
+        product_family: productFamily,
+        q: text,
+        from_region_code: fromRegionCode,
+        to_region_code: toRegionCode,
+      }),
     enabled: hasFilter,
     retry: false, // an invalid regex pattern won't become valid by retrying the same request
   });
@@ -105,6 +125,34 @@ export function CatalogSearchPanel({ onAdd }: Props) {
             <p className={fieldErrorClassName}>{regexError.message}</p>
           )}
         </div>
+        {/* 009-ui-fixes-next-iteration, US9, FR-029: dedicated region filters, shown only for
+            AWSDataTransfer-relevant searches, distinct from the three general fields above. */}
+        {showRegionFields && (
+          <>
+            <div>
+              <input
+                className={inputClassName}
+                placeholder="From region"
+                value={fromRegionCode}
+                onChange={(e) => setFromRegionCode(e.target.value)}
+              />
+              {regexError?.field === "from_region_code" && (
+                <p className={fieldErrorClassName}>{regexError.message}</p>
+              )}
+            </div>
+            <div>
+              <input
+                className={inputClassName}
+                placeholder="To region"
+                value={toRegionCode}
+                onChange={(e) => setToRegionCode(e.target.value)}
+              />
+              {regexError?.field === "to_region_code" && (
+                <p className={fieldErrorClassName}>{regexError.message}</p>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {!hasFilter && (

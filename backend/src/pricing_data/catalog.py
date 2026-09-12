@@ -81,21 +81,28 @@ def search_catalog(
     service_code: str | None = None,
     product_family: str | None = None,
     text: str | None = None,
+    from_region_code: str | None = None,
+    to_region_code: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict], str, int]:
     """Search the AWS pricing catalog. Returns (rows, snapshot_date_used, total).
 
     Each row: service_code, service_name, product_family, sku, summary, attributes, unit.
-    Each of the three filters is a case-insensitive RE2 regex pattern (research.md §2) — an
-    ordinary literal string (e.g. "AmazonEC2") is itself a valid regex matching the same
-    substring it always did, so existing exact-text searches keep working unchanged. `total`
-    is the true count of every matching row (FR-024), independent of `limit`/`offset`
-    (research.md §3) — never estimated.
+    Each filter is a case-insensitive RE2 regex pattern (research.md §2) — an ordinary literal
+    string (e.g. "AmazonEC2") is itself a valid regex matching the same substring it always
+    did, so existing exact-text searches keep working unchanged. `total` is the true count of
+    every matching row (FR-024), independent of `limit`/`offset` (research.md §3) — never
+    estimated.
+
+    009-ui-fixes-next-iteration, US9, FR-029/contracts/api.md §2: `from_region_code`/
+    `to_region_code` match against `AWSDataTransfer`'s (and only its) `fromRegionCode`/
+    `toRegionCode` attributes — additive to the other three filters, AND-combined the same way.
     """
-    if not any([service_code, product_family, text]):
+    if not any([service_code, product_family, text, from_region_code, to_region_code]):
         raise EmptyCatalogFilterError(
-            "at least one of service_code, product_family, or text is required"
+            "at least one of service_code, product_family, text, from_region_code, or "
+            "to_region_code is required"
         )
 
     snapshot_date = resolve_latest_snapshot_date()
@@ -120,6 +127,16 @@ def search_catalog(
             "OR regexp_matches(p.sku, ?, 'i'))"
         )
         params.extend([text, text, text])
+    if from_region_code:
+        where.append(
+            "regexp_matches(json_extract_string(p.attributes_json, '$.fromRegionCode'), ?, 'i')"
+        )
+        params.append(from_region_code)
+    if to_region_code:
+        where.append(
+            "regexp_matches(json_extract_string(p.attributes_json, '$.toRegionCode'), ?, 'i')"
+        )
+        params.append(to_region_code)
     where_clause = " AND ".join(where)
 
     query = f"""
@@ -155,6 +172,10 @@ def search_catalog(
             _validate_regex_pattern(con, "product_family", product_family)
         if text:
             _validate_regex_pattern(con, "text", text)
+        if from_region_code:
+            _validate_regex_pattern(con, "from_region_code", from_region_code)
+        if to_region_code:
+            _validate_regex_pattern(con, "to_region_code", to_region_code)
 
         product_path = _product_dim_path(snapshot_date)
         service_path = _service_dim_path(snapshot_date)

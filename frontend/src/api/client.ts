@@ -40,12 +40,16 @@ export class PricingDataUnavailableError extends Error {}
 
 /** Raised when a catalog search field's regex pattern is malformed (008-ui-updates-
  * corrections, FR-021, contracts/api.md) — `field` names which of `service_code`/
- * `product_family`/`text` the bad pattern came from, so the caller can show the message
- * inline next to that field rather than as a generic banner. */
+ * `product_family`/`text`/`from_region_code`/`to_region_code` (the latter two added
+ * 009-ui-fixes-next-iteration, US9) the bad pattern came from, so the caller can show the
+ * message inline next to that field rather than as a generic banner. */
 export class InvalidRegexPatternError extends Error {
-  field: "service_code" | "product_family" | "text";
+  field: "service_code" | "product_family" | "text" | "from_region_code" | "to_region_code";
 
-  constructor(message: string, field: "service_code" | "product_family" | "text") {
+  constructor(
+    message: string,
+    field: "service_code" | "product_family" | "text" | "from_region_code" | "to_region_code",
+  ) {
     super(message);
     this.field = field;
   }
@@ -106,7 +110,13 @@ export const api = {
       body: JSON.stringify({ parent_collection_id: parentCollectionId }),
     }),
 
-  searchCatalog: (params: { service_code?: string; product_family?: string; q?: string }) => {
+  searchCatalog: (params: {
+    service_code?: string;
+    product_family?: string;
+    q?: string;
+    from_region_code?: string;
+    to_region_code?: string;
+  }) => {
     // 008-ui-updates-corrections, FR-023: request the backend's own maximum (200, matched
     // exactly — research.md §4) instead of its 50-row default.
     const entries = Object.entries(params).filter(([, v]) => v) as [string, string][];

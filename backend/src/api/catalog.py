@@ -15,6 +15,8 @@ async def search_skus(
     service_code: str | None = None,
     product_family: str | None = None,
     q: str | None = None,
+    from_region_code: str | None = None,
+    to_region_code: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> CatalogSearchResult:
@@ -23,6 +25,8 @@ async def search_skus(
         service_code=service_code,
         product_family=product_family,
         text=q,
+        from_region_code=from_region_code,
+        to_region_code=to_region_code,
         limit=limit,
         offset=offset,
     )

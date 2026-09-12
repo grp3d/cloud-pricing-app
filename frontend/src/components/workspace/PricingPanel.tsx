@@ -1,6 +1,7 @@
 import { AlertTriangle, Calculator, TrendingDown, TrendingUp } from "lucide-react";
 
 import type { CalculationDuration, CalculationResult } from "../../api/client";
+import { awsDataTransferLabel } from "../../lib/awsDataTransfer";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { ErrorMessage } from "../ErrorMessage";
@@ -37,6 +38,11 @@ export interface PricingPanelProps {
    * Calculate must leave whatever was last shown untouched, so this prop simply doesn't
    * change on those calculates rather than the panel re-deriving anything). */
   priceChange: string | null;
+  /** 009-ui-fixes-next-iteration, US9, FR-028: each SKU Selection's `attributes`, by id —
+   * `CalculationResult.line_items` doesn't carry `attributes` itself (contracts/api.md §2:
+   * response shape unchanged), so `WorkspacePage` re-shapes its own `skuSelectionsById` map
+   * for the per-SKU breakdown below to derive the AWSDataTransfer label from. */
+  skuAttributesById: Map<string, Record<string, string>>;
 }
 
 /**
@@ -55,6 +61,7 @@ export function PricingPanel({
   onRetry,
   width,
   priceChange,
+  skuAttributesById,
 }: PricingPanelProps) {
   return (
     <aside
@@ -115,7 +122,7 @@ export function PricingPanel({
             </div>
           )}
 
-          <PricePerSkuSection calculation={calculation} />
+          <PricePerSkuSection calculation={calculation} skuAttributesById={skuAttributesById} />
 
           {/* 009-ui-fixes-next-iteration, US6, FR-015/016: replaces the removed
               "For {duration}, priced from snapshot {date}." sentence — same
@@ -158,7 +165,13 @@ function PriceChangeIndicator({ amount }: { amount: string }) {
 /** FR-017: every priced (non-excluded) SKU together with its own total, sorted highest-first
  * so the biggest cost driver is always at the top (Clarifications) — a view over
  * `CalculationResult.line_items` the backend already returns, no new field needed. */
-function PricePerSkuSection({ calculation }: { calculation: CalculationResult }) {
+function PricePerSkuSection({
+  calculation,
+  skuAttributesById,
+}: {
+  calculation: CalculationResult;
+  skuAttributesById: Map<string, Record<string, string>>;
+}) {
   const priced = calculation.line_items
     .filter((item) => item.priceable && item.price !== null)
     .sort((a, b) => Number(b.price) - Number(a.price));
@@ -171,17 +184,26 @@ function PricePerSkuSection({ calculation }: { calculation: CalculationResult })
       <section aria-label="Price per Sku" className="flex flex-col gap-1.5">
         <h4 className="text-2xs font-semibold">Price per Sku</h4>
         <ul className="flex flex-col gap-1">
-          {priced.map((item) => (
-            <li
-              key={item.sku_selection_id}
-              className="flex items-center justify-between gap-2 text-2xs"
-            >
-              <span className="truncate">
-                {item.service_code} / {item.sku}
-              </span>
-              <span className="shrink-0 tabular-nums">{formatPrice(item.price!)}</span>
-            </li>
-          ))}
+          {priced.map((item) => {
+            // 009-ui-fixes-next-iteration, US9, FR-027/028: the derived region-pair label
+            // replaces the raw SKU here for AWSDataTransfer Services; every other Service is
+            // unaffected (FR-030) since this is `null` for them.
+            const dataTransferLabel = awsDataTransferLabel(
+              item.service_code,
+              skuAttributesById.get(item.sku_selection_id) ?? {},
+            );
+            return (
+              <li
+                key={item.sku_selection_id}
+                className="flex items-center justify-between gap-2 text-2xs"
+              >
+                <span className="truncate">
+                  {item.service_code} / {dataTransferLabel ?? item.sku}
+                </span>
+                <span className="shrink-0 tabular-nums">{formatPrice(item.price!)}</span>
+              </li>
+            );
+          })}
         </ul>
       </section>
     </>

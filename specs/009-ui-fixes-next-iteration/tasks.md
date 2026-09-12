@@ -506,42 +506,82 @@ everywhere they appear, with dedicated region filters in search.
 
 ### Backend (test-first, Constitution Principle V)
 
-- [ ] T036 [P] [US9] Test-first: extend `backend/tests/unit/test_catalog_search.py` with cases
+- [X] T036 [P] [US9] Test-first: extend `backend/tests/unit/test_catalog_search.py` with cases
       for the new `from_region_code`/`to_region_code` filters on `search_catalog()` (contracts/
       api.md §2) — each filters correctly, both AND-combine with existing filters and with each
       other, and either alone satisfies the "at least one filter" requirement. Confirm these
       fail (parameters don't exist yet) before proceeding.
-- [ ] T037 [US9] Implement the two new parameters in
+      **Done**: 8 new tests, using real `AWSDataTransfer` rows verified directly against the
+      live Parquet data (Constitution Principle I) — confirmed all 8 fail with
+      `TypeError: search_catalog() got an unexpected keyword argument` before T037.
+- [X] T037 [US9] Implement the two new parameters in
       `backend/src/pricing_data/catalog.py::search_catalog` (the
       `json_extract_string(p.attributes_json, '$.fromRegionCode'/'$.toRegionCode')` regex
       clauses per contracts/api.md) and thread them through
       `backend/src/api/catalog.py::search_skus`'s query-parameter signature. Depends on T036.
+      **Done**: also added `_validate_regex_pattern` calls for both new fields (matching the
+      three existing filters' malformed-pattern handling) and grew the `EmptyCatalogFilterError`
+      guard's `any([...])` check to include both. All 8 new tests pass; full backend suite
+      (164 tests) passes.
 
 ### Frontend
 
-- [ ] T038 [P] [US9] Test-first: add `frontend/tests/unit/awsDataTransfer.test.ts` for
+- [X] T038 [P] [US9] Test-first: add `frontend/tests/unit/awsDataTransfer.test.ts` for
       `awsDataTransferLabel()` (data-model.md) — derives the label for a well-formed
       `AWSDataTransfer` SKU, returns `null` for a non-`AWSDataTransfer` service code, and
       returns `null` (not a broken partial string) when either region field is absent
       (research.md §9's missing-field edge case). Confirm it fails (module doesn't exist yet)
       before proceeding.
-- [ ] T039 [US9] Implement `awsDataTransferLabel()` in
+      **Done**: 6 tests, including a case for the real data shape found in research.md §9 —
+      a *present but empty-string* `fromRegionCode`/`toRegionCode` (not just an absent key) —
+      confirmed to fail on the missing module before T039.
+- [X] T039 [US9] Implement `awsDataTransferLabel()` in
       `frontend/src/lib/awsDataTransfer.ts` per data-model.md. Depends on T038.
-- [ ] T040 [US9] Add `from_region_code`/`to_region_code` parameters to
+      **Done**: all 6 tests pass.
+- [X] T040 [US9] Add `from_region_code`/`to_region_code` parameters to
       `frontend/src/api/client.ts`'s `searchCatalog()`, then run
       `cd frontend && npm run check-api-types` to confirm the generated types stay in sync
       (Constitution Principle IV). Depends on T037.
-- [ ] T041 [US9] Wire `awsDataTransferLabel()` into `frontend/src/components/CatalogSearchPanel.tsx`'s
+      **Done**: also widened `InvalidRegexPatternError.field`'s type to include the two new
+      field names (it was still `"service_code" | "product_family" | "text"` from 008). Ran
+      `check-api-types` against the already-running local backend — it regenerated
+      `schema.d.ts` with the two new query params (plus one unrelated already-true docstring
+      change from US4 that just hadn't been regenerated yet).
+- [X] T041 [US9] Wire `awsDataTransferLabel()` into `frontend/src/components/CatalogSearchPanel.tsx`'s
       `summaryText()`, `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`'s
       `ServiceList` item text, and `frontend/src/components/workspace/PricingPanel.tsx`'s
       per-SKU breakdown line — each falling back to its existing default label when the helper
       returns `null` (FR-027/028/030). Depends on T039.
-- [ ] T042 [US9] Add conditional "From region"/"To region" input fields to
+      **Findings**: `PricingPanel`'s `CalculationResult.line_items` (service_code/sku/price
+      only — no `attributes`, per contracts/api.md §2's "response shape unchanged") can't derive
+      the label itself the way the other two sites can from data already in hand. Added a new
+      `WorkspacePage.tsx`-computed `skuAttributesById` map (reshaped from the `skuSelectionsById`
+      map T028/US5 already built) and threaded it down as a new `PricingPanel` prop, rather than
+      changing the backend response shape.
+- [X] T042 [US9] Add conditional "From region"/"To region" input fields to
       `frontend/src/components/CatalogSearchPanel.tsx`, shown when the `service_code` filter
       matches `AWSDataTransfer`, wired to the new search parameters (FR-029). Depends on T040.
-- [ ] T043 [US9] Live-verify via `quickstart.md` US9 scenario, including a transfer with a
+      **Done**: `showRegionFields = /awsdatatransfer/i.test(serviceCode)` — case-insensitive,
+      matching every other filter's regex convention.
+- [X] T043 [US9] Live-verify via `quickstart.md` US9 scenario, including a transfer with a
       missing region code (internet/CloudFront destination) falling back correctly, and a
       non-`AWSDataTransfer` service being entirely unaffected. Depends on T041, T042.
+      **Findings** (claude-in-chrome against a fresh "009 US9 DataTransfer Test" Architecture):
+      - Searching `service_code=AWSDataTransfer` shows "From region"/"To region" fields and
+        every result's label as `{fromRegionCode}=>{toRegionCode}` (e.g. "AWS Data Transfer —
+        Data Transfer — ap-southeast-2-per-1=>us-east-1 (GB)"), replacing the otherwise-
+        redundant `product_family`-again `summary`.
+      - Setting "From region" to `^ap-southeast-2-per-1$` narrowed "200 of 1021" down to
+        "8 of 8 services displayed", all showing that exact `fromRegionCode`.
+      - Adding one such Service showed the derived label (not the raw SKU) in both the
+        diagram's `ServiceList` ("AWSDataTransfer / ap-southeast-2-per-1=>us-east-1") and,
+        after Calculate, the Pricing column's "Price per Sku" line.
+      - Searching the known missing-`fromRegionCode` SKU `46CVPCNHA6C2JG7K` showed "AWS Data
+        Transfer — Data Transfer — Data Transfer (GB)" — the plain `product_family` fallback,
+        not a broken `=>us-east-1` partial string.
+      - Switching `service_code` to `AmazonEC2` hid the region fields entirely and showed
+        ordinary EC2 instance-type results, unaffected (FR-030).
+      - Cleaned up: deleted the "009 US9 DataTransfer Test" Architecture from the UI.
 
 **Checkpoint**: AWSDataTransfer services are identifiable by region pair everywhere they
 appear, with working region filters.
