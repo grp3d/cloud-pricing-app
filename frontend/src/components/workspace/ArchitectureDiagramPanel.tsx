@@ -895,10 +895,27 @@ export function ArchitectureDiagramPanel({
       >
         <Background />
         <Controls />
-        {/* Zoom percentage readout, alongside the +/-/fit-view/lock controls — also doubles
-            as the easiest way to visually confirm 1b's persistence (reload and check it
-            reads the same %). */}
-        <Panel position="bottom-right" className="rounded border border-border bg-background px-1.5 py-0.5 text-4xs text-muted-foreground">
+        {/* Zoom percentage readout, directly above the +/-/fit-view/lock controls — also
+            doubles as the easiest way to visually confirm 1b's persistence (reload and
+            check it reads the same %).
+            Found live (user report): `position="bottom-right"` put this in the exact corner
+            the outer panel's own native `resize-y` handle (research.md/008's FR-004) lives
+            in, and being a normal DOM element with `pointer-events: auto` sitting on top of
+            that corner's pixels was enough to swallow the drag gesture the resize grip
+            needs — a real, not just cosmetic, regression. `bottom-left` shares `<Controls>`'s
+            own corner (so it stays clear of the resize handle entirely), stacked directly
+            above its four buttons via an inline `marginBottom` — a `className` alone loses
+            here: React Flow's own `.react-flow__panel.bottom` stylesheet rule (two classes)
+            outranks a single Tailwind utility class by CSS specificity regardless of source
+            order, confirmed live by the computed margin staying React Flow's own ~15px no
+            matter what Tailwind spacing class was tried. `104` is `<Controls>`'s own
+            measured height (four 26px buttons) — inline because it has to win outright, not
+            because it's expected to ever change. */}
+        <Panel
+          position="bottom-left"
+          className="rounded border border-border bg-background px-1.5 py-0.5 text-4xs text-muted-foreground"
+          style={{ marginBottom: 104 + 24 }}
+        >
           {Math.round(currentZoom * 100)}%
         </Panel>
         <AddConnectorDialog collections={collections} onCreateConnector={onCreateConnector} />
