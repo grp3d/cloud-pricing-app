@@ -512,14 +512,34 @@ function WorkspacePageInner() {
   // that Collection's context); underlining that container too would violate FR-025's "no
   // unselected object's name" rule. An in-progress "new" service (not yet an existing
   // SKUSelection) has no diagram object of its own to underline.
-  const diagramSelection: { kind: "collection" | "connector" | "service"; id: string } | null =
-    serviceConfigSelection?.kind === "existing"
-      ? { kind: "service", id: serviceConfigSelection.skuSelectionId }
-      : selectedConnectorId
-        ? { kind: "connector", id: selectedConnectorId }
-        : selectedCollectionId
-          ? { kind: "collection", id: selectedCollectionId }
-          : null;
+  //
+  // Found live (009 follow-up, via user report): this MUST be `useMemo`-stable, not a plain
+  // `const` recomputed fresh on every render. `ArchitectureDiagramPanel`'s `initialNodes`/
+  // `initialEdges` both depend on it, and a `useEffect` there re-applies `initialNodes` into
+  // React Flow's own node state on every one of *their* recomputes — an unmemoized object
+  // literal here made that fire on literally every `WorkspacePage` render (typing in a search
+  // field, an unrelated query refetch, anything), clobbering React Flow's own in-progress
+  // node-dimension measurement far more often than real selection changes warrant. Confirmed
+  // live: attaching a Service to a Connector between two content-less Collections left both
+  // Collection boxes permanently `visibility: hidden` (React Flow's own DOM, `0` for
+  // `.react-flow__edge` count too) — this is plausibly the actual mechanism behind US3/
+  // research.md §3's "diagram goes blank" reports that 9 combined targeted attempts (008 +
+  // this feature's own T001/T008) could never reproduce: it needs enough re-render churn in
+  // a narrow enough window, which this object literal was manufacturing on nearly every
+  // render regardless of cause.
+  const diagramSelection = useMemo<
+    { kind: "collection" | "connector" | "service"; id: string } | null
+  >(
+    () =>
+      serviceConfigSelection?.kind === "existing"
+        ? { kind: "service", id: serviceConfigSelection.skuSelectionId }
+        : selectedConnectorId
+          ? { kind: "connector", id: selectedConnectorId }
+          : selectedCollectionId
+            ? { kind: "collection", id: selectedCollectionId }
+            : null,
+    [serviceConfigSelection, selectedConnectorId, selectedCollectionId],
+  );
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">

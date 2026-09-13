@@ -293,6 +293,7 @@ function OffsetEdge({
   markerEnd,
   style,
   label,
+  labelStyle,
   data,
 }: EdgeProps) {
   const offsetIndex = (data?.offsetIndex as number | undefined) ?? 0;
@@ -307,7 +308,16 @@ function OffsetEdge({
       targetPosition,
     });
     return (
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} label={label} labelX={labelX} labelY={labelY} />
+      <BaseEdge
+        id={id}
+        path={path}
+        markerEnd={markerEnd}
+        style={style}
+        label={label}
+        labelStyle={labelStyle}
+        labelX={labelX}
+        labelY={labelY}
+      />
     );
   }
 
@@ -325,7 +335,16 @@ function OffsetEdge({
   const path = `M${sourceX},${sourceY} Q${midX},${midY} ${targetX},${targetY}`;
 
   return (
-    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} label={label} labelX={midX} labelY={midY} />
+    <BaseEdge
+      id={id}
+      path={path}
+      markerEnd={markerEnd}
+      style={style}
+      label={label}
+      labelStyle={labelStyle}
+      labelX={midX}
+      labelY={midY}
+    />
   );
 }
 
@@ -629,17 +648,36 @@ export function ArchitectureDiagramPanel({
   const initialEdges: Edge[] = useMemo(() => {
     const rawEdges = connectors.map((conn) => {
       const isSelected = diagramSelection?.kind === "connector" && diagramSelection.id === conn.id;
+      // 009-ui-fixes-next-iteration, US9 follow-up: same `awsDataTransferLabel()` derivation
+      // as `ServiceList`/`PricingPanel` — found live (via user report) that this edge label
+      // was the one place FR-028's "everywhere that SKU is shown" wiring missed, since FR-028
+      // only literally named columns 2/4/5 and this is a Connector's own label, not a
+      // Collection's. A Connector-attached AWSDataTransfer Service was reading as "not in the
+      // diagram at all" — technically rendered, but as a bare, unrecognizable raw SKU id at
+      // `text-4xs` on a thin line, easy to mistake for empty/decorative.
+      const dataTransferLabel = conn.sku_selection
+        ? awsDataTransferLabel(conn.sku_selection.service_code, conn.sku_selection.attributes)
+        : null;
       return {
         id: conn.id,
         source: conn.from_collection_id,
         target: conn.to_collection_id,
         // 009-ui-fixes-next-iteration, US7, FR-022/FR-025: three-step-reduced font, underlined
         // when this Connector is the current selection.
-        label: conn.sku_selection ? (
-          <span className={`text-4xs ${isSelected ? "underline" : ""}`}>
-            {conn.sku_selection.sku}
-          </span>
-        ) : undefined,
+        //
+        // Found live (US9 follow-up, same investigation): `BaseEdge`'s `label` renders via
+        // React Flow's own `EdgeText`, which places `label` directly inside an SVG `<text>`
+        // element and measures it with `getBBox()` to decide when to reveal it — nesting an
+        // HTML `<span>` there (the previous approach, for the `text-4xs`/`underline` Tailwind
+        // classes) isn't valid SVG content, so the browser never lays it out: `getBBox()` keeps
+        // returning a zero-width box forever, and `EdgeText` stays permanently
+        // `visibility: hidden` as a result (confirmed live: the label's DOM text content was
+        // present and correct, but nothing ever painted). A Connector's attached Service was
+        // therefore invisible on the diagram even before this session's `awsDataTransferLabel`
+        // fix — not just unreadable. Fixed by passing a plain string plus `labelStyle` (an
+        // inline style object, which `BaseEdge` does support) instead of a styled element.
+        label: conn.sku_selection ? dataTransferLabel ?? conn.sku_selection.sku : undefined,
+        labelStyle: { fontSize: "var(--text-4xs)", textDecoration: isSelected ? "underline" : "none" },
       };
     });
     const offsets = edgeOffsetIndex(rawEdges);
