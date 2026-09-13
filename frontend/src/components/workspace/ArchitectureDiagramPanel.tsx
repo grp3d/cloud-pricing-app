@@ -745,6 +745,57 @@ export function ArchitectureDiagramPanel({
     );
     if (changed) {
       onUpdateCollectionParent(dragged.id, newParentId);
+
+      // Found live (user report): without this, the dropped box just stayed wherever the
+      // cursor released it — possibly still hanging outside the VPC's own border — until the
+      // save request round-tripped and `architecture` refetched, at which point `initialNodes`
+      // recomputed and it visually snapped into its real stacked slot. Reads as "doesn't snap
+      // into the VPC" even though the nesting itself was saved correctly the whole time.
+      // Scoped to nesting *into* a VPC (the reported case) — un-nesting back out still relies
+      // on the same refetch-driven recompute as before, unchanged.
+      if (newParentId !== null) {
+        const parentCollection = collections.find((c) => c.id === newParentId);
+        if (parentCollection) {
+          const existingSiblings = collections.filter(
+            (c) => c.parent_collection_id === newParentId && c.id !== dragged.id,
+          );
+          const layoutNode: MeasuredLayoutNode = {
+            id: parentCollection.id,
+            ownServiceCount: parentCollection.sku_selections.length,
+            children: [
+              ...existingSiblings.map((s) => ({
+                id: s.id,
+                ownServiceCount: s.sku_selections.length,
+                children: [],
+              })),
+              { id: dragged.id, ownServiceCount: dragged.sku_selections.length, children: [] },
+            ],
+          };
+          const offsets = childYOffsets(layoutNode, ownHeights);
+          // The dragged node repositioning correctly (confirmed live via its DOM transform)
+          // wasn't the whole story: it's positioned *relative to* the VPC's own box, whose
+          // rendered height was still the pre-nesting one at this exact instant — so the
+          // child visibly spilled past the VPC's still-stale bottom border until the real
+          // refetch also grew the VPC. Grow the VPC node's own height here too, the same
+          // manual-override-aware rule `initialNodes` itself uses, so both update together.
+          const requiredParentHeight = computeMeasuredHeight(layoutNode, ownHeights);
+          const parentManualSize = manualSizeRef.current.get(newParentId);
+          const parentFinalHeight = parentManualSize
+            ? Math.max(parentManualSize.height, requiredParentHeight)
+            : requiredParentHeight;
+          setNodes((current) =>
+            current.map((n) => {
+              if (n.id === dragged.id) {
+                return { ...n, parentId: newParentId, position: { x: 20, y: offsets[dragged.id] } };
+              }
+              if (n.id === newParentId) {
+                return { ...n, style: { ...n.style, height: parentFinalHeight } };
+              }
+              return n;
+            }),
+          );
+        }
+      }
     }
   };
 
