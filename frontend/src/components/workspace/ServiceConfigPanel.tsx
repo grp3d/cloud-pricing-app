@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import type { SKUSelection } from "../../api/client";
 import type { ServiceConfigSelection } from "../../lib/serviceConfigSelection";
+import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { ErrorMessage } from "../ErrorMessage";
@@ -44,7 +45,17 @@ export function ServiceConfigPanel({
   onDismissActionError,
   width,
 }: ServiceConfigPanelProps) {
-  const [expanded, setExpanded] = useState(true);
+  // 009-ui-fixes-next-iteration follow-up: collapsed/expanded state now survives a reload —
+  // see `CollectionsPanel.tsx`'s identical comment for the mechanism.
+  const [expanded, setExpanded] = useState(() => !readColumnCollapsed().service);
+
+  function toggleExpanded() {
+    setExpanded((v) => {
+      const next = !v;
+      writeColumnCollapsed("service", !next);
+      return next;
+    });
+  }
 
   // A stored `skuSelectionId` whose SKUSelection no longer exists (e.g. removed from another
   // tab) — treat as nothing selected rather than rendering broken content; `WorkspacePage`
@@ -77,7 +88,7 @@ export function ServiceConfigPanel({
               variant="ghost"
               size="icon-sm"
               aria-label={expanded ? "Collapse panel" : "Expand panel"}
-              onClick={() => setExpanded((v) => !v)}
+              onClick={toggleExpanded}
             >
               {expanded ? <PanelLeftClose /> : <PanelLeftOpen />}
             </Button>

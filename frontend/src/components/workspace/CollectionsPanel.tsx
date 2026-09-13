@@ -2,6 +2,7 @@ import { Link2, Link2Off, PanelLeftClose, PanelLeftOpen, Plus, Trash2 } from "lu
 import { useState } from "react";
 
 import type { CatalogSKU, CollectionType } from "../../api/client";
+import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -69,7 +70,19 @@ export function CollectionsPanel({
   onPickSku,
   width,
 }: CollectionsPanelProps) {
-  const [expanded, setExpanded] = useState(true);
+  // 009-ui-fixes-next-iteration follow-up: collapsed/expanded state now survives a reload,
+  // the same per-browser `localStorage` mechanism `columnWidths.ts` already uses for this
+  // column's width — initialized lazily so the very first render already reflects it (no
+  // expand-then-collapse flash).
+  const [expanded, setExpanded] = useState(() => !readColumnCollapsed().collections);
+
+  function toggleExpanded() {
+    setExpanded((v) => {
+      const next = !v;
+      writeColumnCollapsed("collections", !next);
+      return next;
+    });
+  }
 
   return (
     <section
@@ -84,7 +97,7 @@ export function CollectionsPanel({
               variant="ghost"
               size="icon-sm"
               aria-label={expanded ? "Collapse panel" : "Expand panel"}
-              onClick={() => setExpanded((v) => !v)}
+              onClick={toggleExpanded}
             >
               {expanded ? <PanelLeftClose /> : <PanelLeftOpen />}
             </Button>

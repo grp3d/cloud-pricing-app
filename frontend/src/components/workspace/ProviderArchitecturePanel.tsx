@@ -2,6 +2,7 @@ import { PanelLeftClose, PanelLeftOpen, Plus, Cloud } from "lucide-react";
 import { useState } from "react";
 
 import type { ArchitectureSummary, Provider } from "../../api/client";
+import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
@@ -45,7 +46,9 @@ export interface ProviderArchitecturePanelProps {
 /**
  * Column 1 (007-ui-overhaul-shadcn, FR-001/002/016/017): provider + Architecture selection
  * and creation, replacing the old standalone landing page. Collapsible to an icon-only rail
- * (Clarifications) — collapse state is local, non-persisted (research.md §9).
+ * (Clarifications) — collapse state now survives a reload (009-ui-fixes-next-iteration
+ * follow-up; superseding 007's "local, non-persisted" choice), via the same per-browser
+ * `localStorage` mechanism `columnWidths.ts` already uses for this column's width.
  */
 export function ProviderArchitecturePanel({
   providers,
@@ -66,7 +69,15 @@ export function ProviderArchitecturePanel({
   onDismissActionError,
   width,
 }: ProviderArchitecturePanelProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(() => !readColumnCollapsed().provider);
+
+  function toggleExpanded() {
+    setExpanded((v) => {
+      const next = !v;
+      writeColumnCollapsed("provider", !next);
+      return next;
+    });
+  }
 
   return (
     <aside
@@ -81,7 +92,7 @@ export function ProviderArchitecturePanel({
               variant="ghost"
               size="icon-sm"
               aria-label={expanded ? "Collapse panel" : "Expand panel"}
-              onClick={() => setExpanded((v) => !v)}
+              onClick={toggleExpanded}
             >
               {expanded ? <PanelLeftClose /> : <PanelLeftOpen />}
             </Button>

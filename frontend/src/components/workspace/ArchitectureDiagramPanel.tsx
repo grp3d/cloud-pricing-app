@@ -13,11 +13,13 @@ import {
   getBezierPath,
   useOnSelectionChange,
   useReactFlow,
+  useViewport,
   type Connection,
   type Edge,
   type EdgeProps,
   type Node,
   type NodeProps,
+  type Viewport,
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
@@ -39,6 +41,7 @@ import {
   writeCollectionLayout,
   type CollectionLayoutOverride,
 } from "../../lib/diagramLayout";
+import { readDiagramZoom, writeDiagramZoom } from "../../lib/diagramViewport";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -499,6 +502,31 @@ export function ArchitectureDiagramPanel({
 }: ArchitectureDiagramPanelProps) {
   const { getIntersectingNodes } = useReactFlow();
 
+  // 009-ui-fixes-next-iteration follow-up: zoom level now survives a reload, per-browser
+  // per-Architecture (`lib/diagramViewport.ts`, modeled on `diagramLayout.ts`). `<ReactFlow>`
+  // only reads `defaultViewport` once, at mount — keyed below by `architectureId` so
+  // switching Architectures (which doesn't itself remount this component — same precedent as
+  // `manualSizeRef`'s reseeding above) gets a fresh, correctly-restored zoom instead of
+  // inheriting whatever the previously-open Architecture's zoom happened to be. Pan position
+  // is deliberately not persisted (not asked for, and restoring an old pan offset without
+  // also restoring exactly which Collections existed then would be more disorienting than
+  // useful) — every restore re-centers at x:0, y:0.
+  const defaultViewport = useMemo<Viewport>(
+    () => ({ x: 0, y: 0, zoom: readDiagramZoom(architectureId) ?? 1 }),
+    [architectureId],
+  );
+  const onMoveEnd = useCallback(
+    (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
+      writeDiagramZoom(architectureId, viewport.zoom);
+    },
+    [architectureId],
+  );
+  // Live percentage for the on-canvas readout below (FR: column 4 zoom %) — `useViewport()`
+  // is the reactive/subscribing counterpart to `useReactFlow()`'s one-shot `getViewport()`,
+  // so this re-renders as the user zooms rather than only reflecting the value as of the last
+  // unrelated render.
+  const { zoom: currentZoom } = useViewport();
+
   useOnSelectionChange({
     onChange: ({ nodes: selectedNodes }) =>
       onSelectedNodeIdsChange(selectedNodes.map((n) => n.id)),
@@ -846,11 +874,17 @@ export function ArchitectureDiagramPanel({
       style={{ height: 640 }}
     >
       <ReactFlow
+        // Keyed by `architectureId` (see the comment above `defaultViewport`) so switching
+        // Architectures gets a genuinely fresh pan-zoom instance — `defaultViewport` is only
+        // ever read once, at mount, and this component doesn't otherwise remount on its own.
+        key={architectureId}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         attributionPosition="bottom-left"
+        defaultViewport={defaultViewport}
+        onMoveEnd={onMoveEnd}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={safeOnConnect}
@@ -861,6 +895,12 @@ export function ArchitectureDiagramPanel({
       >
         <Background />
         <Controls />
+        {/* Zoom percentage readout, alongside the +/-/fit-view/lock controls — also doubles
+            as the easiest way to visually confirm 1b's persistence (reload and check it
+            reads the same %). */}
+        <Panel position="bottom-right" className="rounded border border-border bg-background px-1.5 py-0.5 text-4xs text-muted-foreground">
+          {Math.round(currentZoom * 100)}%
+        </Panel>
         <AddConnectorDialog collections={collections} onCreateConnector={onCreateConnector} />
       </ReactFlow>
     </div>
