@@ -81,13 +81,23 @@ function ServiceList({
   skuSelections,
   selectedServiceId,
   onSelectService,
+  hideEmptyMessage,
 }: {
   skuSelections: Collection["sku_selections"];
   selectedServiceId?: string;
   onSelectService: (skuSelectionId: string) => void;
+  /** 009-ui-fixes-next-iteration follow-up: a VPC with a nested Application Component (which
+   * already has its own, visibly-present box, itself possibly *also* reading "No services
+   * yet.") passes this — the VPC's own empty-services message is redundant clutter once
+   * there's already visible content inside it, not useful information the way it is for a
+   * genuinely empty box. `ApplicationComponentNode` (which can never have children) never
+   * passes this, so its own "No services yet." is unaffected. */
+  hideEmptyMessage?: boolean;
 }) {
   if (skuSelections.length === 0) {
-    return <p className="mt-1 text-4xs text-muted-foreground">No services yet.</p>;
+    return hideEmptyMessage ? null : (
+      <p className="mt-1 text-4xs text-muted-foreground">No services yet.</p>
+    );
   }
   return (
     <ul className="mt-1 list-none pl-0 text-4xs">
@@ -351,6 +361,10 @@ interface VpcNodeData {
   onMeasuredHeight: (height: number) => void;
   onSelectService: (skuSelectionId: string) => void;
   onManualResize: (width: number, height: number, x: number, y: number) => void;
+  /** 009-ui-fixes-next-iteration follow-up: whether this VPC has at least one nested
+   * Application Component — see `ServiceList`'s `hideEmptyMessage` for why this suppresses
+   * the VPC's own "No services yet." text rather than being shown unconditionally. */
+  hasChildren: boolean;
 }
 
 /** Custom node type for a VPC (002-006). 007 adds the same per-service click targets; 008
@@ -366,6 +380,7 @@ function VpcNode({ data, selected }: NodeProps) {
     onMeasuredHeight,
     onSelectService,
     onManualResize,
+    hasChildren,
   } = data as unknown as VpcNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
@@ -393,6 +408,7 @@ function VpcNode({ data, selected }: NodeProps) {
             skuSelections={skuSelections}
             selectedServiceId={selectedServiceId}
             onSelectService={onSelectService}
+            hideEmptyMessage={hasChildren}
           />
         </div>
       </div>
@@ -835,6 +851,10 @@ export function ArchitectureDiagramPanel({
           onSelectService: (skuSelectionId: string) => onSelectService(skuSelectionId, c.id),
           onManualResize: (w: number, h: number, x: number, y: number) =>
             onManualResize(c.id, w, h, x, y),
+          // 009-ui-fixes-next-iteration follow-up: only meaningful for `VpcNode` (see
+          // `VpcNodeData`/`ServiceList`'s `hideEmptyMessage`) — harmlessly unused by
+          // `ApplicationComponentNode`, which can never have children.
+          hasChildren: children.length > 0,
         },
         style: { width: finalWidth, height: finalHeight },
       });
