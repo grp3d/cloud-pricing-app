@@ -137,6 +137,19 @@ const NODE_CHROME_HEIGHT = 2 * 8 + 2 * 2;
  * handler now that height is real state rather than a CSS-only constraint. */
 const DIAGRAM_MIN_HEIGHT = 600;
 
+/** 009-ui-fixes-next-iteration follow-up: React Flow's native 1:1 zoom (raw `zoom` value 1,
+ * what used to display as "100%") renders every box/font too large per live feedback — this
+ * is the new "100%" baseline instead. Applied two places below: (1) a brand-new Architecture
+ * (or a cleared `localStorage`) now opens already at this raw zoom rather than React Flow's
+ * own default of 1, so the *first* thing anyone sees is the smaller sizing, not the old
+ * too-big one; (2) the on-canvas readout divides the real (raw) zoom by this before turning
+ * it into a percentage, so that raw zoom reads as "100%" instead of "70%". Deliberately a
+ * display- and default-only rebase, not a change to any node's actual authored width/height/
+ * font classes — `+`/`-`/scroll-to-zoom, `fitView`, and the persisted-zoom round-trip
+ * (`diagramViewport.ts`) all keep operating on the same real underlying React Flow zoom value
+ * they always did; only what number gets shown for it, and where a fresh view starts, moves. */
+const DEFAULT_DIAGRAM_ZOOM = 0.7;
+
 const CONNECTOR_SIDE_POSITION: Record<ConnectorSide, Position> = {
   top: Position.Top,
   right: Position.Right,
@@ -731,7 +744,7 @@ export function ArchitectureDiagramPanel({
   // also restoring exactly which Collections existed then would be more disorienting than
   // useful) — every restore re-centers at x:0, y:0.
   const defaultViewport = useMemo<Viewport>(
-    () => ({ x: 0, y: 0, zoom: readDiagramZoom(architectureId) ?? 1 }),
+    () => ({ x: 0, y: 0, zoom: readDiagramZoom(architectureId) ?? DEFAULT_DIAGRAM_ZOOM }),
     [architectureId],
   );
   const onMoveEnd = useCallback(
@@ -1232,7 +1245,11 @@ export function ArchitectureDiagramPanel({
           className="rounded border border-border bg-background px-1.5 py-0.5 text-4xs text-muted-foreground"
           style={{ marginBottom: 104 + 24 }}
         >
-          {Math.round(currentZoom * 100)}%
+          {/* Divided by `DEFAULT_DIAGRAM_ZOOM` (see its own comment) — reads "100%" at the new
+              baseline zoom rather than at React Flow's native 1:1, matching the +/-/fit-view
+              controls and persisted zoom below, which still operate on the real, undivided
+              value. */}
+          {Math.round((currentZoom / DEFAULT_DIAGRAM_ZOOM) * 100)}%
         </Panel>
         {/* 009-ui-fixes-next-iteration follow-up: manual "redraw the diagram" button, above
             the zoom % per the ask — a temporary workaround for the still-not-fully-root-caused
