@@ -8,14 +8,16 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { ErrorMessage } from "../ErrorMessage";
+import awsIcon from "../../assets/providers/aws_icon.png";
 import gcpIcon from "../../assets/providers/gcp_icon.png";
 import azureIcon from "../../assets/providers/azure_icon.png";
 
 // FR-008 (008-ui-updates-corrections, research.md §11): a provider's own icon in column 1's
-// collapsed state, replacing the generic Lucide `Cloud` icon. AWS has no equivalent asset
-// yet (spec Assumptions) — it keeps the generic icon until `aws_icon.png` is supplied; every
-// other provider falls back the same way if a code isn't in this map.
+// collapsed state, replacing the generic Lucide `Cloud` icon. Every provider falls back to
+// the generic icon if its code isn't in this map (009-ui-fixes-next-iteration follow-up:
+// `aws_icon.png` supplied, closing the one gap this map used to have).
 const PROVIDER_ICONS: Record<string, string> = {
+  aws: awsIcon,
   gcp: gcpIcon,
   azure: azureIcon,
 };
