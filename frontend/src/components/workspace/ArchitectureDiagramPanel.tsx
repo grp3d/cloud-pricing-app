@@ -111,6 +111,11 @@ function ServiceList({
 /** The outer node box's own vertical chrome (unchanged from 005/006 — see nodeLayout.ts). */
 const NODE_CHROME_HEIGHT = 2 * 8 + 2 * 2;
 
+/** The diagram panel's own minimum height (FR-004, 008-ui-updates-corrections) — matches the
+ * prior `min-h-[600px]` Tailwind class exactly; enforced in `DiagramResizeHandle`'s drag
+ * handler now that height is real state rather than a CSS-only constraint. */
+const DIAGRAM_MIN_HEIGHT = 600;
+
 /** 009-ui-fixes-next-iteration, US7, FR-020/021: a single resize control at the bottom-right
  * corner only (dropping `<NodeResizer>`'s default all-eight-handle set), with a visible
  * corner-grip affordance styled consistently across both node types. Shared so both components
@@ -454,6 +459,66 @@ function AddConnectorDialog({
   );
 }
 
+/**
+ * The diagram panel's own bottom-right resize grip (009-ui-fixes-next-iteration follow-up,
+ * replacing the outer `<div>`'s native CSS `resize-y`). Found live (user report): dragging
+ * that corner moved the architecture's Collections around instead of resizing the panel.
+ * Root cause was two-fold — (1) the native resize grip's real hit-region turned out to be a
+ * precise ~15px inset from the true corner (confirmed live via `elementFromPoint` sampling
+ * pixel-by-pixel out from the corner), easy to miss by a pixel or two and fall through onto
+ * `.react-flow__pane` underneath, which happily treats *any* stray drag as a canvas pan; and
+ * (2) even a successful native resize was never actually kept — the outer `<div>` was passed
+ * a hardcoded `style={{ height: 640 }}` rather than a React-state-backed value, so the *next*
+ * unrelated re-render (selecting anything, adding a Service, anything) silently snapped the
+ * browser's own DOM mutation back to 640 regardless of what the user had just dragged it to.
+ * `ColumnResizeHandle` (`WorkspacePage.tsx`) already solved the equivalent problem for the
+ * horizontal column-width dividers with a plain `onPointerDown`/`setPointerCapture` handler
+ * instead of relying on any native/implicit browser mechanism — this is that same proven
+ * pattern, vertical instead of horizontal, sized generously (16px) so it isn't as easy to
+ * miss as the browser's own native grip was.
+ */
+function DiagramResizeHandle({ onDrag }: { onDrag: (deltaY: number) => void }) {
+  const lastYRef = useRef(0);
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Resize architecture diagram height"
+      className="absolute right-0 bottom-0 z-10 size-4 cursor-ns-resize touch-none rounded-br border-border/0 bg-transparent hover:bg-primary/20 active:bg-primary/30"
+      onPointerDown={(e) => {
+        e.preventDefault();
+        lastYRef.current = e.clientY;
+        const target = e.currentTarget;
+        target.setPointerCapture(e.pointerId);
+
+        const handleMove = (moveEvent: PointerEvent) => {
+          const deltaY = moveEvent.clientY - lastYRef.current;
+          lastYRef.current = moveEvent.clientY;
+          onDrag(deltaY);
+        };
+        const handleUp = () => {
+          target.removeEventListener("pointermove", handleMove);
+          target.removeEventListener("pointerup", handleUp);
+        };
+        target.addEventListener("pointermove", handleMove);
+        target.addEventListener("pointerup", handleUp);
+      }}
+    >
+      {/* Same three-diagonal-line grip glyph the native browser resize handle it replaces
+          already used — familiar, no relearning, just a bigger and more reliable target. */}
+      <svg viewBox="0 0 16 16" className="size-full text-muted-foreground" aria-hidden="true">
+        <path
+          d="M14 3 L3 14 M14 8 L8 14 M14 13 L13 14"
+          stroke="currentColor"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
 export interface ArchitectureDiagramPanelProps {
   /** 009-ui-fixes-next-iteration, US7, FR-024: scopes the new diagram-layout persistence to
    * this Architecture (`lib/diagramLayout.ts`). */
@@ -526,6 +591,14 @@ export function ArchitectureDiagramPanel({
   // so this re-renders as the user zooms rather than only reflecting the value as of the last
   // unrelated render.
   const { zoom: currentZoom } = useViewport();
+
+  // 009-ui-fixes-next-iteration follow-up: the outer panel's own height, now real React
+  // state driving `DiagramResizeHandle` below — see that component's own comment for why a
+  // hardcoded `style={{ height: 640 }}` (the prior approach) silently discarded a user's
+  // resize on the very next unrelated re-render. Not persisted (never was, even under the
+  // old native-resize approach) — in scope here is fixing the interaction, not adding new
+  // scope.
+  const [diagramHeight, setDiagramHeight] = useState(640);
 
   useOnSelectionChange({
     onChange: ({ nodes: selectedNodes }) =>
@@ -868,10 +941,11 @@ export function ArchitectureDiagramPanel({
     <div
       // FR-004 (008): raised from the prior 320px default / 320px min-height ceiling (005) —
       // "substantially more of the window's available height" per spec; still fully
-      // user-resizable via the native `resize-y` handle, with no artificial max-height
-      // capping how much further the user can drag it.
-      className="h-full min-h-[600px] resize-y overflow-auto rounded border border-border bg-muted/20"
-      style={{ height: 640 }}
+      // user-resizable, now via `DiagramResizeHandle` below rather than the native CSS
+      // `resize-y` this replaced (see that component's own comment for why), with no
+      // artificial max-height capping how much further the user can drag it.
+      className="relative h-full overflow-auto rounded border border-border bg-muted/20"
+      style={{ height: diagramHeight }}
     >
       <ReactFlow
         // Keyed by `architectureId` (see the comment above `defaultViewport`) so switching
@@ -920,6 +994,11 @@ export function ArchitectureDiagramPanel({
         </Panel>
         <AddConnectorDialog collections={collections} onCreateConnector={onCreateConnector} />
       </ReactFlow>
+      <DiagramResizeHandle
+        onDrag={(deltaY) =>
+          setDiagramHeight((h) => Math.max(DIAGRAM_MIN_HEIGHT, h + deltaY))
+        }
+      />
     </div>
   );
 }
