@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 
 import { type CatalogSKU, InvalidRegexPatternError, api } from "../api/client";
@@ -199,8 +199,13 @@ export function CatalogSearchPanel({ onAdd }: Props) {
               className="flex items-start justify-between gap-2 rounded border border-transparent px-1 py-1 text-2xs hover:border-border"
             >
               <span className="min-w-0 break-words">{summaryText(r)}</span>
+              {/* 009-ui-fixes-next-iteration follow-up: "Configure ->", not "+ Add" -- this
+                  button doesn't add the Service to the Architecture yet, only opens it in the
+                  Service Editor (column 3) for configuration. Button `size="sm"` is unchanged
+                  (Button's own base font size was reduced app-wide for this, so the longer
+                  label fits without growing the button). */}
               <Button type="button" size="sm" variant="outline" onClick={() => onAdd(r)}>
-                <Plus /> Add
+                Configure <ArrowRight />
               </Button>
             </li>
           ))}
