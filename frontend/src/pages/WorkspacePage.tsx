@@ -642,6 +642,7 @@ function WorkspacePageInner() {
               onUpdateCollectionParent={(id, parentId) =>
                 updateCollectionParent.mutate({ id, parentId })
               }
+              onRefresh={invalidateArchitecture}
             />
           </div>
 

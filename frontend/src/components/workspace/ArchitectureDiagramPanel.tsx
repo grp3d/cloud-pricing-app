@@ -3,6 +3,7 @@ import "@xyflow/react/dist/style.css";
 import {
   BaseEdge,
   Background,
+  ConnectionMode,
   Controls,
   Handle,
   NodeResizeControl,
@@ -11,6 +12,7 @@ import {
   ReactFlow,
   addEdge,
   getBezierPath,
+  reconnectEdge,
   useOnSelectionChange,
   useReactFlow,
   useViewport,
@@ -23,7 +25,8 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RefreshCw } from "lucide-react";
 
 import { type Collection, type DataConnector } from "../../api/client";
 import { useMeasuredHeight } from "../../hooks/useMeasuredHeight";
@@ -42,6 +45,14 @@ import {
   type CollectionLayoutOverride,
 } from "../../lib/diagramLayout";
 import { readDiagramZoom, writeDiagramZoom } from "../../lib/diagramViewport";
+import {
+  ALL_CONNECTOR_SIDES,
+  chooseConnectorSides,
+  isConnectorSide,
+  type ConnectorSide,
+  type Rect,
+} from "../../lib/connectorRouting";
+import { readConnectorSides, writeConnectorSides, type ConnectorSides } from "../../lib/connectorSides";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -115,6 +126,121 @@ const NODE_CHROME_HEIGHT = 2 * 8 + 2 * 2;
  * prior `min-h-[600px]` Tailwind class exactly; enforced in `DiagramResizeHandle`'s drag
  * handler now that height is real state rather than a CSS-only constraint. */
 const DIAGRAM_MIN_HEIGHT = 600;
+
+const CONNECTOR_SIDE_POSITION: Record<ConnectorSide, Position> = {
+  top: Position.Top,
+  right: Position.Right,
+  bottom: Position.Bottom,
+  left: Position.Left,
+};
+
+/** Four connection points per box — one per side — replacing the prior fixed single
+ * `Position.Left` target / `Position.Right` source pair (009-ui-fixes-next-iteration
+ * follow-up, new arch spec requirement: auto-routed Connectors need a side to route *to*, and
+ * dragging an existing Connector's endpoint to a different side needs somewhere to drop it).
+ * Shared by both node types so they stay identical.
+ *
+ * Each side renders both a `source` and a `target` Handle sharing the same `id` — React
+ * Flow's own supported pattern for "this one visual connection point can be either end of an
+ * edge," needed because a Connector's `from`/`to` is a labeled pair of Collections, not an
+ * inherently directional arrow a user should have to think about in terms of source vs.
+ * target. `connectionMode="loose"` (set on `<ReactFlow>` below) is what actually allows
+ * dragging *from* a target handle or *onto* a source handle — this pairing alone doesn't. */
+function SideHandles() {
+  return (
+    <>
+      {ALL_CONNECTOR_SIDES.map((side) => (
+        <Fragment key={side}>
+          <Handle type="source" position={CONNECTOR_SIDE_POSITION[side]} id={side} />
+          <Handle type="target" position={CONNECTOR_SIDE_POSITION[side]} id={side} />
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+/** Absolute canvas position (not React Flow's own parent-relative `position` for a nested
+ * child) plus size for one node, resolved by walking up its `parentId` chain — needed because
+ * `connectorRouting.ts`'s geometry is only meaningful in one shared coordinate space, and a
+ * Collection nested inside a VPC has a `position` relative to that VPC, not the canvas. */
+function absoluteRect(nodeId: string, nodesById: Map<string, Node>): Rect | null {
+  const node = nodesById.get(nodeId);
+  if (!node) return null;
+  let x = node.position.x;
+  let y = node.position.y;
+  let parentId = node.parentId;
+  while (parentId) {
+    const parent = nodesById.get(parentId);
+    if (!parent) break;
+    x += parent.position.x;
+    y += parent.position.y;
+    parentId = parent.parentId;
+  }
+  const width = typeof node.style?.width === "number" ? node.style.width : 0;
+  const height = typeof node.style?.height === "number" ? node.style.height : 0;
+  return { x, y, width, height };
+}
+
+const EMPTY_SIDE_USAGE: Record<ConnectorSide, number> = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/** Resolves every Connector's attachment sides — the persisted one (`connectorSides.ts`) if
+ * it has one, otherwise a freshly `chooseConnectorSides`-computed one (009-ui-fixes-next-
+ * iteration follow-up, new arch spec requirement) — in one pass, so two Connectors newly
+ * created in the same batch don't both independently "see" the same open side and collide.
+ * Shared by `initialEdges` (needs the resolved value immediately, for this render's paint)
+ * and the persistence `useEffect` below (needs to know exactly which ones are new, to write
+ * only those) — both call this same function rather than duplicating the logic, so they can
+ * never disagree with each other about what a given Connector's sides *should* be. Silently
+ * skips (omits from the result) a Connector whose endpoint Collection isn't found among
+ * `nodes` — should never happen, but "no line drawn" beats crashing the whole diagram over
+ * one bad reference. */
+function resolveConnectorSides(
+  connectors: DataConnector[],
+  nodes: Node[],
+  persisted: Record<string, ConnectorSides>,
+): { resolved: Map<string, ConnectorSides>; newlyComputed: Map<string, ConnectorSides> } {
+  const nodesById = new Map(nodes.map((n) => [n.id, n]));
+  const usageByCollection = new Map<string, Record<ConnectorSide, number>>();
+  const bumpUsage = (collectionId: string, side: ConnectorSide) => {
+    const usage = { ...(usageByCollection.get(collectionId) ?? EMPTY_SIDE_USAGE) };
+    usage[side] += 1;
+    usageByCollection.set(collectionId, usage);
+  };
+
+  const resolved = new Map<string, ConnectorSides>();
+  const newlyComputed = new Map<string, ConnectorSides>();
+
+  // First pass: every already-persisted Connector claims its sides' usage slots up front, so
+  // a same-pass newly-computed Connector correctly sees them as occupied regardless of which
+  // order `connectors` happens to list the two groups in.
+  for (const conn of connectors) {
+    const sides = persisted[conn.id];
+    if (!sides) continue;
+    resolved.set(conn.id, sides);
+    bumpUsage(conn.from_collection_id, sides.from);
+    bumpUsage(conn.to_collection_id, sides.to);
+  }
+
+  for (const conn of connectors) {
+    if (resolved.has(conn.id)) continue;
+    const fromRect = absoluteRect(conn.from_collection_id, nodesById);
+    const toRect = absoluteRect(conn.to_collection_id, nodesById);
+    if (!fromRect || !toRect) continue;
+    const { fromSide, toSide } = chooseConnectorSides(
+      fromRect,
+      toRect,
+      usageByCollection.get(conn.from_collection_id) ?? EMPTY_SIDE_USAGE,
+      usageByCollection.get(conn.to_collection_id) ?? EMPTY_SIDE_USAGE,
+    );
+    const sides: ConnectorSides = { from: fromSide, to: toSide };
+    resolved.set(conn.id, sides);
+    newlyComputed.set(conn.id, sides);
+    bumpUsage(conn.from_collection_id, fromSide);
+    bumpUsage(conn.to_collection_id, toSide);
+  }
+
+  return { resolved, newlyComputed };
+}
 
 /** 009-ui-fixes-next-iteration, US7, FR-020/021: a single resize control at the bottom-right
  * corner only (dropping `<NodeResizer>`'s default all-eight-handle set), with a visible
@@ -194,8 +320,7 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
       {selected && (
         <BottomRightResizeControl minWidth={160} minHeight={minHeight} onResizeEnd={onManualResize} />
       )}
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
+      <SideHandles />
       <div
         // 009-ui-fixes-next-iteration, US7, FR-018: darker border shade than 008's
         // `border-border` (verified live against both light and dark theme).
@@ -253,8 +378,7 @@ function VpcNode({ data, selected }: NodeProps) {
       {selected && (
         <BottomRightResizeControl minWidth={220} minHeight={minHeight} onResizeEnd={onManualResize} />
       )}
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
+      <SideHandles />
       <div
         // 009-ui-fixes-next-iteration, US7, FR-018: darker resting border than 008's
         // `border-primary` alone (which didn't otherwise distinguish selected from
@@ -539,6 +663,13 @@ export interface ArchitectureDiagramPanelProps {
   onDeselectAll: () => void;
   onCreateConnector: (from: string, to: string) => void;
   onUpdateCollectionParent: (id: string, parentId: string | null) => void;
+  /** 009-ui-fixes-next-iteration follow-up: a fresh Architecture refetch, for the new manual
+   * refresh button (a temporary workaround for the still-not-root-caused "diagram goes
+   * blank" issue — US3/research.md §3's investigation, and this session's own `diagramSelection`
+   * memoization fix, found *a* real contributing mechanism but evidently not the only one, per
+   * this user's continued live reports) — `WorkspacePage.tsx` owns the query, this panel only
+   * triggers it and separately forces its own React Flow instance to fully remount. */
+  onRefresh: () => void;
 }
 
 /**
@@ -564,8 +695,15 @@ export function ArchitectureDiagramPanel({
   onDeselectAll,
   onCreateConnector,
   onUpdateCollectionParent,
+  onRefresh,
 }: ArchitectureDiagramPanelProps) {
   const { getIntersectingNodes } = useReactFlow();
+
+  // 009-ui-fixes-next-iteration follow-up: bumped by the new refresh button to force
+  // `<ReactFlow>` below to fully remount (its `key` includes this) even though
+  // `architectureId` hasn't changed — a full reset of React Flow's own internal state, the
+  // same "start over from nothing" a page reload gives it, without an actual page reload.
+  const [remountNonce, setRemountNonce] = useState(0);
 
   // 009-ui-fixes-next-iteration follow-up: zoom level now survives a reload, per-browser
   // per-Architecture (`lib/diagramViewport.ts`, modeled on `diagramLayout.ts`). `<ReactFlow>`
@@ -746,7 +884,21 @@ export function ArchitectureDiagramPanel({
   // Collections would otherwise render exactly on top of each other (React Flow's default for
   // edges sharing a source/target) — offset each one's bezier curvature by its index within its
   // own pair group so they render as distinct, independently clickable paths.
+  //
+  // Deliberately reads `initialNodes` from closure rather than listing it as a dependency
+  // (009-ui-fixes-next-iteration follow-up, new arch spec requirement) — same pattern as
+  // `manualSizeRef`'s reads elsewhere in this file. `resolveConnectorSides` only actually
+  // *needs* current geometry for a Connector that doesn't have a persisted side yet; making
+  // this recompute (and re-derive `sourceHandle`/`targetHandle` for every edge) on every
+  // content-driven relayout would be wasteful and, worse, could make an *already-resolved*
+  // Connector's rendered side flicker against its own persisted value for one frame on an
+  // unrelated box's height changing — this only needs to run when `connectors` itself changes.
   const initialEdges: Edge[] = useMemo(() => {
+    const { resolved } = resolveConnectorSides(
+      connectors,
+      initialNodes,
+      readConnectorSides(architectureId),
+    );
     const rawEdges = connectors.map((conn) => {
       const isSelected = diagramSelection?.kind === "connector" && diagramSelection.id === conn.id;
       // 009-ui-fixes-next-iteration, US9 follow-up: same `awsDataTransferLabel()` derivation
@@ -759,10 +911,23 @@ export function ArchitectureDiagramPanel({
       const dataTransferLabel = conn.sku_selection
         ? awsDataTransferLabel(conn.sku_selection.service_code, conn.sku_selection.attributes)
         : null;
+      const sides = resolved.get(conn.id);
       return {
         id: conn.id,
         source: conn.from_collection_id,
         target: conn.to_collection_id,
+        // 009-ui-fixes-next-iteration follow-up, new arch spec requirement: which of the
+        // source/target box's four `SideHandles` this Connector attaches to —
+        // `resolveConnectorSides` above (persisted choice, or freshly auto-routed for a
+        // brand-new Connector). `undefined` (React Flow's own single-default-handle
+        // fallback) only if geometry genuinely couldn't be resolved (a missing node — should
+        // never happen; see that function's own comment).
+        sourceHandle: sides?.from,
+        targetHandle: sides?.to,
+        // Lets the user grab either end of an already-drawn Connector and drag it to a
+        // different side (the other half of the same requirement) — `onReconnect` below is
+        // what actually applies and persists the change.
+        reconnectable: true,
         // 009-ui-fixes-next-iteration, US7, FR-022/FR-025: three-step-reduced font, underlined
         // when this Connector is the current selection.
         //
@@ -787,7 +952,27 @@ export function ArchitectureDiagramPanel({
       type: "offset",
       data: { offsetIndex: offsets[edge.id] ?? 0 },
     }));
-  }, [connectors, diagramSelection]);
+  }, [connectors, diagramSelection, architectureId]);
+
+  // Persists whichever Connectors `initialEdges` above just had to freshly auto-route (no
+  // stored side yet) — kept as its own effect, not inline in that `useMemo`, so a render
+  // never has the side effect of writing to `localStorage` (009-ui-fixes-next-iteration
+  // follow-up, new arch spec requirement). Recomputes the exact same resolution `initialEdges`
+  // just used (deterministic given the same `connectors`/`initialNodes`/persisted-sides
+  // inputs, so it can never disagree with what was actually rendered) purely to find which
+  // entries are new, then writes only those.
+  useEffect(() => {
+    const { newlyComputed } = resolveConnectorSides(
+      connectors,
+      initialNodes,
+      readConnectorSides(architectureId),
+    );
+    for (const [connectorId, sides] of newlyComputed) {
+      writeConnectorSides(architectureId, connectorId, sides);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `initialNodes` deliberately
+    // read from closure, not listed; see `initialEdges`'s own comment above for why.
+  }, [connectors, architectureId]);
 
   const [nodes, setNodes, rawOnNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, rawOnEdgesChange] = useEdgesState(initialEdges);
@@ -816,6 +1001,33 @@ export function ArchitectureDiagramPanel({
     onCreateConnector(connection.source, connection.target);
     setEdges((eds) => addEdge(connection, eds));
   }
+
+  // 009-ui-fixes-next-iteration follow-up, new arch spec requirement: dragging an existing
+  // Connector's endpoint to a different side of the same (or a different) box. React Flow
+  // calls this once the drag completes on a valid `reconnectable` edge (set per-edge in
+  // `initialEdges` above) — `newConnection.sourceHandle`/`targetHandle` are the side ids
+  // (`"top"`/`"right"`/`"bottom"`/`"left"`) of wherever the user actually dropped it, which
+  // is the user's own explicit, deliberate choice — no `chooseConnectorSides` auto-routing
+  // applies here, only to a brand-new Connector's *initial* placement. Persisted immediately,
+  // exactly as if that side had been the connector's original one, so it stays put across a
+  // reload (and correctly counts toward that box's per-side usage for any *other* Connector
+  // auto-routed afterward).
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds));
+      if (
+        !isConnectorSide(newConnection.sourceHandle) ||
+        !isConnectorSide(newConnection.targetHandle)
+      ) {
+        return;
+      }
+      writeConnectorSides(architectureId, oldEdge.id, {
+        from: newConnection.sourceHandle,
+        to: newConnection.targetHandle,
+      });
+    },
+    [architectureId, setEdges],
+  );
 
   const onNodeDragStop = (_event: MouseEvent | TouchEvent, node: Node) => {
     const dragged = collections.find((c) => c.id === node.id);
@@ -936,6 +1148,7 @@ export function ArchitectureDiagramPanel({
   const safeOnNodeClick = safely((_: unknown, node: Node) => onSelectCollection(node.id));
   const safeOnEdgeClick = safely((_: unknown, edge: Edge) => onSelectConnector(edge.id));
   const safeOnPaneClick = safely(onDeselectAll);
+  const safeOnReconnect = safely(onReconnect);
 
   return (
     <div
@@ -951,7 +1164,8 @@ export function ArchitectureDiagramPanel({
         // Keyed by `architectureId` (see the comment above `defaultViewport`) so switching
         // Architectures gets a genuinely fresh pan-zoom instance — `defaultViewport` is only
         // ever read once, at mount, and this component doesn't otherwise remount on its own.
-        key={architectureId}
+        // `remountNonce` is the same idea, manually triggered by the refresh button.
+        key={`${architectureId}-${remountNonce}`}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -959,9 +1173,17 @@ export function ArchitectureDiagramPanel({
         attributionPosition="bottom-left"
         defaultViewport={defaultViewport}
         onMoveEnd={onMoveEnd}
+        // 009-ui-fixes-next-iteration follow-up, new arch spec requirement: lets a drag
+        // start from (or land on) any of `SideHandles`' four per-side handles regardless of
+        // whether that particular one is the `source`- or `target`-typed sibling at that
+        // position — without this, `connectionMode`'s default ("strict") would only allow
+        // dragging *from* a `source` handle *to* a `target` handle, defeating the point of
+        // having both at every side.
+        connectionMode={ConnectionMode.Loose}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={safeOnConnect}
+        onReconnect={safeOnReconnect}
         onNodeDragStop={safeOnNodeDragStop}
         onNodeClick={safeOnNodeClick}
         onEdgeClick={safeOnEdgeClick}
@@ -991,6 +1213,29 @@ export function ArchitectureDiagramPanel({
           style={{ marginBottom: 104 + 24 }}
         >
           {Math.round(currentZoom * 100)}%
+        </Panel>
+        {/* 009-ui-fixes-next-iteration follow-up: manual "redraw the diagram" button, above
+            the zoom % per the ask — a temporary workaround for the still-not-fully-root-caused
+            "diagram goes blank" issue (US3/research.md §3; this session's own
+            `diagramSelection` memoization fix found *a* real contributing mechanism, evidently
+            not the only one per continued live reports) until that's properly fixed. Refetches
+            the Architecture (`onRefresh`, `WorkspacePage.tsx`'s `invalidateArchitecture`) *and*
+            forces this whole React Flow instance to remount (`remountNonce`, in `key` above) —
+            the same "start over from nothing" a full page reload gives it, matching what the
+            user already found actually resolves it, without an actual page reload. */}
+        <Panel position="bottom-left" style={{ marginBottom: 104 + 24 + 24 }}>
+          <button
+            type="button"
+            aria-label="Redraw the architecture diagram"
+            title="Redraw the architecture diagram"
+            className="flex size-4 items-center justify-center rounded border border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              onRefresh();
+              setRemountNonce((n) => n + 1);
+            }}
+          >
+            <RefreshCw className="size-2.5" />
+          </button>
         </Panel>
         <AddConnectorDialog collections={collections} onCreateConnector={onCreateConnector} />
       </ReactFlow>
