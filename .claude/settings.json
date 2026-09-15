@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(brew install:*)",
+      "Bash(brew services:*)",
+      "Bash(npm install -g:*)",
+      "Bash(pip install:*)",
+      "Bash(docker run:*)",
+      "Bash(sudo:*)",
+      "Bash(rm -rf /*:*)",
+      "Bash(git push --force:*)"
+    ]
+  }
+}
