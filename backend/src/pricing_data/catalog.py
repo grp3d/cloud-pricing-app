@@ -103,6 +103,23 @@ def search_catalog(
     Distinct from `region` (010-multi-region-support, spec FR-005/research.md §5): `region`
     picks which Parquet partition is searched at all; `from_region_code`/`to_region_code` are
     ordinary attribute filters on rows already found within that one partition.
+
+    Data-integrity finding (2026-09-15, live bug report): the upstream `product_dim` data's
+    `region=<code>` partition directory does NOT actually filter its own content by region —
+    every partition file contains the full multi-region catalog (verified directly against the
+    real data). Most rows do carry a reliable top-level `region_code` column that genuinely
+    identifies their own region regardless of which partition copy is read (e.g. AmazonEC2) —
+    but AWSDataTransfer rows are the opposite: their `region_code` merely mirrors whichever
+    partition happens to be read (verified: the same sku's `region_code` changes to match
+    whatever region you query, while its `fromRegionCode`/`toRegionCode` attributes stay fixed
+    either way). So this always filters AWSDataTransfer rows on `fromRegionCode = region`
+    instead (matching FR-006: a connector's search is scoped to its "from" side) and every
+    other row on `region_code = region`, rather than trusting partition selection alone.
+
+    Exception: when the caller supplies an explicit `from_region_code` (009's own manual
+    AWSDataTransfer narrowing field), that's trusted as the more specific intent instead — it
+    can hold an edge-location value (e.g. "ap-southeast-2-per-1") that would never equal a
+    canonical `region`, which would otherwise make the two filters mutually exclusive.
     """
     if not any([service_code, product_family, text, from_region_code, to_region_code]):
         raise EmptyCatalogFilterError(
@@ -112,8 +129,16 @@ def search_catalog(
 
     snapshot_date = resolve_latest_snapshot_date()
 
-    where = []
-    params: list[object] = []
+    if from_region_code:
+        where: list[str] = []
+        params: list[object] = []
+    else:
+        where = [
+            "CASE WHEN regexp_matches(p.service_code, 'AWSDataTransfer', 'i') "
+            "THEN json_extract_string(p.attributes_json, '$.fromRegionCode') = ? "
+            "ELSE p.region_code = ? END"
+        ]
+        params = [region, region]
     if service_code:
         where.append("regexp_matches(p.service_code, ?, 'i')")
         params.append(service_code)
@@ -186,9 +211,7 @@ def search_catalog(
         service_path = _service_dim_path(snapshot_date, region)
 
         total = con.execute(count_query, [product_path, service_path, *params]).fetchone()[0]
-        rows = con.execute(
-            query, [product_path, service_path, *params, limit, offset]
-        ).fetchall()
+        rows = con.execute(query, [product_path, service_path, *params, limit, offset]).fetchall()
         columns = [d[0] for d in con.description]
     except InvalidRegexPatternError:
         raise
@@ -222,6 +245,12 @@ def resolve_attributes(
     the same region — a caller spanning multiple regions calls this once per region and merges
     the results. `{}` for any pair with no matching row, same as `parse_attributes`'s
     missing-data behavior.
+
+    Explicitly filters region-scoping the same way `search_catalog` does (see its docstring):
+    `region_code` for most rows, `fromRegionCode` for AWSDataTransfer (whose own `region_code`
+    is unreliable — it mirrors whichever partition is read, not the row's real origin).
+    Otherwise a `sku` that happens to also appear under a different region (the upstream data
+    currently has many of these) could resolve to the wrong row.
     """
     if not skus:
         return {}
@@ -232,12 +261,16 @@ def resolve_attributes(
 
     query = (
         "SELECT service_code, sku, attributes_json "
-        f"FROM read_parquet(?) WHERE sku IN ({placeholders})"
+        "FROM read_parquet(?) WHERE "
+        "CASE WHEN regexp_matches(service_code, 'AWSDataTransfer', 'i') "
+        "THEN json_extract_string(attributes_json, '$.fromRegionCode') = ? "
+        "ELSE region_code = ? END "
+        f"AND sku IN ({placeholders})"
     )
     try:
         con = duckdb.connect(":memory:", read_only=False)
         rows = con.execute(
-            query, [_product_dim_path(snapshot_date, region), *unique_skus]
+            query, [_product_dim_path(snapshot_date, region), region, region, *unique_skus]
         ).fetchall()
     except duckdb.Error as exc:
         raise PricingDataUnavailableError(str(exc)) from exc

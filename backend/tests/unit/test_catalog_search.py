@@ -121,10 +121,11 @@ def test_total_matches_independent_count_query():
     expected_total = con.execute(
         "SELECT COUNT(*) FROM read_parquet(?) p "
         "JOIN read_parquet(?) s USING (service_code) "
-        "WHERE regexp_matches(p.service_code, ?, 'i')",
+        "WHERE p.region_code = ? AND regexp_matches(p.service_code, ?, 'i')",
         [
             _product_dim_path(snapshot_date, "us-east-1"),
             _service_dim_path(snapshot_date, "us-east-1"),
+            "us-east-1",
             "^AmazonEC2$",
         ],
     ).fetchone()[0]
@@ -221,3 +222,79 @@ def test_invalid_to_region_code_pattern_raises_with_field_name():
     with pytest.raises(InvalidRegexPatternError) as excinfo:
         search_catalog(to_region_code="(unclosed", region="us-east-1")
     assert excinfo.value.field == "to_region_code"
+
+
+# --- Data-integrity finding (2026-09-15, live bug report): the upstream `product_dim`
+# Parquet data is NOT actually filtered by its own `region=<code>` partition directory — every
+# partition file contains the full multi-region catalog (verified directly: the `region=
+# eu-west-1` partition has ~986k rows spanning every AWS region, not just eu-west-1's own
+# ~165k). Each row DOES carry an accurate top-level `region_code` column, though, which
+# `search_catalog()` must filter on explicitly rather than trusting partition selection alone.
+
+
+# A real AmazonEC2 t3.medium SKU whose product_dim row's own `region_code` is `us-east-1`, even
+# though it is present (verified directly against the real Parquet data) inside every other
+# region's partition file too, including eu-west-1's.
+KNOWN_US_EAST_1_ONLY_SKU = "NN4EGUUQRWVYP98C"
+# A real AmazonEC2 t3.medium SKU whose product_dim row's own `region_code` is genuinely
+# `eu-west-1` (verified directly against the real Parquet data).
+KNOWN_EU_WEST_1_ONLY_SKU = "FRY78BUQYV58QJXY"
+
+
+def test_search_excludes_a_sku_whose_own_region_code_does_not_match_the_requested_region():
+    results, _snapshot_date, total = search_catalog(
+        text=f"^{KNOWN_US_EAST_1_ONLY_SKU}$", region="eu-west-1", limit=10
+    )
+    assert total == 0
+    assert results == []
+
+
+def test_search_still_finds_that_sku_when_searching_its_own_region():
+    results, _snapshot_date, total = search_catalog(
+        text=f"^{KNOWN_US_EAST_1_ONLY_SKU}$", region="us-east-1", limit=10
+    )
+    assert total >= 1
+    assert any(r["sku"] == KNOWN_US_EAST_1_ONLY_SKU for r in results)
+
+
+def test_search_finds_a_genuinely_eu_west_1_sku_when_searching_eu_west_1():
+    results, _snapshot_date, total = search_catalog(
+        text=f"^{KNOWN_EU_WEST_1_ONLY_SKU}$", region="eu-west-1", limit=10
+    )
+    assert total >= 1
+    assert any(r["sku"] == KNOWN_EU_WEST_1_ONLY_SKU for r in results)
+
+
+def test_search_excludes_that_eu_west_1_sku_when_searching_us_east_1():
+    results, _snapshot_date, total = search_catalog(
+        text=f"^{KNOWN_EU_WEST_1_ONLY_SKU}$", region="us-east-1", limit=10
+    )
+    assert total == 0
+    assert results == []
+
+
+# --- Same finding, AWSDataTransfer case: its top-level `region_code` column is unreliable —
+# unlike AmazonEC2's, it merely mirrors whichever partition copy happens to be read (verified
+# directly: the same AWSDataTransfer sku's `region_code` is "us-east-1" when read from the
+# us-east-1 partition and "eu-west-1" when read from the eu-west-1 partition, even though its
+# own `fromRegionCode`/`toRegionCode` attributes stay identical either way). Region-scoping an
+# AWSDataTransfer row must key off `fromRegionCode` instead (spec FR-006: a connector's search
+# is scoped to its "from" collection's region).
+
+
+def test_search_excludes_an_awsdatatransfer_sku_whose_own_fromregioncode_does_not_match():
+    # KNOWN_FROM_TO_SKU's fromRegionCode is us-east-1 (see its own constant comment above) —
+    # must not appear when scoped to a different region, regardless of region_code.
+    results, _snapshot_date, total = search_catalog(
+        text=f"^{KNOWN_FROM_TO_SKU}$", region="eu-west-1", limit=10
+    )
+    assert total == 0
+    assert results == []
+
+
+def test_search_finds_that_awsdatatransfer_sku_when_scoped_to_its_own_fromregioncode():
+    results, _snapshot_date, total = search_catalog(
+        text=f"^{KNOWN_FROM_TO_SKU}$", region="us-east-1", limit=10
+    )
+    assert total >= 1
+    assert any(r["sku"] == KNOWN_FROM_TO_SKU for r in results)
