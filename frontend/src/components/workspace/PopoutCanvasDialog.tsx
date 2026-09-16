@@ -1,4 +1,5 @@
 import { ReactFlowProvider } from "@xyflow/react";
+import { GripHorizontal } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
 import { type Collection, type DataConnector } from "../../api/client";
@@ -9,6 +10,49 @@ const DEFAULT_WIDTH_RATIO = 0.9;
 const DEFAULT_HEIGHT_RATIO = 0.85;
 const MIN_WIDTH = 480;
 const MIN_HEIGHT = 360;
+// How much of the dialog must stay reachable on-screen while dragging — a floor, not a full
+// clamp, so it can still be dragged mostly off-screen if the user wants columns 2/3 fully
+// clear, but never loses the drag handle/close button entirely off any edge.
+const MIN_VISIBLE_MARGIN = 40;
+
+/** Drag-to-move title bar (live user report: the pop-out could be resized but not repositioned,
+ * making it impossible to keep columns 2/3 reachable while it's open — this app never
+ * committed to a fixed in-viewport position for it, that was just this dialog's original,
+ * too-narrow default). Same proven `onPointerDown`/`setPointerCapture`/`pointermove` pattern as
+ * `PopoutResizeHandle` below, dragging position instead of size. */
+function PopoutDragHandle({ onDrag }: { onDrag: (deltaX: number, deltaY: number) => void }) {
+  const lastRef = useRef({ x: 0, y: 0 });
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Move the pop-out canvas"
+      className="flex h-6 shrink-0 cursor-move touch-none items-center justify-center rounded-t text-muted-foreground hover:bg-accent active:bg-accent"
+      onPointerDown={(e) => {
+        e.preventDefault();
+        lastRef.current = { x: e.clientX, y: e.clientY };
+        const target = e.currentTarget;
+        target.setPointerCapture(e.pointerId);
+
+        const handleMove = (moveEvent: PointerEvent) => {
+          const deltaX = moveEvent.clientX - lastRef.current.x;
+          const deltaY = moveEvent.clientY - lastRef.current.y;
+          lastRef.current = { x: moveEvent.clientX, y: moveEvent.clientY };
+          onDrag(deltaX, deltaY);
+        };
+        const handleUp = () => {
+          target.removeEventListener("pointermove", handleMove);
+          target.removeEventListener("pointerup", handleUp);
+        };
+        target.addEventListener("pointermove", handleMove);
+        target.addEventListener("pointerup", handleUp);
+      }}
+    >
+      <GripHorizontal className="size-4" aria-hidden="true" />
+    </div>
+  );
+}
 
 /** Corner resize grip for the pop-out, extending `ArchitectureDiagramPanel.tsx`'s
  * `DiagramResizeHandle`/`WorkspacePage.tsx`'s `ColumnResizeHandle` pattern to both dimensions
@@ -102,11 +146,28 @@ export function PopoutCanvasDialog({
     width: Math.round(window.innerWidth * DEFAULT_WIDTH_RATIO),
     height: Math.round(window.innerHeight * DEFAULT_HEIGHT_RATIO),
   }));
+  // Explicit pixel position (not `DialogContent`'s default centered-via-transform placement)
+  // so it can be dragged — initialized to the same centered spot that default would have
+  // produced, so opening the pop-out looks unchanged until the user actually drags it.
+  const [position, setPosition] = useState(() => ({
+    x: Math.round((window.innerWidth - window.innerWidth * DEFAULT_WIDTH_RATIO) / 2),
+    y: Math.round((window.innerHeight - window.innerHeight * DEFAULT_HEIGHT_RATIO) / 2),
+  }));
 
   const onResizeDrag = useCallback((deltaX: number, deltaY: number) => {
     setSize((prev) => ({
       width: Math.max(MIN_WIDTH, prev.width + deltaX),
       height: Math.max(MIN_HEIGHT, prev.height + deltaY),
+    }));
+  }, []);
+
+  const onMoveDrag = useCallback((deltaX: number, deltaY: number) => {
+    setPosition((prev) => ({
+      x: Math.min(
+        Math.max(prev.x + deltaX, MIN_VISIBLE_MARGIN - window.innerWidth),
+        window.innerWidth - MIN_VISIBLE_MARGIN,
+      ),
+      y: Math.min(Math.max(prev.y + deltaY, 0), window.innerHeight - MIN_VISIBLE_MARGIN),
     }));
   }, []);
 
@@ -165,6 +226,12 @@ export function PopoutCanvasDialog({
       <DialogContent
         overlay={false}
         showCloseButton
+        // Found live: `DialogContent`'s entrance-animation classes (`data-open:animate-in`/
+        // `zoom-in-95`) get stuck applying their starting scaled/translated keyframe state
+        // persistently for a dialog whose position/size are externally managed like this one —
+        // see `animated`'s own doc comment on `DialogContent` (`ui/dialog.tsx`) for how this
+        // was isolated (removing every other class group first, one at a time, live).
+        animated={false}
         // `max-w-none` alone doesn't override `DialogContent`'s base `sm:max-w-lg` (32rem) —
         // found live: `max-w-none` and `sm:max-w-lg` are different "slots" to the `cn`/
         // tailwind-merge engine (unprefixed vs. `sm:`-prefixed), so both survive the merge and
@@ -172,18 +239,40 @@ export function PopoutCanvasDialog({
         // silently capping this dialog's width at 512px regardless of the inline `style` below
         // (that's exactly why only height, which has no equivalent `sm:max-h-*` base class, was
         // ever actually resizable). `sm:max-w-none` neutralizes that specific slot too.
-        className="max-w-none sm:max-w-none gap-2 p-2"
-        style={{ width: size.width, height: size.height }}
+        className="max-w-none sm:max-w-none flex flex-col gap-0 p-2"
+        // Explicit `top`/`left`/`transform: none`/`translate: none` (all inline, so they win
+        // over the base `top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2` centering classes
+        // regardless of tailwind-merge slot-matching — the same lesson as `sm:max-w-none`
+        // above) replace `DialogContent`'s default centered placement so the dialog can be
+        // dragged (live user report: it could be resized but not moved, making it impossible to
+        // keep columns 2/3 reachable while it's open). `translate: "none"` is the one that
+        // actually matters — found live, the hard way: Tailwind v4 implements
+        // `-translate-x-1/2`/`-translate-y-1/2` via the *standalone* CSS `translate` property,
+        // not `transform` (confirmed by diffing every computed style property with/without
+        // those classes — `transform` was identical/`none` in both, only `translate` differed).
+        // `transform: "none"` alone — even with `!important` — left the box still visually
+        // offset by exactly half its own width/height despite `getComputedStyle().transform`
+        // correctly reporting `"none"`, because the actual offending property was never
+        // `transform` at all.
+        style={{
+          width: size.width,
+          height: size.height,
+          top: position.y,
+          left: position.x,
+          transform: "none",
+          translate: "none",
+        }}
         onPointerDownOutside={(e) => e.preventDefault()}
       >
         <DialogTitle className="sr-only">Architecture canvas (enlarged view)</DialogTitle>
+        <PopoutDragHandle onDrag={onMoveDrag} />
         {/* `ArchitectureDiagramPanel` sizes its own canvas box internally (its own
             `diagramHeight` state, defaulting to 640px, adjustable via its own
             `DiagramResizeHandle`) rather than filling a parent container — the same as it does
             in column 4 today. This wrapper just gives it room to render at whatever size it
             currently is and scrolls if it's taller than the dialog's own current size, rather
             than clipping or visually breaking out of the dialog's bounds. */}
-        <div className="relative h-full overflow-auto">
+        <div className="relative min-h-0 flex-1 overflow-auto">
           <ReactFlowProvider>
             <ArchitectureDiagramPanel
               architectureId={architectureId}

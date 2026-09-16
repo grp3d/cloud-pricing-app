@@ -50,6 +50,7 @@ function DialogContent({
   children,
   showCloseButton = true,
   overlay = true,
+  animated = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
@@ -59,6 +60,15 @@ function DialogContent({
    * events on that content regardless of `modal`, since its pointer-blocking comes from being
    * a real DOM element on top in stacking order, not from the `modal` prop itself. */
   overlay?: boolean
+  /** 011-canvas-connector-popout: false to drop the `data-open:animate-in`/`zoom-in-95`/
+   * `data-closed:animate-out` entrance/exit classes entirely. Found live: for a dialog whose
+   * own `top`/`left`/`width`/`height` are externally managed (drag-to-move/resize, not the
+   * default centered placement), this animation gets stuck applying its starting
+   * (scaled/translated) keyframe state persistently instead of settling — confirmed by
+   * removing every other class one group at a time; only this one reproduced the offset.
+   * Fine as a one-time mount effect for an ordinarily-sized, centered dialog; not for one
+   * whose position/size are recomputed via inline style on every render. */
+  animated?: boolean
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
@@ -66,7 +76,9 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-background p-6 shadow-lg duration-200 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 sm:max-w-lg",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-background p-6 shadow-lg duration-200 sm:max-w-lg",
+          animated &&
+            "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}

@@ -86,7 +86,8 @@ A user viewing the architecture canvas in column 4 wants the Collection, Connect
 - **FR-005**: When the dialog opens, it MUST pre-populate "From Collection" and, if a second Collection is selected, "To Collection" from the Collections currently selected on the canvas, in selection order; if zero Collections are selected, both dropdowns open empty.
 - **FR-006**: A Connector MUST NOT be created until the user explicitly clicks "Add Connector" inside the dialog, even when both dropdowns are already pre-populated.
 - **FR-007**: Column 4's canvas MUST show a pop-out control (a [↗]-style icon) in its top-right corner.
-- **FR-008**: Clicking the pop-out control MUST open an adjustable (resizable), enlarged in-app overlay — within the same browser tab, not a separate browser window — showing the same architecture canvas as column 4.
+- **FR-008**: Clicking the pop-out control MUST open an adjustable (resizable and movable), enlarged in-app overlay — within the same browser tab, not a separate browser window — showing the same architecture canvas as column 4.
+- **FR-008a**: The pop-out MUST be repositionable (drag-to-move) within the browser window, so the user can move it clear of columns 1–3 while it's open (live user report, added after initial implementation: the original design assumed repositioning wasn't needed, but without it the pop-out's own default size unavoidably covers those columns).
 - **FR-009**: While the pop-out is open, any change made via columns 2/3 (adding/editing/removing Collections, Connectors, or Service Selections; region changes) MUST be reflected in the pop-out's canvas without the user manually refreshing or reopening it.
 - **FR-010**: Closing the pop-out MUST return column 4's own canvas to being the active view, showing the architecture's current state.
 - **FR-011**: While the pop-out is open, column 4's own canvas MUST remain a live, independently-interactive mirror of the same architecture — showing the same up-to-date diagram and remaining fully usable on its own (selecting, connecting, etc.) — rather than becoming a disabled or placeholder view.
@@ -108,7 +109,7 @@ A user viewing the architecture canvas in column 4 wants the Collection, Connect
 ## Assumptions
 
 - The font-size increase in User Story 3 is the next increment beyond the size already in place today (this feature captures the desired end state; it does not assume any specific starting point).
-- "Adjustable" for the pop-out means user-resizable, consistent with the resize patterns already used elsewhere in the workspace (e.g. column widths, diagram panel height); free repositioning/dragging around the screen is not required.
+- "Adjustable" for the pop-out means user-resizable, consistent with the resize patterns already used elsewhere in the workspace (e.g. column widths, diagram panel height). ~~Free repositioning/dragging around the screen is not required~~ — superseded by FR-008a after live use showed the pop-out's own default size otherwise unavoidably covers columns 1–3, making them unreachable while it's open.
 - The From/To pre-population order in User Story 2 follows the same selection-order logic the app already uses elsewhere for the existing two-Collection connect flow.
 - No backend/API changes are required — both changes are presentation-layer only, reusing the existing connector-creation operation and already-loaded architecture data.
 - The pop-out reflects only the current user's own session; no multi-user/real-time collaboration behavior is implied.
