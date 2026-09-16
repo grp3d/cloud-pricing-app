@@ -29,6 +29,11 @@ from src.pricing_data.duration import classify_unit
         "Request",
         "API Request",
         "GB",
+        "second",
+        "Second",
+        "GB-Seconds",
+        "vCPU-Seconds",
+        "Lambda-GB-Second",
     ],
 )
 def test_no_period_units(unit):

@@ -58,6 +58,11 @@ _NO_PERIOD_UNITS: frozenset[str] = frozenset(
         "sms-message",
         "Position",
         "image",
+        "second",
+        "Second",
+        "GB-Seconds",
+        "vCPU-Seconds",
+        "Lambda-GB-Second",
     }
 )
 
