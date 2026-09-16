@@ -34,7 +34,7 @@ export function isConnectorSide(value: unknown): value is ConnectorSide {
   return value === "top" || value === "right" || value === "bottom" || value === "left";
 }
 
-interface Point {
+export interface Point {
   x: number;
   y: number;
 }
@@ -95,4 +95,115 @@ export function chooseConnectorSides(
     fromSide: pickSide(rankSidesByPath(fromRect, toCenter), fromUsage),
     toSide: pickSide(rankSidesByPath(toRect, fromCenter), toUsage),
   };
+}
+
+/** Live user report: Connector lines could be drawn straight through an unrelated Collection
+ * box sitting between the two boxes they actually connect. `routeAroundObstacles` (used by
+ * `ArchitectureDiagramPanel.tsx`'s `OffsetEdge`) detects that and returns a short detour
+ * instead, so a Connector never visually crosses a box it isn't attached to. */
+
+/** Margin (px) kept clear between a routed Connector and an obstacle box's own edge — a purely
+ * visual buffer so the line reads as "going around" rather than grazing the border. */
+const OBSTACLE_MARGIN = 16;
+
+/** True if the segment from `(x1,y1)` to `(x2,y2)` enters `rect` (expanded by `margin` on
+ * every side) anywhere along its length, including at either endpoint — the standard
+ * Liang-Barsky segment/AABB clipping test, used here purely as a boolean intersection check
+ * rather than to compute the clipped sub-segment itself. */
+function segmentIntersectsRect(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  rect: Rect,
+  margin: number,
+): boolean {
+  const rx0 = rect.x - margin;
+  const ry0 = rect.y - margin;
+  const rx1 = rect.x + rect.width + margin;
+  const ry1 = rect.y + rect.height + margin;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let tMin = 0;
+  let tMax = 1;
+
+  // Clips the segment's parametric range [tMin, tMax] against one of the rect's four
+  // half-plane boundaries; returns false the moment the range becomes empty (a definitive
+  // "doesn't intersect", short-circuiting the remaining boundaries).
+  function clip(p: number, q: number): boolean {
+    if (p === 0) return q >= 0;
+    const r = q / p;
+    if (p < 0) {
+      if (r > tMax) return false;
+      if (r > tMin) tMin = r;
+    } else {
+      if (r < tMin) return false;
+      if (r < tMax) tMax = r;
+    }
+    return true;
+  }
+
+  return (
+    clip(-dx, x1 - rx0) &&
+    clip(dx, rx1 - x1) &&
+    clip(-dy, y1 - ry0) &&
+    clip(dy, ry1 - y1) &&
+    tMin <= tMax
+  );
+}
+
+/**
+ * Given a straight line from `source` to `target`, finds which of `obstacles` it actually
+ * crosses and, if any do, returns a short polyline route around their combined bounding box
+ * instead of the straight line — `null` if the straight line is already clear of every
+ * obstacle, so the caller keeps using its own default curve/bezier for the (overwhelmingly
+ * common) unobstructed case.
+ *
+ * The detour goes around whichever side — top/bottom if the line is more horizontal than
+ * vertical, left/right if more vertical — the straight line's own midpoint already sits
+ * closer to, so it takes the shorter of the two ways around, then steps out, across, and back
+ * in (a 4-point "U"/"Z" shape) rather than cutting the corner. `extraOffset` (default 0) pushes
+ * the detour further from the obstacle by that many additional pixels, always outward
+ * regardless of which side was chosen — for disambiguating multiple parallel Connectors that
+ * all need to detour around the same obstacle, the same way `OffsetEdge`'s own perpendicular
+ * offset already disambiguates parallel *unobstructed* Connectors.
+ *
+ * Handles the common case — one or a few boxes sitting between two others that are roughly
+ * grid-aligned — robustly; not a general-purpose pathfinder, so a dense, irregular cluster of
+ * overlapping boxes isn't guaranteed a fully clear route.
+ */
+export function routeAroundObstacles(
+  source: Point,
+  target: Point,
+  obstacles: Rect[],
+  extraOffset = 0,
+): Point[] | null {
+  const blocking = obstacles.filter((rect) =>
+    segmentIntersectsRect(source.x, source.y, target.x, target.y, rect, OBSTACLE_MARGIN),
+  );
+  if (blocking.length === 0) return null;
+
+  const left = Math.min(...blocking.map((r) => r.x));
+  const top = Math.min(...blocking.map((r) => r.y));
+  const right = Math.max(...blocking.map((r) => r.x + r.width));
+  const bottom = Math.max(...blocking.map((r) => r.y + r.height));
+
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const midY = (source.y + target.y) / 2;
+    const detourAboveTop = midY - top <= bottom - midY;
+    const detourY = detourAboveTop
+      ? top - OBSTACLE_MARGIN - extraOffset
+      : bottom + OBSTACLE_MARGIN + extraOffset;
+    return [source, { x: source.x, y: detourY }, { x: target.x, y: detourY }, target];
+  }
+
+  const midX = (source.x + target.x) / 2;
+  const detourLeftOfLeft = midX - left <= right - midX;
+  const detourX = detourLeftOfLeft
+    ? left - OBSTACLE_MARGIN - extraOffset
+    : right + OBSTACLE_MARGIN + extraOffset;
+  return [source, { x: detourX, y: source.y }, { x: detourX, y: target.y }, target];
 }

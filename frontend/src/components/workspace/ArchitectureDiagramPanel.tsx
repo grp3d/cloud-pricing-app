@@ -14,6 +14,7 @@ import {
   addEdge,
   getBezierPath,
   reconnectEdge,
+  useNodes,
   useOnSelectionChange,
   useReactFlow,
   useViewport,
@@ -51,6 +52,7 @@ import {
   ALL_CONNECTOR_SIDES,
   chooseConnectorSides,
   isConnectorSide,
+  routeAroundObstacles,
   type ConnectorSide,
   type Rect,
 } from "../../lib/connectorRouting";
@@ -192,6 +194,22 @@ function absoluteRect(nodeId: string, nodesById: Map<string, Node>): Rect | null
   const width = typeof node.style?.width === "number" ? node.style.width : 0;
   const height = typeof node.style?.height === "number" ? node.style.height : 0;
   return { x, y, width, height };
+}
+
+/** A node's own id plus every ancestor's (walking `parentId`) — used to exclude a Connector's
+ * own endpoint boxes, and *their* containing VPC(s), from its obstacle-avoidance check
+ * (`routeAroundObstacles` below). A nested Application's own handle sits on its own boundary,
+ * inside its parent VPC's boundary by construction — treating that parent as an "obstacle"
+ * would misfire on every single Connector attached to a nested box, not just ones that
+ * actually cross some unrelated box. */
+function selfAndAncestorIds(nodeId: string, nodesById: Map<string, Node>): Set<string> {
+  const ids = new Set<string>();
+  let id: string | undefined = nodeId;
+  while (id) {
+    ids.add(id);
+    id = nodesById.get(id)?.parentId;
+  }
+  return ids;
 }
 
 const EMPTY_SIDE_USAGE: Record<ConnectorSide, number> = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -448,9 +466,22 @@ const nodeTypes = {
  * `Position.Left`/`Position.Right` handles on horizontally-aligned nodes — this diagram's most
  * common layout — curvature only extends the control points horizontally, producing an
  * identical-looking path for every offset; confirmed live by inspecting the rendered SVG `d`
- * attributes, which were byte-for-byte identical across differently-curved edges). */
+ * attributes, which were byte-for-byte identical across differently-curved edges).
+ *
+ * Live user report: neither of those paths knows about any *other* box on the canvas, so a
+ * Connector could render straight through one sitting between its own two endpoints.
+ * `routeAroundObstacles` (checked first, before either of the above) detects that and returns
+ * a short detour route around it instead; the bezier/perpendicular-offset paths only run at
+ * all when it reports the straight line is already clear. Obstacles are recomputed here, live,
+ * from `useNodes()` (React Flow's own current-node-positions hook) rather than precomputed
+ * once in `initialEdges` below — found live: `initialEdges` deliberately only recomputes when
+ * `connectors` itself changes (its own comment explains why), so obstacle rects sourced from
+ * there would go stale the moment a box is dragged *after* a Connector already exists, exactly
+ * the case this feature needs to keep handling. */
 function OffsetEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -464,6 +495,51 @@ function OffsetEdge({
   data,
 }: EdgeProps) {
   const offsetIndex = (data?.offsetIndex as number | undefined) ?? 0;
+  const liveNodes = useNodes();
+
+  const routed = useMemo(() => {
+    const nodesById = new Map(liveNodes.map((n) => [n.id, n]));
+    const excluded = new Set([
+      ...selfAndAncestorIds(source, nodesById),
+      ...selfAndAncestorIds(target, nodesById),
+    ]);
+    const obstacles = liveNodes
+      .filter((n) => !excluded.has(n.id))
+      .map((n) => absoluteRect(n.id, nodesById))
+      .filter((r): r is Rect => r !== null);
+    return routeAroundObstacles(
+      { x: sourceX, y: sourceY },
+      { x: targetX, y: targetY },
+      obstacles,
+      // Same magnitude scale as the perpendicular offset below, unsigned here since
+      // `routeAroundObstacles` already pushes further from the obstacle regardless of which
+      // side it detours around — disambiguates multiple parallel Connectors that all need to
+      // detour around the same box, the same way the offset curve already disambiguates
+      // multiple parallel *unobstructed* ones.
+      offsetIndex > 0 ? 24 * Math.ceil(offsetIndex / 2) : 0,
+    );
+  }, [liveNodes, source, target, sourceX, sourceY, targetX, targetY, offsetIndex]);
+
+  if (routed) {
+    const path = routed.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+    // The midpoint of the detour's own "far" segment (routed[1]→routed[2], the part that's
+    // actually clearing the obstacle) reads better than the path's literal midpoint, which
+    // can land on one of the short in/out segments right next to a box.
+    const labelX = (routed[1].x + routed[2].x) / 2;
+    const labelY = (routed[1].y + routed[2].y) / 2;
+    return (
+      <BaseEdge
+        id={id}
+        path={path}
+        markerEnd={markerEnd}
+        style={style}
+        label={label}
+        labelStyle={labelStyle}
+        labelX={labelX}
+        labelY={labelY}
+      />
+    );
+  }
 
   if (offsetIndex === 0) {
     const [path, labelX, labelY] = getBezierPath({
