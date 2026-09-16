@@ -12,6 +12,7 @@ import {
 import { ArchitectureDiagramPanel } from "../components/workspace/ArchitectureDiagramPanel";
 import { canConnect } from "./connectorSelection";
 import { CollectionsPanel, type CollectionsPanelSelection } from "../components/workspace/CollectionsPanel";
+import { PopoutCanvasDialog } from "../components/workspace/PopoutCanvasDialog";
 import { PricingPanel } from "../components/workspace/PricingPanel";
 import { ProviderArchitecturePanel } from "../components/workspace/ProviderArchitecturePanel";
 import { RegionSelectDialog } from "../components/workspace/RegionSelectDialog";
@@ -270,6 +271,12 @@ function WorkspacePageInner() {
   const reportHeight = useCallback((id: string, height: number) => {
     setOwnHeights((prev) => (prev[id] === height ? prev : { ...prev, [id]: height }));
   }, []);
+
+  // 011-canvas-connector-popout, spec FR-007: whether the enlarged pop-out canvas view is
+  // open — owned here since column 4's own trigger button and `PopoutCanvasDialog` (rendered
+  // as siblings below) both need it. `PopoutCanvasDialog` owns everything else about its own
+  // canvas instance (selection, box heights, size) locally — only this boolean is lifted.
+  const [popoutOpen, setPopoutOpen] = useState(false);
 
   function deselectAll() {
     setSelectedCollectionId(null);
@@ -716,6 +723,7 @@ function WorkspacePageInner() {
                 )
               }
               onRefresh={invalidateArchitecture}
+              onOpenPopout={() => setPopoutOpen(true)}
             />
           </div>
 
@@ -770,6 +778,27 @@ function WorkspacePageInner() {
         onConfirm={(region) => createCollection.mutate({ region })}
         isSubmitting={createCollection.isPending}
       />
+
+      {architecture.data && (
+        <PopoutCanvasDialog
+          open={popoutOpen}
+          onOpenChange={setPopoutOpen}
+          architectureId={architectureId!}
+          collections={collections}
+          connectors={connectors}
+          onCreateConnector={(from, to) => createConnector.mutate({ from, to })}
+          onUpdateCollectionParent={(id, parentId) =>
+            updateCollectionParent.mutate({ id, parentId })
+          }
+          onRejectedNesting={(applicationName, vpcName) =>
+            setActionError(
+              `"${applicationName}" is in a different region than "${vpcName}" — an ` +
+                "Application can only nest inside a VPC in the same region.",
+            )
+          }
+          onRefresh={invalidateArchitecture}
+        />
+      )}
     </div>
   );
 }

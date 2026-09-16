@@ -58,8 +58,10 @@ test-first Vitest coverage before this live pass.
 4. While the overlay is open, select and pan/zoom within **column 4's own canvas** (behind/below
    the overlay, or after temporarily closing it). **Expected**: column 4's canvas remains fully
    interactive on its own — selecting, connecting, etc. — independent of the pop-out (FR-011).
-5. Close the overlay (its close button, Escape, or clicking outside it — Edge Cases).
-   **Expected**: column 4's canvas becomes the active view again, showing the architecture's
-   current state, with no page reload (FR-010, SC-005).
+5. Close the overlay via its close button, then reopen it and close it via Escape instead.
+   **Expected** both times: column 4's canvas becomes the active view again, showing the
+   architecture's current state, with no page reload (FR-010, SC-005). Also confirm clicking on
+   column 4's own canvas while the pop-out is open does *not* close the pop-out (Edge Cases) —
+   it's a live interaction with column 4, not a dismiss gesture.
 6. Repeat step 1 while the overlay is already open (e.g. via a second trigger if reachable).
    **Expected**: the existing overlay is brought into focus, not duplicated (Edge Cases).

@@ -27,7 +27,7 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { ArrowUpRight, RefreshCw } from "lucide-react";
 
 import { type Collection, type DataConnector } from "../../api/client";
 import { useMeasuredHeight } from "../../hooks/useMeasuredHeight";
@@ -722,6 +722,11 @@ export interface ArchitectureDiagramPanelProps {
    * this user's continued live reports) — `WorkspacePage.tsx` owns the query, this panel only
    * triggers it and separately forces its own React Flow instance to fully remount. */
   onRefresh: () => void;
+  /** 011-canvas-connector-popout, spec FR-007: opens `PopoutCanvasDialog`
+   * (`WorkspacePage.tsx`), a second, independent instance of this same panel enlarged in an
+   * in-tab overlay — this panel only triggers it, `WorkspacePage.tsx` owns the open/closed
+   * state since the trigger (here) and the dialog itself are siblings, not parent/child. */
+  onOpenPopout: () => void;
 }
 
 /**
@@ -749,6 +754,7 @@ export function ArchitectureDiagramPanel({
   onUpdateCollectionParent,
   onRejectedNesting,
   onRefresh,
+  onOpenPopout,
 }: ArchitectureDiagramPanelProps) {
   const { getIntersectingNodes } = useReactFlow();
 
@@ -1329,6 +1335,22 @@ export function ArchitectureDiagramPanel({
           </button>
         </Panel>
         <AddConnectorDialog collections={collections} onCreateConnector={onCreateConnector} />
+        {/* 011-canvas-connector-popout, spec FR-007: opens an enlarged, independent, live-synced
+            view of this same canvas (`PopoutCanvasDialog`, `WorkspacePage.tsx`) — see
+            `onOpenPopout`'s own doc comment above for why the open/closed state itself lives one
+            level up. */}
+        <Panel position="top-right">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-label="Open the architecture canvas in an enlarged view"
+            title="Open the architecture canvas in an enlarged view"
+            onClick={onOpenPopout}
+          >
+            <ArrowUpRight />
+          </Button>
+        </Panel>
       </ReactFlow>
       <DiagramResizeHandle
         onDrag={(deltaY) =>

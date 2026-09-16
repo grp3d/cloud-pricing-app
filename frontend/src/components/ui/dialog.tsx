@@ -49,13 +49,20 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  overlay = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  /** 011-canvas-connector-popout: false for a non-modal dialog (`modal={false}` on the
+   * `Dialog` root) whose content must stay visually and functionally separate from whatever
+   * it's floating over — the default full-viewport overlay would otherwise block pointer
+   * events on that content regardless of `modal`, since its pointer-blocking comes from being
+   * a real DOM element on top in stacking order, not from the `modal` prop itself. */
+  overlay?: boolean
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+      {overlay && <DialogOverlay />}
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(

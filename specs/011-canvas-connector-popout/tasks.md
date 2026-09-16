@@ -44,14 +44,14 @@ confirm column 4's own canvas is still fully usable.
 
 ### Implementation for User Story 1
 
-- [ ] T001 [US1] Add an `onOpenPopout: () => void` prop and a `[↗]`-style icon `Button` in a
+- [X] T001 [US1] Add an `onOpenPopout: () => void` prop and a `[↗]`-style icon `Button` in a
       `<Panel position="top-right">` (the same position the removed `AddConnectorDialog`
       currently occupies) to `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`
       (FR-007)
-- [ ] T002 [US1] Add `popoutOpen`/`setPopoutOpen` boolean state to
+- [X] T002 [US1] Add `popoutOpen`/`setPopoutOpen` boolean state to
       `frontend/src/pages/WorkspacePage.tsx`; wire `onOpenPopout={() => setPopoutOpen(true)}`
       into the existing column-4 `<ArchitectureDiagramPanel>` instance (FR-007)
-- [ ] T003 [US1] Create `frontend/src/components/workspace/PopoutCanvasDialog.tsx`: accepts
+- [X] T003 [US1] Create `frontend/src/components/workspace/PopoutCanvasDialog.tsx`: accepts
       `open`, `onOpenChange`, and the same `architectureId`/`collections`/`connectors`/
       `onCreateConnector`/`onUpdateCollectionParent`/`onRejectedNesting`/`onRefresh` props
       `WorkspacePage.tsx` already threads to column 4's `ArchitectureDiagramPanel`; wraps its
@@ -60,7 +60,7 @@ confirm column 4's own canvas is still fully usable.
       a second, independent `<ArchitectureDiagramPanel>` instance inside a `Dialog`/
       `DialogContent` from `frontend/src/components/ui/dialog.tsx` (FR-008, FR-011,
       research.md §3)
-- [ ] T004 [US1] In `PopoutCanvasDialog.tsx`, pass `modal={false}` to the `Dialog` root and
+- [X] T004 [US1] In `PopoutCanvasDialog.tsx`, pass `modal={false}` to the `Dialog` root and
       remove (or render `pointer-events-none`, confined to the dialog's own bounds) the default
       `DialogOverlay`, so column 4's own canvas stays clickable/interactive while the pop-out is
       open (FR-011 — `/speckit-analyze` finding F1: a default *modal* Dialog's focus trap and
@@ -71,11 +71,11 @@ confirm column 4's own canvas is still fully usable.
       `onPointerDown`/`setPointerCapture`/`pointermove` pattern as `DiagramResizeHandle`
       (`ArchitectureDiagramPanel.tsx`) / `ColumnResizeHandle` (`WorkspacePage.tsx`), extended to
       both width and height (FR-008, research.md §4) — depends on T003
-- [ ] T005 [US1] Render `<PopoutCanvasDialog open={popoutOpen} onOpenChange={setPopoutOpen} ...>`
+- [X] T005 [US1] Render `<PopoutCanvasDialog open={popoutOpen} onOpenChange={setPopoutOpen} ...>`
       from `frontend/src/pages/WorkspacePage.tsx` alongside the existing column-4
       `ArchitectureDiagramPanel`, passing through the same `collections`/`connectors`/mutation
       props (FR-009, FR-010) — depends on T001-T004
-- [ ] T006 [US1] Live-verify via `claude-in-chrome` against `quickstart.md`'s US1 section:
+- [X] T006 [US1] Live-verify via `claude-in-chrome` against `quickstart.md`'s US1 section:
       open/resize the pop-out, confirm columns 2/3 edits propagate into it live, **explicitly
       click/select something on column 4's own canvas while the pop-out is open and confirm it
       responds** (not just that it's still rendering/updating — FR-011, finding F1), and confirm
