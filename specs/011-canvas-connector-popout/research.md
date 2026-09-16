@@ -90,27 +90,51 @@ read-only (no `ReactFlowProvider`, no interaction) — rejected by the resolved 
 ## §4. Pop-out presentation & resize (US1/FR-008, Clarifications)
 
 **Decision**: Build the pop-out on the existing shadcn/ui `Dialog`/`DialogContent` primitives
-(`components/ui/dialog.tsx`), the same base `AddConnectorDialog` already used, with a
-large-by-default `className` override (e.g. `max-w-[90vw] max-h-[85vh]` in place of the default
-`sm:max-w-lg`) and inline `style={{ width, height }}` driven by component state. Resizing reuses
-this codebase's own proven pointer-based drag-handle pattern — `onPointerDown` +
+(`components/ui/dialog.tsx`), the same base `AddConnectorDialog` already used, but with
+`modal={false}` passed to the `Dialog` root and **no full-viewport dimming `DialogOverlay`**
+(either omit it entirely or render it `pointer-events-none` and confined to the dialog's own
+bounds) — see Amendment below for why. Otherwise as originally planned: a large-by-default
+`className` override (e.g. `max-w-[90vw] max-h-[85vh]` in place of the default `sm:max-w-lg`)
+and inline `style={{ width, height }}` driven by component state. Resizing reuses this
+codebase's own proven pointer-based drag-handle pattern — `onPointerDown` +
 `setPointerCapture` + a `pointermove` listener updating that width/height state — the same
 approach `DiagramResizeHandle` (`ArchitectureDiagramPanel.tsx`) and `ColumnResizeHandle`
 (`WorkspacePage.tsx`) already use for the diagram's height and the column widths, extended to
 both dimensions for the pop-out's own corner grip.
 
+**Amendment (`/speckit-analyze` finding F1)**: The original version of this decision reused
+Radix `Dialog`'s *default* modal behavior — focus trapping plus a full-viewport, pointer-blocking
+overlay. That directly contradicts FR-011 (confirmed via the resolved clarification): column 4's
+own canvas must stay "fully usable on its own... rather than becoming a disabled or placeholder
+view" while the pop-out is open. A modal dialog's backdrop, by construction, blocks pointer
+interaction with whatever's behind it — no amount of local state design makes column 4
+"independently interactive" if a full-screen overlay is intercepting every click aimed at it.
+`modal={false}` disables Radix's focus trap and its `aria-hidden`/body-scroll-lock side effects
+on the rest of the page; removing (or de-blocking) `DialogOverlay` is the separate, necessary
+second half of the fix, since the overlay's pointer-blocking comes from it being a real,
+full-viewport DOM element sitting on top in stacking order, unrelated to the `modal` prop. With
+both changes, the pop-out becomes a large floating panel over the canvas area rather than a
+classic modal dialog — visually and functionally consistent with "two independent, live views"
+(the framing already used when this pop-out mechanism was decided) rather than one view blocking
+the other.
+
+Escape-to-close and outside-click-to-close (Edge Cases) still work with `modal={false}` — Radix's
+dismiss-on-`Escape`/`onPointerDownOutside` behavior is handled by its `DismissableLayer`
+independent of the `modal` prop, so no custom handling is needed for those.
+
 **Rationale**: Per the resolved Clarification, the pop-out is an in-tab overlay, not a separate
-browser window — Radix's `Dialog` already provides the overlay, focus trapping, and
-Escape/click-outside dismissal the spec's edge cases need, for free. Native CSS `resize` was
-already tried and rejected earlier in this codebase for the diagram panel's own resize grip
-(documented in `ArchitectureDiagramPanel.tsx`'s `DiagramResizeHandle` comment: an imprecise
-hit-region let drags fall through to the canvas's own pan handling, and the browser's own DOM
-mutation wasn't kept across re-renders) — the pointer-based, state-backed approach is the
-already-proven fix for exactly this failure mode, so this reuses it rather than re-discovering
-the same bug.
+browser window, but "in-tab" was never meant to imply "blocks the rest of the tab" — the
+resolved FR-011 already says the opposite. Native CSS `resize` was already tried and rejected
+earlier in this codebase for the diagram panel's own resize grip (documented in
+`ArchitectureDiagramPanel.tsx`'s `DiagramResizeHandle` comment: an imprecise hit-region let
+drags fall through to the canvas's own pan handling, and the browser's own DOM mutation wasn't
+kept across re-renders) — the pointer-based, state-backed approach is the already-proven fix for
+exactly this failure mode, so this reuses it rather than re-discovering the same bug.
 
 **Alternatives considered**: A dedicated resizable-dialog library — rejected per Constitution
-Principle VI (no new dependency for something this codebase has already solved once).
+Principle VI (no new dependency for something this codebase has already solved once). Keeping
+the default modal `Dialog` (the original version of this decision) — rejected per finding F1:
+directly contradicts FR-011.
 
 ## §5. Testing approach
 

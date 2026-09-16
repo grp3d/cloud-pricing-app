@@ -60,19 +60,25 @@ confirm column 4's own canvas is still fully usable.
       a second, independent `<ArchitectureDiagramPanel>` instance inside a `Dialog`/
       `DialogContent` from `frontend/src/components/ui/dialog.tsx` (FR-008, FR-011,
       research.md §3)
-- [ ] T004 [US1] In `PopoutCanvasDialog.tsx`, give `DialogContent` a large default size
-      (e.g. `max-w-[90vw] max-h-[85vh]` in place of the default `sm:max-w-lg`) plus inline
-      `style={{ width, height }}` backed by component state, and add a corner resize grip using
-      the same `onPointerDown`/`setPointerCapture`/`pointermove` pattern as
-      `DiagramResizeHandle` (`ArchitectureDiagramPanel.tsx`) / `ColumnResizeHandle`
-      (`WorkspacePage.tsx`), extended to both width and height (FR-008, research.md §4)
+- [ ] T004 [US1] In `PopoutCanvasDialog.tsx`, pass `modal={false}` to the `Dialog` root and
+      remove (or render `pointer-events-none`, confined to the dialog's own bounds) the default
+      `DialogOverlay`, so column 4's own canvas stays clickable/interactive while the pop-out is
+      open (FR-011 — `/speckit-analyze` finding F1: a default *modal* Dialog's focus trap and
+      full-viewport overlay would otherwise block column 4 entirely, contradicting FR-011).
+      Give `DialogContent` a large default size (e.g. `max-w-[90vw] max-h-[85vh]` in place of
+      the default `sm:max-w-lg`) plus inline `style={{ width, height }}` backed by component
+      state, and add a corner resize grip using the same
+      `onPointerDown`/`setPointerCapture`/`pointermove` pattern as `DiagramResizeHandle`
+      (`ArchitectureDiagramPanel.tsx`) / `ColumnResizeHandle` (`WorkspacePage.tsx`), extended to
+      both width and height (FR-008, research.md §4) — depends on T003
 - [ ] T005 [US1] Render `<PopoutCanvasDialog open={popoutOpen} onOpenChange={setPopoutOpen} ...>`
       from `frontend/src/pages/WorkspacePage.tsx` alongside the existing column-4
       `ArchitectureDiagramPanel`, passing through the same `collections`/`connectors`/mutation
       props (FR-009, FR-010) — depends on T001-T004
 - [ ] T006 [US1] Live-verify via `claude-in-chrome` against `quickstart.md`'s US1 section:
-      open/resize the pop-out, confirm columns 2/3 edits propagate into it live, confirm
-      column 4's own canvas stays independently interactive while it's open, and confirm
+      open/resize the pop-out, confirm columns 2/3 edits propagate into it live, **explicitly
+      click/select something on column 4's own canvas while the pop-out is open and confirm it
+      responds** (not just that it's still rendering/updating — FR-011, finding F1), and confirm
       closing it (button, Escape, or outside-click) returns column 4 to being active with no
       page reload (FR-007–FR-011, SC-004, SC-005) — depends on T001-T005
 
@@ -113,9 +119,16 @@ accordingly and that no Connector is created until the user explicitly confirms.
       `onCreateConnector={(from, to) => createConnector.mutate({ from, to })}` into
       `<CollectionsPanel>` in place of the removed `canConnect`/`onConnect` props — depends on
       T008
-- [ ] T012 [US2] Live-verify via `claude-in-chrome` against `quickstart.md`'s US2 section: zero/
+- [ ] T012 [US2] Delete the now-dead `canConnect` function from
+      `frontend/src/pages/connectorSelection.ts` and its `describe("canConnect", ...)` test
+      block from `frontend/tests/unit/connectorSelection.test.ts` (`updateOrderedSelection` and
+      its own tests stay — still used by `ArchitectureDiagramPanel.tsx`'s selection handler,
+      unrelated to this feature) — its only callers were the `canConnect`/`onConnect` props T008
+      removed and the `handleConnect` T011 removed, confirmed via grep to have no other
+      references (`/speckit-analyze` finding M1) — depends on T008, T011
+- [ ] T013 [US2] Live-verify via `claude-in-chrome` against `quickstart.md`'s US2 section: zero/
       one/two-selection pre-population, no-connector-until-confirm, and that the "Connect"
-      button is always clickable (FR-002–FR-006, SC-002, SC-003) — depends on T007-T011
+      button is always clickable (FR-002–FR-006, SC-002, SC-003) — depends on T007-T012
 
 **Checkpoint**: Connector creation works only through column 2's "Connect" button; the canvas no
 longer has its own connector-creation control.
@@ -132,15 +145,15 @@ text is larger than the current default while the zoom level is unchanged.
 
 ### Implementation for User Story 3
 
-- [ ] T013 [P] [US3] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`,
+- [ ] T014 [P] [US3] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`,
       replace every `text-3xs` usage with `text-2xs` for: `ServiceList`'s "No services yet."
       text and its `<ul>`, both node types' `<strong>{label}</strong>`, both region-label
       `<span>`s, and the connector `labelStyle.fontSize` (`var(--text-3xs)` →
       `var(--text-2xs)`) — leave the bottom-left zoom-% `<Panel>` at `text-4xs` (UI chrome, not
       diagram content) (FR-001, research.md §1)
-- [ ] T014 [US3] Live-verify via `claude-in-chrome` against `quickstart.md`'s US3 section:
+- [ ] T015 [US3] Live-verify via `claude-in-chrome` against `quickstart.md`'s US3 section:
       confirm larger, non-overflowing/non-clipped text at the diagram's default zoom (FR-001,
-      SC-001) — depends on T013
+      SC-001) — depends on T014
 
 **Checkpoint**: All three user stories are independently functional.
 
@@ -166,12 +179,12 @@ text is larger than the current default while the zoom level is unchanged.
 
 ### Parallel Opportunities
 
-- T013 (US3, `ArchitectureDiagramPanel.tsx` text sizes) is marked `[P]` only in the sense that
+- T014 (US3, `ArchitectureDiagramPanel.tsx` text sizes) is marked `[P]` only in the sense that
   it doesn't depend on any *incomplete* task within its own story (there's only one
   implementation task). In practice, doing it after US1/US2 have already landed in the same
   file (per the sequencing rationale above) avoids merge conflicts, even though nothing
   functionally requires that order.
-- US1 and US2's implementation tasks (T001-T006 vs. T007-T012) touch almost entirely different
+- US1 and US2's implementation tasks (T001-T006 vs. T007-T013) touch almost entirely different
   files (`PopoutCanvasDialog.tsx` is new; `CollectionsPanel.tsx` is untouched by US1) except for
   `ArchitectureDiagramPanel.tsx` (T001 adds to it, T007 removes from it) and
   `WorkspacePage.tsx` (T002/T005 vs. T011) — two developers could work both stories in parallel
@@ -196,7 +209,7 @@ text is larger than the current default while the zoom level is unchanged.
 
 ## Notes
 
-- No `[P]` markers across different stories are used here beyond T013, since US1's and US2's
+- No `[P]` markers across different stories are used here beyond T014, since US1's and US2's
   own task lists are each mostly sequential within themselves (later tasks build on props/
   components earlier tasks introduce in the same story).
 - Commit after each story's checkpoint, not after every individual task, per this repository's
