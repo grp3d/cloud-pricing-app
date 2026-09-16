@@ -90,6 +90,11 @@ class Collection(Base):
     )
     type: Mapped[str] = mapped_column(String(30), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # AWS region this collection belongs to (010-multi-region-support, spec FR-002). A plain
+    # string, not a DB enum/FK: the set of valid values is driven by which regions the pricing
+    # dataset currently has data for (research.md §1, §3), which changes independently of this
+    # schema — validated at the API layer against `GET /regions`, not here.
+    region: Mapped[str] = mapped_column(String(20), nullable=False)
     parent_collection_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("collections.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -142,6 +147,11 @@ class DataConnector(Base):
         foreign_keys="SKUSelection.connector_id",
         uselist=False,
     )
+    # 010-multi-region-support: lets callers resolve a Connector's search/pricing region
+    # (spec FR-006 — always the "from" side) as `connector.from_collection.region` without a
+    # separate query, when eager-loaded.
+    from_collection: Mapped[Collection] = relationship(foreign_keys=[from_collection_id])
+    to_collection: Mapped[Collection] = relationship(foreign_keys=[to_collection_id])
 
 
 class SKUSelection(Base):

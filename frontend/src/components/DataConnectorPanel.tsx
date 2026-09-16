@@ -83,7 +83,7 @@ export function DataConnectorPanel({ connector, onChanged, onClose }: Props) {
           <PricingInputsForm onSubmit={attach} submitLabel="Attach" unit={pickedSku.unit} />
         </>
       ) : (
-        <CatalogSearchPanel onAdd={setPickedSku} />
+        <CatalogSearchPanel onAdd={setPickedSku} region={undefined} />
       )}
 
       <button onClick={() => setConfirmingDelete(true)}>Delete this connector</button>

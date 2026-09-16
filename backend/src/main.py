@@ -85,9 +85,11 @@ from src.api.catalog import router as catalog_router  # noqa: E402
 from src.api.collections import router as collections_router  # noqa: E402
 from src.api.connectors import router as connectors_router  # noqa: E402
 from src.api.providers import router as providers_router  # noqa: E402
+from src.api.regions import router as regions_router  # noqa: E402
 from src.api.sku_selections import router as sku_selections_router  # noqa: E402
 
 app.include_router(providers_router, prefix="/api/v1")
+app.include_router(regions_router, prefix="/api/v1")
 app.include_router(catalog_router, prefix="/api/v1")
 app.include_router(architectures_router, prefix="/api/v1")
 app.include_router(collections_router, prefix="/api/v1")

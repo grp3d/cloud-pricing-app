@@ -1,16 +1,17 @@
 import { Link2, Link2Off, PanelLeftClose, PanelLeftOpen, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import type { CatalogSKU, CollectionType } from "../../api/client";
+import type { CatalogSKU, CollectionType, Region } from "../../api/client";
 import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
 import { Button } from "../ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { CatalogSearchPanel } from "../CatalogSearchPanel";
 import { ErrorMessage } from "../ErrorMessage";
 
 export type CollectionsPanelSelection =
-  | { kind: "collection"; id: string; name: string }
+  | { kind: "collection"; id: string; name: string; region: string; locked: boolean }
   | { kind: "connector"; id: string; attachedSkuSummary: string | null }
   | null;
 
@@ -34,6 +35,14 @@ export interface CollectionsPanelProps {
   onDeleteCollection: (id: string) => void;
   onDeleteConnector: (id: string) => void;
   onPickSku: (sku: CatalogSKU) => void;
+  /** 010-multi-region-support, spec FR-005/FR-006: region to scope "Add a Service" search to —
+   * the selected collection's region, or a selected connector's "from" collection's region. */
+  searchRegion: string | undefined;
+  /** 010-multi-region-support, spec FR-003/FR-017: the region control on a selected
+   * collection — the available-regions list, the change handler, and its pending state. */
+  regions: Region[];
+  onUpdateCollectionRegion: (id: string, region: string) => void;
+  isUpdatingCollectionRegion: boolean;
   /** Expanded-state width in pixels (FR-012/013, 008-ui-updates-corrections) — draggable
    * and persisted by `WorkspacePage`; ignored while collapsed, which always uses the rail
    * width below. */
@@ -68,6 +77,10 @@ export function CollectionsPanel({
   onDeleteCollection,
   onDeleteConnector,
   onPickSku,
+  searchRegion,
+  regions,
+  onUpdateCollectionRegion,
+  isUpdatingCollectionRegion,
   width,
 }: CollectionsPanelProps) {
   // 009-ui-fixes-next-iteration follow-up: collapsed/expanded state now survives a reload,
@@ -124,7 +137,9 @@ export function CollectionsPanel({
                 value={newCollectionType}
                 onChange={(e) => onNewCollectionTypeChange(e.target.value as CollectionType)}
               >
-                <option value="application_component">Application Component</option>
+                {/* 010-multi-region-support, spec FR-010: "Application" (not "Application
+                    Component") — shorter, freeing horizontal space for the collection name. */}
+                <option value="application_component">Application</option>
                 <option value="vpc">VPC</option>
               </select>
               <input
@@ -184,16 +199,44 @@ export function CollectionsPanel({
               </p>
             )}
             {selection?.kind === "collection" && (
-              <div className="flex items-center justify-between">
-                <h4 className="font-medium">{selection.name}</h4>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Delete Collection"
-                  onClick={() => onDeleteCollection(selection.id)}
-                >
-                  <Trash2 />
-                </Button>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium">{selection.name}</h4>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Delete Collection"
+                    onClick={() => onDeleteCollection(selection.id)}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+                {/* 010-multi-region-support, spec FR-003: editable while the collection has no
+                    content, locked (disabled) once it does — enforced server-side too. */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-2xs text-muted-foreground">Region</span>
+                  <Select
+                    value={selection.region}
+                    onValueChange={(region) => onUpdateCollectionRegion(selection.id, region)}
+                    disabled={selection.locked || isUpdatingCollectionRegion}
+                  >
+                    <SelectTrigger className="h-6 w-full text-2xs" aria-label="Collection region">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {regions.map((r) => (
+                        <SelectItem key={r.code} value={r.code}>
+                          {r.code}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selection.locked && (
+                  <p className="text-2xs text-muted-foreground">
+                    Region is locked because this collection already has content.
+                  </p>
+                )}
               </div>
             )}
             {selection?.kind === "connector" && (
@@ -228,7 +271,7 @@ export function CollectionsPanel({
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
             <h3 className="shrink-0 text-2xs font-medium text-muted-foreground">Add a Service</h3>
             {selection ? (
-              <CatalogSearchPanel onAdd={onPickSku} />
+              <CatalogSearchPanel onAdd={onPickSku} region={searchRegion} />
             ) : (
               <p className="text-2xs text-muted-foreground">
                 Select a Collection or Connector first.

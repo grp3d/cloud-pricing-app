@@ -16,7 +16,7 @@ async def _create_collection(client, auth_headers) -> str:
     )
     coll = await client.post(
         f"/api/v1/architectures/{arch.json()['id']}/collections",
-        json={"type": "application_component", "name": "Web"},
+        json={"type": "application_component", "name": "Web", "region": "us-east-1"},
         headers=auth_headers,
     )
     return coll.json()["id"]

@@ -30,7 +30,7 @@ async def _create_collection(client, auth_headers) -> tuple[str, str]:
     arch_id = arch.json()["id"]
     coll = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "Mixed"},
+        json={"type": "application_component", "name": "Mixed", "region": "us-east-1"},
         headers=auth_headers,
     )
     return arch_id, coll.json()["id"]
@@ -145,7 +145,11 @@ async def test_reserved_no_upfront_matches_bug_report_figures(client, auth_heade
     )
     assert add_resp.status_code == 201
 
-    expected = {"1_day": Decimal("309.77"), "1_month": Decimal("9602.76"), "1_year": Decimal("113064.71")}
+    expected = {
+        "1_day": Decimal("309.77"),
+        "1_month": Decimal("9602.76"),
+        "1_year": Decimal("113064.71"),
+    }
     for duration, expected_cost in expected.items():
         resp = await client.post(
             f"/api/v1/architectures/{arch_id}/calculate?duration={duration}", headers=auth_headers

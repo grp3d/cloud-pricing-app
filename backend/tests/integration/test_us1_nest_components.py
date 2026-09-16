@@ -15,19 +15,19 @@ async def test_full_nesting_lifecycle(client, auth_headers):
     arch_id = arch.json()["id"]
     vpc1 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC A"},
+        json={"type": "vpc", "name": "VPC A", "region": "us-east-1"},
         headers=auth_headers,
     )
     vpc1_id = vpc1.json()["id"]
     vpc2 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC B"},
+        json={"type": "vpc", "name": "VPC B", "region": "us-east-1"},
         headers=auth_headers,
     )
     vpc2_id = vpc2.json()["id"]
     app = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "Web tier"},
+        json={"type": "application_component", "name": "Web tier", "region": "us-east-1"},
         headers=auth_headers,
     )
     app_id = app.json()["id"]
@@ -124,19 +124,19 @@ async def test_deleting_a_nested_app_component_does_not_affect_its_vpc_or_siblin
     arch_id = arch.json()["id"]
     vpc = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC"},
+        json={"type": "vpc", "name": "VPC", "region": "us-east-1"},
         headers=auth_headers,
     )
     vpc_id = vpc.json()["id"]
     app1 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "App 1"},
+        json={"type": "application_component", "name": "App 1", "region": "us-east-1"},
         headers=auth_headers,
     )
     app1_id = app1.json()["id"]
     app2 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "App 2"},
+        json={"type": "application_component", "name": "App 2", "region": "us-east-1"},
         headers=auth_headers,
     )
     app2_id = app2.json()["id"]
@@ -172,19 +172,19 @@ async def test_data_connector_on_nested_component_survives_nest_move_unnest(clie
     arch_id = arch.json()["id"]
     vpc1 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC A"},
+        json={"type": "vpc", "name": "VPC A", "region": "us-east-1"},
         headers=auth_headers,
     )
     vpc1_id = vpc1.json()["id"]
     vpc2 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC B"},
+        json={"type": "vpc", "name": "VPC B", "region": "us-east-1"},
         headers=auth_headers,
     )
     vpc2_id = vpc2.json()["id"]
     app = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "Web tier"},
+        json={"type": "application_component", "name": "Web tier", "region": "us-east-1"},
         headers=auth_headers,
     )
     app_id = app.json()["id"]

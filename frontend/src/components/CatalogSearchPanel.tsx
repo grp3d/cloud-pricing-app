@@ -10,6 +10,10 @@ import { ErrorMessage } from "./ErrorMessage";
 
 interface Props {
   onAdd: (sku: CatalogSKU) => void;
+  /** 010-multi-region-support, spec FR-005/FR-006: the region search results are scoped to —
+   * the selected collection's region, or, for a selected connector, that connector's "from"
+   * collection's region. `undefined` disables searching (nothing resolvable to scope it to). */
+  region: string | undefined;
 }
 
 /** The exact text shown for one result (FR-025) — sorting uses this same string so the
@@ -47,7 +51,7 @@ function summaryText(r: CatalogSKU): string {
  * own displayed text (FR-025); an "(n of m)" indicator appears when fewer results are shown
  * than actually match (FR-024).
  */
-export function CatalogSearchPanel({ onAdd }: Props) {
+export function CatalogSearchPanel({ onAdd, region }: Props) {
   const [serviceCode, setServiceCode] = useState("");
   const [productFamily, setProductFamily] = useState("");
   const [text, setText] = useState("");
@@ -62,16 +66,17 @@ export function CatalogSearchPanel({ onAdd }: Props) {
   );
 
   const search = useQuery({
-    queryKey: ["catalog", serviceCode, productFamily, text, fromRegionCode, toRegionCode],
+    queryKey: ["catalog", region, serviceCode, productFamily, text, fromRegionCode, toRegionCode],
     queryFn: () =>
       api.searchCatalog({
+        region: region!,
         service_code: serviceCode,
         product_family: productFamily,
         q: text,
         from_region_code: fromRegionCode,
         to_region_code: toRegionCode,
       }),
-    enabled: hasFilter,
+    enabled: hasFilter && Boolean(region),
     retry: false, // an invalid regex pattern won't become valid by retrying the same request
   });
 

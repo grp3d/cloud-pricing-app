@@ -14,6 +14,7 @@ import { canConnect } from "./connectorSelection";
 import { CollectionsPanel, type CollectionsPanelSelection } from "../components/workspace/CollectionsPanel";
 import { PricingPanel } from "../components/workspace/PricingPanel";
 import { ProviderArchitecturePanel } from "../components/workspace/ProviderArchitecturePanel";
+import { RegionSelectDialog } from "../components/workspace/RegionSelectDialog";
 import { ServiceConfigPanel } from "../components/workspace/ServiceConfigPanel";
 import { ConfirmDeleteDialog } from "../components/ConfirmDeleteDialog";
 import {
@@ -158,6 +159,9 @@ function WorkspacePageInner() {
   );
 
   const providers = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
+  // 010-multi-region-support, FR-017: the region-selection prompt only ever offers regions the
+  // pricing dataset currently has data for.
+  const regions = useQuery({ queryKey: ["regions"], queryFn: api.listRegions });
   const architectures = useQuery({
     queryKey: ["architectures", selectedProvider],
     queryFn: () => api.listArchitectures(selectedProvider),
@@ -256,6 +260,9 @@ function WorkspacePageInner() {
     "application_component",
   );
   const [newCollectionName, setNewCollectionName] = useState("");
+  // 010-multi-region-support, FR-001: shown before creating a new VPC or unattached
+  // Application; skipped entirely when nesting an Application into a selected VPC (FR-001a).
+  const [regionDialogOpen, setRegionDialogOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [skuActionError, setSkuActionError] = useState<string | null>(null);
 
@@ -292,15 +299,37 @@ function WorkspacePageInner() {
   }
 
   // --- Collection/Connector mutations ---
+  // 010-multi-region-support, FR-001/FR-001a: `region` is supplied from the RegionSelectDialog;
+  // `parentCollectionId` is supplied instead when nesting an Application into a selected VPC
+  // (region is then inherited server-side, never sent).
   const createCollection = useMutation({
-    mutationFn: () => api.createCollection(architectureId!, newCollectionType, newCollectionName),
+    mutationFn: (vars: { region?: string; parentCollectionId?: string }) =>
+      api.createCollection(
+        architectureId!,
+        newCollectionType,
+        newCollectionName,
+        vars.region,
+        vars.parentCollectionId,
+      ),
     onSuccess: () => {
       setNewCollectionName("");
       setActionError(null);
+      setRegionDialogOpen(false);
       invalidateArchitecture();
     },
     onError: (err) => setActionError(errorMessageOf(err)),
   });
+
+  /** 010-multi-region-support, FR-001/FR-001a: adding an Application while a VPC is selected
+   * skips the region prompt and nests directly (region inherited server-side); every other
+   * "+Add" click opens the region-selection dialog instead. */
+  function handleAddCollectionClick() {
+    if (newCollectionType === "application_component" && selectedCollection?.type === "vpc") {
+      createCollection.mutate({ parentCollectionId: selectedCollection.id });
+    } else {
+      setRegionDialogOpen(true);
+    }
+  }
 
   const deleteCollection = useMutation({
     mutationFn: (id: string) => api.deleteCollection(id),
@@ -354,6 +383,16 @@ function WorkspacePageInner() {
       setActionError(errorMessageOf(err));
       invalidateArchitecture();
     },
+  });
+
+  const updateCollectionRegion = useMutation({
+    mutationFn: ({ id, region }: { id: string; region: string }) =>
+      api.updateCollectionRegion(id, region),
+    onSuccess: () => {
+      setActionError(null);
+      invalidateArchitecture();
+    },
+    onError: (err) => setActionError(errorMessageOf(err)),
   });
 
   function handleConnect() {
@@ -488,8 +527,22 @@ function WorkspacePageInner() {
     (a) => a.id === pendingDeleteArchitectureId,
   );
 
+  // 010-multi-region-support, spec FR-003: a collection is locked once it has a service, or,
+  // for a VPC, a nested Application — mirrors the server-side `is_collection_locked` check.
+  const selectedCollectionLocked = selectedCollection
+    ? selectedCollection.sku_selections.length > 0 ||
+      (selectedCollection.type === "vpc" &&
+        collections.some((c) => c.parent_collection_id === selectedCollection.id))
+    : false;
+
   const collectionsPanelSelection: CollectionsPanelSelection = selectedCollection
-    ? { kind: "collection", id: selectedCollection.id, name: selectedCollection.name }
+    ? {
+        kind: "collection",
+        id: selectedCollection.id,
+        name: selectedCollection.name,
+        region: selectedCollection.region,
+        locked: selectedCollectionLocked,
+      }
     : selectedConnector
       ? {
           kind: "connector",
@@ -499,6 +552,14 @@ function WorkspacePageInner() {
             : null,
         }
       : null;
+
+  // 010-multi-region-support, spec FR-005/FR-006: service search is scoped to the selected
+  // collection's region, or, for a selected connector, its "from" collection's region.
+  const searchRegion = selectedCollection
+    ? selectedCollection.region
+    : selectedConnector
+      ? collections.find((c) => c.id === selectedConnector.from_collection_id)?.region
+      : undefined;
 
   const resolvedExistingSku =
     serviceConfigSelection?.kind === "existing"
@@ -587,7 +648,7 @@ function WorkspacePageInner() {
             onNewCollectionTypeChange={setNewCollectionType}
             newCollectionName={newCollectionName}
             onNewCollectionNameChange={setNewCollectionName}
-            onAddCollection={() => createCollection.mutate()}
+            onAddCollection={handleAddCollectionClick}
             isAddingCollection={createCollection.isPending}
             canConnect={canConnect(selectedNodeIds)}
             onConnect={handleConnect}
@@ -601,6 +662,12 @@ function WorkspacePageInner() {
             onDeleteCollection={setPendingDeleteCollectionId}
             onDeleteConnector={setPendingDeleteConnectorId}
             onPickSku={pickSkuFromSearch}
+            searchRegion={searchRegion}
+            regions={regions.data?.regions ?? []}
+            onUpdateCollectionRegion={(id, region) =>
+              updateCollectionRegion.mutate({ id, region })
+            }
+            isUpdatingCollectionRegion={updateCollectionRegion.isPending}
             width={columnWidths.collections}
           />
 
@@ -641,6 +708,12 @@ function WorkspacePageInner() {
               onCreateConnector={(from, to) => createConnector.mutate({ from, to })}
               onUpdateCollectionParent={(id, parentId) =>
                 updateCollectionParent.mutate({ id, parentId })
+              }
+              onRejectedNesting={(applicationName, vpcName) =>
+                setActionError(
+                  `"${applicationName}" is in a different region than "${vpcName}" — an ` +
+                    "Application can only nest inside a VPC in the same region.",
+                )
               }
               onRefresh={invalidateArchitecture}
             />
@@ -689,6 +762,14 @@ function WorkspacePageInner() {
           onConfirm={() => deleteArchitecture.mutate(architectureToDelete.id)}
         />
       )}
+
+      <RegionSelectDialog
+        open={regionDialogOpen}
+        onOpenChange={setRegionDialogOpen}
+        regions={regions.data?.regions ?? []}
+        onConfirm={(region) => createCollection.mutate({ region })}
+        isSubmitting={createCollection.isPending}
+      />
     </div>
   );
 }

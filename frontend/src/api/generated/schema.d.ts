@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Regions */
+        get: operations["get_regions_api_v1_regions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalog/skus": {
         parameters: {
             query?: never;
@@ -45,7 +62,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search Skus */
+        /**
+         * Search Skus
+         * @description 010-multi-region-support, spec FR-005: `region` picks which Parquet partition is
+         *     searched — the selected collection's region, or a connector's "from" collection's region
+         *     (FR-006). Distinct from `from_region_code`/`to_region_code`, which remain AWSDataTransfer
+         *     attribute filters unrelated to which partition is read.
+         */
         get: operations["search_skus_api_v1_catalog_skus_get"];
         put?: never;
         post?: never;
@@ -129,11 +152,12 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update Collection Nesting
-         * @description Nest, move, or un-nest an Application Component (002-vpc-component-nesting,
-         *     FR-001-FR-004).
+         * Update Collection
+         * @description Nest/move/un-nest an Application Component (002-vpc-component-nesting, FR-001-FR-004)
+         *     and/or change a collection's region while unlocked (010-multi-region-support, FR-003).
+         *     Only the fields actually present in the request body are applied.
          */
-        patch: operations["update_collection_nesting_api_v1_collections__collection_id__patch"];
+        patch: operations["update_collection_api_v1_collections__collection_id__patch"];
         trace?: never;
     };
     "/api/v1/collections/{collection_id}/sku-selections": {
@@ -410,14 +434,10 @@ export interface components {
             type: components["schemas"]["CollectionType"];
             /** Name */
             name: string;
-        };
-        /**
-         * CollectionNestingUpdate
-         * @description Nest, move, or un-nest an Application Component (002-vpc-component-nesting, FR-001-003).
-         */
-        CollectionNestingUpdate: {
+            /** Region */
+            region?: string | null;
             /** Parent Collection Id */
-            parent_collection_id: string | null;
+            parent_collection_id?: string | null;
         };
         /** CollectionOut */
         CollectionOut: {
@@ -429,6 +449,8 @@ export interface components {
             type: components["schemas"]["CollectionType"];
             /** Name */
             name: string;
+            /** Region */
+            region: string;
             /** Parent Collection Id */
             parent_collection_id?: string | null;
             /**
@@ -442,6 +464,20 @@ export interface components {
          * @enum {string}
          */
         CollectionType: "application_component" | "vpc";
+        /**
+         * CollectionUpdate
+         * @description Nest/move/un-nest an Application Component (002-vpc-component-nesting, FR-001-003)
+         *     and/or change a collection's region while it's still unlocked (010-multi-region-support,
+         *     spec FR-003). Both fields are optional so either can be updated independently — the
+         *     endpoint distinguishes "omitted" from "explicitly null" via `model_fields_set`, since
+         *     `parent_collection_id: null` is itself a meaningful request (un-nest).
+         */
+        CollectionUpdate: {
+            /** Parent Collection Id */
+            parent_collection_id?: string | null;
+            /** Region */
+            region?: string | null;
+        };
         /** DataConnectorCreate */
         DataConnectorCreate: {
             /**
@@ -494,6 +530,8 @@ export interface components {
             price: string | null;
             /** Priceable */
             priceable: boolean;
+            /** Region */
+            region?: string | null;
         };
         /**
          * PricingTerm
@@ -514,6 +552,16 @@ export interface components {
          * @enum {string}
          */
         PurchaseOption: "no_upfront" | "partial_upfront" | "all_upfront" | "not_applicable";
+        /** RegionOut */
+        RegionOut: {
+            /** Code */
+            code: string;
+        };
+        /** RegionsOut */
+        RegionsOut: {
+            /** Regions */
+            regions: components["schemas"]["RegionOut"][];
+        };
         /** SKUSelectionCreate */
         SKUSelectionCreate: {
             /** Service Code */
@@ -656,9 +704,30 @@ export interface operations {
             };
         };
     };
+    get_regions_api_v1_regions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegionsOut"];
+                };
+            };
+        };
+    };
     search_skus_api_v1_catalog_skus_get: {
         parameters: {
-            query?: {
+            query: {
+                region: string;
                 service_code?: string | null;
                 product_family?: string | null;
                 q?: string | null;
@@ -893,7 +962,7 @@ export interface operations {
             };
         };
     };
-    update_collection_nesting_api_v1_collections__collection_id__patch: {
+    update_collection_api_v1_collections__collection_id__patch: {
         parameters: {
             query?: never;
             header?: {
@@ -906,7 +975,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CollectionNestingUpdate"];
+                "application/json": components["schemas"]["CollectionUpdate"];
             };
         };
         responses: {

@@ -38,23 +38,30 @@ _PURCHASE_OPTION_MAP = {
 }
 
 
-def _price_fact_path(snapshot_date: str) -> str:
+def _price_fact_path(snapshot_date: str, region: str) -> str:
     return (
         f"{settings.aws_pricing_parquet_dir}/price_fact/"
-        f"snapshot_date={snapshot_date}/region={settings.aws_pricing_region}/part-0.parquet"
+        f"snapshot_date={snapshot_date}/region={region}/part-0.parquet"
     )
 
 
 def lookup_price(
-    *, sku: str, pricing_term: str, purchase_option: str, snapshot_date: str | None = None
+    *,
+    sku: str,
+    pricing_term: str,
+    purchase_option: str,
+    region: str,
+    snapshot_date: str | None = None,
 ) -> float | None:
-    """Return the unit price for one SKU/term/purchase_option, or None if not priceable."""
+    """Return the unit price for one SKU/term/purchase_option in `region`, or None if not
+    priceable (010-multi-region-support, spec FR-005 — every lookup is now scoped to the
+    caller-supplied region rather than one global default)."""
     snapshot_date = snapshot_date or resolve_latest_snapshot_date()
     term, lease_length = _TERM_MAP[pricing_term]
     purchase = _PURCHASE_OPTION_MAP[purchase_option]
 
     query = "SELECT price FROM read_parquet(?) WHERE sku = ? AND term = ?"
-    params: list[object] = [_price_fact_path(snapshot_date), sku, term]
+    params: list[object] = [_price_fact_path(snapshot_date, region), sku, term]
     if lease_length is not None:
         query += " AND REPLACE(lease_contract_length, ' ', '') = ?"
         params.append(lease_length)
@@ -89,7 +96,12 @@ class ReservedPrice:
 
 
 def lookup_reserved_price(
-    *, sku: str, pricing_term: str, purchase_option: str, snapshot_date: str | None = None
+    *,
+    sku: str,
+    pricing_term: str,
+    purchase_option: str,
+    region: str,
+    snapshot_date: str | None = None,
 ) -> ReservedPrice | None:
     """Return the recurring hourly rate and, when applicable, the one-time upfront fee for one
     Reserved-term sku/purchase_option — distinguished from each other by `unit` ("Hrs" vs.
@@ -119,7 +131,7 @@ def lookup_reserved_price(
         "SELECT unit, price FROM read_parquet(?) WHERE sku = ? AND term = ? "
         "AND REPLACE(lease_contract_length, ' ', '') = ?"
     )
-    params: list[object] = [_price_fact_path(snapshot_date), sku, term, lease_length]
+    params: list[object] = [_price_fact_path(snapshot_date, region), sku, term, lease_length]
     if purchase is not None:
         query += " AND REPLACE(purchase_option, ' ', '') = ?"
         params.append(purchase)
@@ -145,15 +157,21 @@ def lookup_reserved_price(
 
 
 def resolve_units(
-    selections: Sequence[tuple[str, str, str]], *, snapshot_date: str | None = None
+    selections: Sequence[tuple[str, str, str]],
+    *,
+    region: str,
+    snapshot_date: str | None = None,
 ) -> dict[tuple[str, str, str], str | None]:
-    """Batched billing-unit lookup for many (sku, pricing_term, purchase_option) tuples
-    (spec FR-004, FR-005).
+    """Batched billing-unit lookup for many (sku, pricing_term, purchase_option) tuples, all in
+    `region` (spec FR-004, FR-005; 010-multi-region-support).
 
     One DuckDB query covers every distinct SKU involved; matching against each tuple's
     normalized term/purchase_option happens in Python — the same "resolve once per request,
     not once per row" discipline `lookup_price`'s caller already relies on for price
-    (research.md #3), applied here so a whole Architecture's units cost one query, not N.
+    (research.md #3), applied here so a whole Architecture's units cost one query, not N. Every
+    `selections` tuple passed in one call must belong to the same region — a caller spanning
+    multiple regions calls this once per region and merges the results (safe: AWS SKU codes are
+    themselves region-scoped, so a SKU from one region never collides with another's).
     `None` for a tuple with no matching `price_fact` row, same condition that makes it
     unpriceable (spec data-model.md).
     """
@@ -170,7 +188,7 @@ def resolve_units(
     )
     try:
         con = duckdb.connect(":memory:", read_only=False)
-        rows = con.execute(query, [_price_fact_path(snapshot_date), *skus]).fetchall()
+        rows = con.execute(query, [_price_fact_path(snapshot_date, region), *skus]).fetchall()
     except duckdb.Error as exc:
         raise PricingDataUnavailableError(str(exc)) from exc
 

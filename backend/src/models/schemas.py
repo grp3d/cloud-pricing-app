@@ -26,6 +26,17 @@ class ProviderOut(BaseModel):
     active: bool
 
 
+# --- Regions (010-multi-region-support) ---------------------------------------------------
+
+
+class RegionOut(BaseModel):
+    code: str
+
+
+class RegionsOut(BaseModel):
+    regions: list[RegionOut]
+
+
 # --- Enums (mirror the DB check constraints in models/orm.py) ------------------------------
 
 
@@ -96,20 +107,31 @@ class SKUSelectionOut(ORMBase):
 class CollectionCreate(BaseModel):
     type: CollectionType
     name: str = Field(min_length=1, max_length=255)
+    # 010-multi-region-support, spec FR-001/FR-002: required unless `parent_collection_id` is
+    # given, in which case it's ignored server-side in favor of the parent VPC's own region
+    # (FR-001a) — never trusted from the client when a parent is supplied.
+    region: str | None = None
+    parent_collection_id: uuid.UUID | None = None
 
 
 class CollectionOut(ORMBase):
     id: uuid.UUID
     type: CollectionType
     name: str
+    region: str
     parent_collection_id: uuid.UUID | None = None
     sku_selections: list[SKUSelectionOut] = []
 
 
-class CollectionNestingUpdate(BaseModel):
-    """Nest, move, or un-nest an Application Component (002-vpc-component-nesting, FR-001-003)."""
+class CollectionUpdate(BaseModel):
+    """Nest/move/un-nest an Application Component (002-vpc-component-nesting, FR-001-003)
+    and/or change a collection's region while it's still unlocked (010-multi-region-support,
+    spec FR-003). Both fields are optional so either can be updated independently — the
+    endpoint distinguishes "omitted" from "explicitly null" via `model_fields_set`, since
+    `parent_collection_id: null` is itself a meaningful request (un-nest)."""
 
-    parent_collection_id: uuid.UUID | None
+    parent_collection_id: uuid.UUID | None = None
+    region: str | None = None
 
 
 # --- Data Connector ------------------------------------------------------------------------
@@ -187,6 +209,12 @@ class PriceLineItem(BaseModel):
     sku: str
     price: Decimal | None
     priceable: bool
+    # 010-multi-region-support, data-model.md: the region this line item is attributed to —
+    # its owning Collection's region, or (for a Connector-owned selection) the Connector's
+    # "from" Collection's region. `None` is a defensive fallback only, grouped under a
+    # "Global" section by the frontend (spec FR-015) — not expected in normal operation, since
+    # every Collection has a NOT NULL region and every Connector a NOT NULL from_collection_id.
+    region: str | None = None
 
 
 class UnpriceableItem(BaseModel):

@@ -18,6 +18,7 @@ from src.models.orm import Architecture, Collection, DataConnector, SKUSelection
 from src.models.schemas import ArchitectureDetailOut, SKUSelectionOut
 from src.pricing_data.catalog import resolve_attributes
 from src.pricing_data.pricing import resolve_units
+from src.pricing_data.regions import list_available_regions
 
 
 async def get_owned_architecture(
@@ -79,7 +80,10 @@ async def get_owned_connector(
             Architecture.user_id == user.id,
             DataConnector.deleted_at.is_(None),
         )
-        .options(selectinload(DataConnector.sku_selection))
+        .options(
+            selectinload(DataConnector.sku_selection),
+            selectinload(DataConnector.from_collection),
+        )
     )
     result = await session.execute(stmt)
     connector = result.scalar_one_or_none()
@@ -156,7 +160,65 @@ async def set_collection_parent(
             ),
         )
 
+    # 010-multi-region-support, spec FR-004: an Application can only nest inside a same-region
+    # VPC — enforced here as the authoritative server-side gate (a client-side check also
+    # exists, research.md §8), so a bypassed/stale client can never create a mismatched nest.
+    if collection.region != parent.region:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "region_mismatch",
+                "application_region": collection.region,
+                "vpc_region": parent.region,
+            },
+        )
+
     collection.parent_collection_id = parent.id
+    await session.commit()
+    await session.refresh(collection)
+    return collection
+
+
+async def is_collection_locked(collection: Collection, session: AsyncSession) -> bool:
+    """010-multi-region-support, spec FR-003: a collection's region locks once it has at least
+    one service attached, or, for a VPC, at least one nested Application."""
+    has_sku = await session.scalar(
+        select(SKUSelection.id).where(SKUSelection.collection_id == collection.id).limit(1)
+    )
+    if has_sku is not None:
+        return True
+    if collection.type == "vpc":
+        has_child = await session.scalar(
+            select(Collection.id)
+            .where(
+                Collection.parent_collection_id == collection.id,
+                Collection.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        if has_child is not None:
+            return True
+    return False
+
+
+async def set_collection_region(
+    collection: Collection, region: str | None, session: AsyncSession
+) -> Collection:
+    """Change a collection's region while it's still unlocked (010-multi-region-support, spec
+    FR-003). `collection` must already be resolved via `get_owned_collection`."""
+    if not region:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="region is required")
+    if await is_collection_locked(collection, session):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This collection's region is locked because it already has content",
+        )
+    if region not in list_available_regions():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"region '{region}' is not currently available",
+        )
+    collection.region = region
     await session.commit()
     await session.refresh(collection)
     return collection
@@ -166,32 +228,78 @@ def _unit_key(selection: SKUSelection) -> tuple[str, str, str]:
     return (selection.sku, selection.pricing_term, selection.purchase_option)
 
 
-def sku_selection_out_with_unit(selection: SKUSelection) -> SKUSelectionOut:
+def sku_selection_out_with_unit(selection: SKUSelection, *, region: str) -> SKUSelectionOut:
     """Build a `SKUSelectionOut` for one SKU Selection with `unit` and `attributes` resolved and
     attached (003-service-selection-improvements FR-004/FR-005;
     004-canvas-pricing-improvements FR-014). Used by the single-object endpoints (add/update a
     SKU Selection, attach one to a Data Connector) — for a whole Architecture's nested tree,
     batch through `attach_units_to_architecture` instead so many selections cost one DuckDB
-    query each, not N.
+    query each, not N. `region` (010-multi-region-support) is the owning Collection's region,
+    or, for a Connector-owned selection, the Connector's "from" Collection's region — the
+    caller resolves it, since it already has the owning Collection/Connector in scope.
     """
     out = SKUSelectionOut.model_validate(selection)
     key = _unit_key(selection)
-    out.unit = resolve_units([key]).get(key)
-    out.attributes = resolve_attributes([(selection.service_code, selection.sku)]).get(
-        (selection.service_code, selection.sku), {}
-    )
+    out.unit = resolve_units([key], region=region).get(key)
+    out.attributes = resolve_attributes(
+        [(selection.service_code, selection.sku)], region=region
+    ).get((selection.service_code, selection.sku), {})
     return out
+
+
+def _region_grouped_batch_resolve(
+    selections: list[SKUSelection], selection_regions: dict[uuid.UUID, str | None]
+) -> tuple[dict, dict]:
+    """Groups `selections` by their resolved region and calls `resolve_units`/
+    `resolve_attributes` once per distinct region, merging the results (010-multi-region-
+    support, research.md §11) — safe to merge since AWS SKU codes are themselves region-scoped,
+    so a SKU from one region's partition never collides with another's. Selections with no
+    resolved region (the defensive fallback, data-model.md) are skipped — `unit`/`attributes`
+    stay unresolved (`None`/`{}`) for them, same as any other unmatched key.
+    """
+    by_region: dict[str, list[SKUSelection]] = {}
+    for selection in selections:
+        region = selection_regions.get(selection.id)
+        if region is None:
+            continue
+        by_region.setdefault(region, []).append(selection)
+
+    units: dict = {}
+    attributes: dict = {}
+    for region, region_selections in by_region.items():
+        units.update(
+            resolve_units([_unit_key(s) for s in region_selections], region=region)
+        )
+        attributes.update(
+            resolve_attributes(
+                [(s.service_code, s.sku) for s in region_selections], region=region
+            )
+        )
+    return units, attributes
 
 
 def attach_units_to_architecture(detail: ArchitectureDetailOut, architecture: Architecture) -> None:
     """Batch-resolve and attach `unit` and `attributes` to every SKU Selection nested in an
-    Architecture's response tree — one DuckDB query per field for the whole tree, not one per
-    SKU Selection (003-service-selection-improvements FR-004/FR-005, research.md #3;
-    004-canvas-pricing-improvements FR-014, research.md #5).
+    Architecture's response tree — one DuckDB query per field per distinct region present, not
+    one per SKU Selection (003-service-selection-improvements FR-004/FR-005, research.md #3;
+    004-canvas-pricing-improvements FR-014, research.md #5; 010-multi-region-support §11).
 
     `detail` must have been built from `architecture` via `model_validate` so the two trees
     line up positionally; mutates `detail` in place.
     """
+    collection_regions = {
+        c.id: c.region for c in architecture.collections if c.deleted_at is None
+    }
+    selection_regions: dict[uuid.UUID, str | None] = {}
+    for collection in architecture.collections:
+        for selection in collection.sku_selections:
+            selection_regions[selection.id] = collection_regions.get(collection.id)
+    for connector in architecture.connectors:
+        if connector.sku_selection is not None:
+            selection_regions[connector.sku_selection.id] = collection_regions.get(
+                connector.from_collection_id
+            )
+
     orm_selections: list[SKUSelection] = [
         selection
         for collection in architecture.collections
@@ -203,10 +311,7 @@ def attach_units_to_architecture(detail: ArchitectureDetailOut, architecture: Ar
     ]
     if not orm_selections:
         return
-    units = resolve_units([_unit_key(selection) for selection in orm_selections])
-    attributes = resolve_attributes(
-        [(selection.service_code, selection.sku) for selection in orm_selections]
-    )
+    units, attributes = _region_grouped_batch_resolve(orm_selections, selection_regions)
 
     def _attach(selection_out: SKUSelectionOut, selection: SKUSelection) -> None:
         selection_out.unit = units.get(_unit_key(selection))

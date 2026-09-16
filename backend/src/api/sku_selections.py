@@ -40,29 +40,33 @@ async def add_sku_selection(
     session.add(selection)
     await session.commit()
     await session.refresh(selection)
-    return sku_selection_out_with_unit(selection)
+    return sku_selection_out_with_unit(selection, region=collection.region)
 
 
 async def _get_owned_sku_selection(
     sku_selection_id: uuid.UUID, session: DbSession, user: CurrentUser
-) -> SKUSelection:
+) -> tuple[SKUSelection, str]:
     # A SKU Selection is owned transitively via its Collection's or Connector's Architecture —
-    # fetch it, then verify ownership through whichever of the two parent paths is set.
+    # fetch it, then verify ownership through whichever of the two parent paths is set, keeping
+    # the owning Collection's (or Connector's "from" Collection's) region for pricing/catalog
+    # lookups (010-multi-region-support).
     selection = await session.get(SKUSelection, sku_selection_id)
     if selection is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SKU Selection not found")
     if selection.collection_id is not None:
-        await get_owned_collection(selection.collection_id, session, user)
+        collection = await get_owned_collection(selection.collection_id, session, user)
+        region = collection.region
     else:
-        await get_owned_connector(selection.connector_id, session, user)
-    return selection
+        connector = await get_owned_connector(selection.connector_id, session, user)
+        region = connector.from_collection.region
+    return selection, region
 
 
 @router.patch("/sku-selections/{sku_selection_id}", response_model=SKUSelectionOut)
 async def update_sku_selection(
     sku_selection_id: uuid.UUID, body: SKUSelectionUpdate, session: DbSession, user: CurrentUser
 ) -> SKUSelectionOut:
-    selection = await _get_owned_sku_selection(sku_selection_id, session, user)
+    selection, region = await _get_owned_sku_selection(sku_selection_id, session, user)
     if body.pricing_term is not None:
         selection.pricing_term = body.pricing_term.value
     if body.purchase_option is not None:
@@ -71,13 +75,13 @@ async def update_sku_selection(
         selection.usage_quantity = body.usage_quantity
     await session.commit()
     await session.refresh(selection)
-    return sku_selection_out_with_unit(selection)
+    return sku_selection_out_with_unit(selection, region=region)
 
 
 @router.delete("/sku-selections/{sku_selection_id}", status_code=204)
 async def delete_sku_selection(
     sku_selection_id: uuid.UUID, session: DbSession, user: CurrentUser
 ) -> None:
-    selection = await _get_owned_sku_selection(sku_selection_id, session, user)
+    selection, _region = await _get_owned_sku_selection(sku_selection_id, session, user)
     await session.delete(selection)
     await session.commit()

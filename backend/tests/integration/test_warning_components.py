@@ -22,12 +22,12 @@ async def test_collection_and_connector_unpriceable_services_both_named(client, 
 
     coll_a = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "App A"},
+        json={"type": "application_component", "name": "App A", "region": "us-east-1"},
         headers=auth_headers,
     )
     coll_b = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "App B"},
+        json={"type": "application_component", "name": "App B", "region": "us-east-1"},
         headers=auth_headers,
     )
 

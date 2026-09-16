@@ -16,7 +16,7 @@ async def _make_architecture_with(
     for t in collection_types:
         resp = await client.post(
             f"/api/v1/architectures/{arch_id}/collections",
-            json={"type": t, "name": t},
+            json={"type": t, "name": t, "region": "us-east-1"},
             headers=auth_headers,
         )
         collection_ids.append(resp.json()["id"])
@@ -128,6 +128,37 @@ async def test_nonexistent_collection_returns_404(client, auth_headers):
         headers=auth_headers,
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_reject_nesting_into_a_different_region_vpc(client, auth_headers):
+    """010-multi-region-support, spec FR-004: an Application can only nest inside a
+    same-region VPC — enforced server-side even if a client bypasses the drag-time check."""
+    arch = await client.post(
+        "/api/v1/architectures", json={"name": "Arch", "provider": "aws"}, headers=auth_headers
+    )
+    arch_id = arch.json()["id"]
+    vpc = await client.post(
+        f"/api/v1/architectures/{arch_id}/collections",
+        json={"type": "vpc", "name": "VPC", "region": "us-east-1"},
+        headers=auth_headers,
+    )
+    app = await client.post(
+        f"/api/v1/architectures/{arch_id}/collections",
+        json={"type": "application_component", "name": "App", "region": "eu-west-1"},
+        headers=auth_headers,
+    )
+
+    resp = await client.patch(
+        f"/api/v1/collections/{app.json()['id']}",
+        json={"parent_collection_id": vpc.json()["id"]},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["error"] == "region_mismatch"
+    assert detail["application_region"] == "eu-west-1"
+    assert detail["vpc_region"] == "us-east-1"
 
 
 @pytest.mark.asyncio

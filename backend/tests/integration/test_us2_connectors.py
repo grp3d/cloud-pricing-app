@@ -13,17 +13,19 @@ async def test_connector_attached_sku_cost_included_in_total(client, auth_header
     arch_id = arch.json()["id"]
     c1 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC A"},
+        json={"type": "vpc", "name": "VPC A", "region": "us-east-1"},
         headers=auth_headers,
     )
     c2 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC B"},
+        json={"type": "vpc", "name": "VPC B", "region": "us-east-1"},
         headers=auth_headers,
     )
 
     # Two unconnected VPCs -> warn, but don't block (FR-017).
-    calc_before = await client.post(f"/api/v1/architectures/{arch_id}/calculate", headers=auth_headers)
+    calc_before = await client.post(
+        f"/api/v1/architectures/{arch_id}/calculate", headers=auth_headers
+    )
     assert calc_before.status_code == 200
     assert any(w["code"] == "unconnected_vpcs" for w in calc_before.json()["warnings"])
 
@@ -46,7 +48,9 @@ async def test_connector_attached_sku_cost_included_in_total(client, auth_header
         headers=auth_headers,
     )
 
-    calc_after = await client.post(f"/api/v1/architectures/{arch_id}/calculate", headers=auth_headers)
+    calc_after = await client.post(
+        f"/api/v1/architectures/{arch_id}/calculate", headers=auth_headers
+    )
     body = calc_after.json()
     assert body["warnings"] == []  # now connected
     assert len(body["line_items"]) == 1
@@ -65,12 +69,12 @@ async def test_second_sku_on_an_occupied_connector_is_refused(client, auth_heade
     arch_id = arch.json()["id"]
     c1 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC A"},
+        json={"type": "vpc", "name": "VPC A", "region": "us-east-1"},
         headers=auth_headers,
     )
     c2 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC B"},
+        json={"type": "vpc", "name": "VPC B", "region": "us-east-1"},
         headers=auth_headers,
     )
     conn = await client.post(

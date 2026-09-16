@@ -41,7 +41,7 @@ def _mock_no_period_units(monkeypatch):
     see below) so `raw_cost` passes through unchanged, preserving their original expected
     totals exactly."""
 
-    def fake_resolve_units(selections, *, snapshot_date=None):
+    def fake_resolve_units(selections, *, region=None, snapshot_date=None):
         return {key: "Hrs" for key in selections}
 
     monkeypatch.setattr(price_calculation, "resolve_units", fake_resolve_units)
@@ -52,7 +52,7 @@ def test_sums_priceable_line_items(monkeypatch):
     monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
     _mock_no_period_units(monkeypatch)
 
-    collection = Collection(type="application_component", name="Web")
+    collection = Collection(type="application_component", name="Web", region="us-east-1")
     collection.sku_selections = [_selection(usage_quantity=Decimal("10"), sku="Hrs-sku")]
     architecture = Architecture(name="A")
     architecture.collections = [collection]
@@ -72,7 +72,7 @@ def test_unpriceable_sku_excluded_from_total_not_estimated(monkeypatch):
     monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
     _mock_no_period_units(monkeypatch)
 
-    collection = Collection(type="application_component", name="Web")
+    collection = Collection(type="application_component", name="Web", region="us-east-1")
     collection.sku_selections = [_selection()]
     architecture = Architecture(name="A")
     architecture.collections = [collection]
@@ -93,9 +93,13 @@ def test_connector_attached_sku_included_in_total(monkeypatch):
     monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
     _mock_no_period_units(monkeypatch)
 
+    coll_a = Collection(id=uuid.uuid4(), type="vpc", name="VPC A", region="us-east-1")
+    coll_a.sku_selections = []
+    coll_b = Collection(id=uuid.uuid4(), type="vpc", name="VPC B", region="us-east-1")
+    coll_b.sku_selections = []
     architecture = Architecture(name="A")
-    architecture.collections = []
-    connector = DataConnector()
+    architecture.collections = [coll_a, coll_b]
+    connector = DataConnector(from_collection_id=coll_a.id, to_collection_id=coll_b.id)
     connector.sku_selection = _selection(usage_quantity=Decimal("5"))
     architecture.connectors = [connector]
 
@@ -115,7 +119,10 @@ def test_unconnected_vpc_warning(monkeypatch, vpc_count, connected, expect_warni
     _mock_no_period_units(monkeypatch)
 
     architecture = Architecture(name="A")
-    vpcs = [Collection(id=uuid.uuid4(), type="vpc", name=f"VPC{i}") for i in range(vpc_count)]
+    vpcs = [
+        Collection(id=uuid.uuid4(), type="vpc", name=f"VPC{i}", region="us-east-1")
+        for i in range(vpc_count)
+    ]
     for v in vpcs:
         v.sku_selections = []
     architecture.collections = vpcs
@@ -147,9 +154,11 @@ def test_nesting_does_not_affect_total(monkeypatch):
     _mock_no_period_units(monkeypatch)
 
     def build(nested: bool) -> Architecture:
-        vpc = Collection(id=uuid.uuid4(), type="vpc", name="VPC")
+        vpc = Collection(id=uuid.uuid4(), type="vpc", name="VPC", region="us-east-1")
         vpc.sku_selections = []
-        app = Collection(id=uuid.uuid4(), type="application_component", name="App")
+        app = Collection(
+            id=uuid.uuid4(), type="application_component", name="App", region="us-east-1"
+        )
         app.sku_selections = [_selection(usage_quantity=Decimal("10"))]
         if nested:
             app.parent_collection_id = vpc.id
@@ -172,14 +181,14 @@ def test_nesting_does_not_affect_total(monkeypatch):
 
 
 def _mock_units(monkeypatch, unit_by_sku: dict[str, str]):
-    def fake_resolve_units(selections, *, snapshot_date=None):
+    def fake_resolve_units(selections, *, region=None, snapshot_date=None):
         return {(sku, term, purchase): unit_by_sku.get(sku) for sku, term, purchase in selections}
 
     monkeypatch.setattr(price_calculation, "resolve_units", fake_resolve_units)
 
 
 def _architecture_with(selection: SKUSelection) -> Architecture:
-    collection = Collection(type="application_component", name="Web")
+    collection = Collection(type="application_component", name="Web", region="us-east-1")
     collection.sku_selections = [selection]
     architecture = Architecture(name="A")
     architecture.collections = [collection]
@@ -469,7 +478,7 @@ def test_unpriceable_collection_selection_names_its_collection(monkeypatch):
     monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
     _mock_no_period_units(monkeypatch)
 
-    collection = Collection(type="application_component", name="Web Tier")
+    collection = Collection(type="application_component", name="Web Tier", region="us-east-1")
     collection.sku_selections = [_selection()]
     architecture = Architecture(name="A")
     architecture.collections = [collection]
@@ -487,9 +496,9 @@ def test_unpriceable_connector_selection_names_its_two_collections(monkeypatch):
     monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
     _mock_no_period_units(monkeypatch)
 
-    coll_a = Collection(id=uuid.uuid4(), type="vpc", name="VPC A")
+    coll_a = Collection(id=uuid.uuid4(), type="vpc", name="VPC A", region="us-east-1")
     coll_a.sku_selections = []
-    coll_b = Collection(id=uuid.uuid4(), type="vpc", name="VPC B")
+    coll_b = Collection(id=uuid.uuid4(), type="vpc", name="VPC B", region="us-east-1")
     coll_b.sku_selections = []
     connector = DataConnector(from_collection_id=coll_a.id, to_collection_id=coll_b.id)
     connector.sku_selection = _selection()
@@ -511,7 +520,7 @@ def test_duration_excluded_selection_also_names_its_component(monkeypatch):
     monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
     _mock_units(monkeypatch, {"SKU1": "Quantity"})
 
-    collection = Collection(type="application_component", name="Odd Billing")
+    collection = Collection(type="application_component", name="Odd Billing", region="us-east-1")
     collection.sku_selections = [_selection()]
     architecture = Architecture(name="A")
     architecture.collections = [collection]
@@ -522,3 +531,75 @@ def test_duration_excluded_selection_also_names_its_component(monkeypatch):
     )
 
     assert result.unpriceable[0].components == ["Odd Billing"]
+
+
+# --- 010-multi-region-support: PriceLineItem.region resolution (data-model.md, research.md §11) --
+
+
+def test_collection_owned_line_item_gets_its_collections_region(monkeypatch):
+    monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 2.5)
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_no_period_units(monkeypatch)
+
+    collection = Collection(
+        id=uuid.uuid4(), type="application_component", name="Web", region="eu-west-1"
+    )
+    collection.sku_selections = [_selection()]
+    architecture = Architecture(name="A")
+    architecture.collections = [collection]
+    architecture.connectors = []
+
+    result = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_day
+    )
+
+    assert result.line_items[0].region == "eu-west-1"
+
+
+def test_connector_owned_line_item_gets_its_from_collections_region(monkeypatch):
+    """spec FR-006/data-model.md: a Connector's own line item is attributed to its "from"
+    Collection's region, never its "to" Collection's."""
+    monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 1.0)
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_no_period_units(monkeypatch)
+
+    coll_a = Collection(id=uuid.uuid4(), type="vpc", name="VPC A", region="us-west-2")
+    coll_a.sku_selections = []
+    coll_b = Collection(id=uuid.uuid4(), type="vpc", name="VPC B", region="ap-northeast-1")
+    coll_b.sku_selections = []
+    connector = DataConnector(from_collection_id=coll_a.id, to_collection_id=coll_b.id)
+    connector.sku_selection = _selection(usage_quantity=Decimal("5"))
+    architecture = Architecture(name="A")
+    architecture.collections = [coll_a, coll_b]
+    architecture.connectors = [connector]
+
+    result = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_day
+    )
+
+    assert result.line_items[0].region == "us-west-2"
+
+
+def test_line_item_region_defaults_to_none_when_ownership_unresolvable(monkeypatch):
+    """Defensive fallback (data-model.md, research.md §11): expected unreachable in normal
+    operation (Collection.region is NOT NULL in the database), but a transient, never-persisted
+    Collection with no `region` set at all — exactly `build_transient_architecture`'s synthetic
+    snapshot-calculation Collection — must still resolve to `region=None` rather than raising,
+    so the frontend's "Global" fallback grouping (FR-015) has a defined contract to render."""
+    monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 2.5)
+    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    _mock_no_period_units(monkeypatch)
+
+    # Never given a `region=` kwarg, unlike every other test in this file — simulates
+    # `build_transient_architecture`'s throwaway Collection.
+    collection = Collection(type="application_component", name="Snapshot")
+    collection.sku_selections = [_selection()]
+    architecture = Architecture(name="A")
+    architecture.collections = [collection]
+    architecture.connectors = []
+
+    result = price_calculation.calculate_architecture_price(
+        architecture, duration=CalculationDuration.one_day
+    )
+
+    assert result.line_items[0].region is None

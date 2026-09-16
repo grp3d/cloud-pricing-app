@@ -41,6 +41,7 @@ class EmptySnapshotError(ValueError):
     (008-ui-updates-corrections, data-model.md) — an empty snapshot has no meaningful prior
     total to adjust."""
 
+
 # Day-counts used for every duration-based calculation (004, FR-006) — fixed, never derived from
 # a real calendar, so results stay deterministic and reproducible.
 _DURATION_DAYS: dict[CalculationDuration, int] = {
@@ -79,13 +80,21 @@ def calculate_architecture_price(
     # the two Collections a Connector links, since a connector has no name of its own.
     selections = []
     selection_components: dict = {}
+    # 010-multi-region-support, data-model.md/research.md §11: each selection's region — its
+    # owning Collection's, or, for a Connector-owned selection, that Connector's "from"
+    # Collection's. `.get(...)` (not `[...]`) so a selection with no resolvable owner (the
+    # `build_transient_architecture` synthetic path, whose Collection is never given a region)
+    # falls back to `None` rather than raising — the documented defensive fallback (FR-015).
+    selection_regions: dict[uuid.UUID, str | None] = {}
     collection_names = {c.id: c.name for c in architecture.collections if c.deleted_at is None}
+    collection_regions = {c.id: c.region for c in architecture.collections if c.deleted_at is None}
     for collection in architecture.collections:
         if collection.deleted_at is not None:
             continue
         selections.extend(collection.sku_selections)
         for selection in collection.sku_selections:
             selection_components[selection.id] = [collection.name]
+            selection_regions[selection.id] = getattr(collection, "region", None)
     for connector in architecture.connectors:
         if connector.deleted_at is not None:
             continue
@@ -96,18 +105,34 @@ def calculate_architecture_price(
             selection_components[connector.sku_selection.id] = [
                 f"Data Connector between {from_name} and {to_name}"
             ]
+            selection_regions[connector.sku_selection.id] = collection_regions.get(
+                connector.from_collection_id
+            )
 
     # Batch-resolve billing units for On-Demand selections only (006) — a Reserved selection's
     # cost no longer depends on unit classification at all (FR-001/FR-002), so there's nothing
     # for this batch to usefully resolve for one; scoping it down keeps the query's purpose
-    # honest (003's `resolve_units`, research.md #2).
+    # honest (003's `resolve_units`, research.md #2). Grouped by region (010-multi-region-
+    # support, research.md §11): each call covers only its own region's selections, merged —
+    # safe, since AWS SKU codes are themselves region-scoped.
     on_demand_selections = [
         s for s in selections if _RESERVED_TERM_DAYS.get(s.pricing_term) is None
     ]
-    units = resolve_units(
-        [(s.sku, s.pricing_term, s.purchase_option) for s in on_demand_selections],
-        snapshot_date=snapshot_date,
-    )
+    units: dict = {}
+    on_demand_by_region: dict[str, list] = {}
+    for s in on_demand_selections:
+        region = selection_regions.get(s.id)
+        if region is None:
+            continue
+        on_demand_by_region.setdefault(region, []).append(s)
+    for region, region_selections in on_demand_by_region.items():
+        units.update(
+            resolve_units(
+                [(s.sku, s.pricing_term, s.purchase_option) for s in region_selections],
+                region=region,
+                snapshot_date=snapshot_date,
+            )
+        )
 
     line_items: list[PriceLineItem] = []
     unpriceable: list[UnpriceableItem] = []
@@ -135,6 +160,14 @@ def calculate_architecture_price(
 
     for selection in selections:
         term_days = _RESERVED_TERM_DAYS.get(selection.pricing_term)
+        region = selection_regions.get(selection.id)
+
+        if region is None:
+            # Defensive fallback only (data-model.md) — expected unreachable given
+            # Collection.region/DataConnector.from_collection_id are both NOT NULL; there's no
+            # partition to query without one, so this is unpriceable rather than a crash.
+            _mark_unpriceable(selection, "no region could be determined for this selection")
+            continue
 
         if term_days is not None:
             # Reserved (006): a fully separate procedure from On-Demand below — never reads
@@ -143,6 +176,7 @@ def calculate_architecture_price(
                 sku=selection.sku,
                 pricing_term=selection.pricing_term,
                 purchase_option=selection.purchase_option,
+                region=region,
                 snapshot_date=snapshot_date,
             )
             if reserved_price is None or reserved_price.recurring_rate is None:
@@ -184,10 +218,13 @@ def calculate_architecture_price(
                 sku=selection.sku,
                 pricing_term=selection.pricing_term,
                 purchase_option=selection.purchase_option,
+                region=region,
                 snapshot_date=snapshot_date,
             )
             if unit_price is None:
-                _mark_unpriceable(selection, "no price for term/purchase_option in current snapshot")
+                _mark_unpriceable(
+                    selection, "no price for term/purchase_option in current snapshot"
+                )
                 continue
 
             raw_cost = Decimal(str(unit_price)) * selection.usage_quantity
@@ -219,6 +256,7 @@ def calculate_architecture_price(
                 sku=selection.sku,
                 price=displayed_cost,
                 priceable=True,
+                region=region,
             )
         )
 
@@ -250,7 +288,16 @@ def build_transient_architecture(selections: Sequence[SnapshotSelection]) -> Arc
     if not selections:
         raise EmptySnapshotError("selections must contain at least one entry")
 
-    collection = Collection(id=uuid.uuid4(), type="application_component", name="snapshot")
+    # 010-multi-region-support: `SnapshotSelection` carries no region (it's a plain prior-
+    # pricing-input value, data-model.md — no collection to inherit one from), so this
+    # synthetic Collection is pinned to the app's former single global pricing region rather
+    # than left unset, preserving this endpoint's exact prior behavior (spec Assumptions: the
+    # Price Change mechanism is out of scope for this feature). Out of scope for this feature:
+    # a genuinely multi-region-aware snapshot recalculation would need `SnapshotSelection` to
+    # carry its own region.
+    collection = Collection(
+        id=uuid.uuid4(), type="application_component", name="snapshot", region="us-east-1"
+    )
     collection.sku_selections = [
         SKUSelection(
             id=uuid.uuid4(),

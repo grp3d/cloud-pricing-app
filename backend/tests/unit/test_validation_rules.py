@@ -17,7 +17,7 @@ from src.models.orm import Architecture, Collection, DataConnector, SKUSelection
 async def test_data_connector_rejects_self_link(db_session):
     user = User(id=uuid.uuid4())
     architecture = Architecture(user_id=user.id, name="A", provider="aws")
-    collection = Collection(architecture=architecture, type="vpc", name="VPC A")
+    collection = Collection(architecture=architecture, type="vpc", name="VPC A", region="us-east-1")
     db_session.add_all([user, architecture, collection])
     await db_session.flush()
 
@@ -55,8 +55,8 @@ async def test_sku_selection_requires_exactly_one_parent(db_session):
 async def test_sku_selection_rejects_both_parents(db_session):
     user = User(id=uuid.uuid4())
     architecture = Architecture(user_id=user.id, name="A", provider="aws")
-    c1 = Collection(architecture=architecture, type="vpc", name="A")
-    c2 = Collection(architecture=architecture, type="vpc", name="B")
+    c1 = Collection(architecture=architecture, type="vpc", name="A", region="us-east-1")
+    c2 = Collection(architecture=architecture, type="vpc", name="B", region="us-east-1")
     db_session.add_all([user, architecture, c1, c2])
     await db_session.flush()
     connector = DataConnector(

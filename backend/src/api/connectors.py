@@ -93,7 +93,7 @@ async def attach_connector_sku(
     session.add(selection)
     await session.commit()
     await session.refresh(selection)
-    return sku_selection_out_with_unit(selection)
+    return sku_selection_out_with_unit(selection, region=connector.from_collection.region)
 
 
 @router.delete("/connectors/{connector_id}", status_code=204)

@@ -33,7 +33,9 @@ KNOWN_RESERVED_SKU = "2THCJ54S3VW8G6VS"
 
 
 def test_resolves_unit_for_a_single_sku():
-    result = resolve_units([(KNOWN_ON_DEMAND_SKU, "on_demand", "not_applicable")])
+    result = resolve_units(
+        [(KNOWN_ON_DEMAND_SKU, "on_demand", "not_applicable")], region="us-east-1"
+    )
     assert result[(KNOWN_ON_DEMAND_SKU, "on_demand", "not_applicable")] == "Hrs"
 
 
@@ -44,7 +46,8 @@ def test_resolves_units_for_multiple_skus_in_one_call():
         [
             (KNOWN_ON_DEMAND_SKU, "on_demand", "not_applicable"),
             (other_sku, "on_demand", "not_applicable"),
-        ]
+        ],
+        region="us-east-1",
     )
     assert result[(KNOWN_ON_DEMAND_SKU, "on_demand", "not_applicable")] == "Hrs"
     assert result[(other_sku, "on_demand", "not_applicable")] == "Hrs"
@@ -57,14 +60,15 @@ def test_unresolvable_sku_is_none_without_failing_others():
         [
             (KNOWN_ON_DEMAND_SKU, "on_demand", "not_applicable"),
             ("THIS-SKU-DOES-NOT-EXIST", "on_demand", "not_applicable"),
-        ]
+        ],
+        region="us-east-1",
     )
     assert result[(KNOWN_ON_DEMAND_SKU, "on_demand", "not_applicable")] == "Hrs"
     assert result[("THIS-SKU-DOES-NOT-EXIST", "on_demand", "not_applicable")] is None
 
 
 def test_empty_input_returns_empty_map():
-    assert resolve_units([]) == {}
+    assert resolve_units([], region="us-east-1") == {}
 
 
 # --- 006-fix-reserved-pricing: lookup_reserved_price() (FR-002, FR-004, FR-005) ---
@@ -76,7 +80,10 @@ def test_reserved_no_upfront_returns_recurring_rate_with_no_upfront_fee():
     cost row present", though both happen to total the same; `None` is the honest one here
     since no `Quantity` row exists at all for No Upfront)."""
     result = lookup_reserved_price(
-        sku=KNOWN_RESERVED_SKU, pricing_term="reserved_1yr", purchase_option="no_upfront"
+        sku=KNOWN_RESERVED_SKU,
+        pricing_term="reserved_1yr",
+        purchase_option="no_upfront",
+        region="us-east-1",
     )
     assert result is not None
     assert result.recurring_rate == 12.90693
@@ -88,7 +95,10 @@ def test_reserved_partial_upfront_returns_both_recurring_rate_and_upfront_fee():
     column, differing only by `unit` — both values must come back, correctly matched to
     their own `unit`, not one silently standing in for the other."""
     result = lookup_reserved_price(
-        sku=KNOWN_RESERVED_SKU, pricing_term="reserved_1yr", purchase_option="partial_upfront"
+        sku=KNOWN_RESERVED_SKU,
+        pricing_term="reserved_1yr",
+        purchase_option="partial_upfront",
+        region="us-east-1",
     )
     assert result is not None
     assert result.recurring_rate == 6.66161
@@ -99,7 +109,10 @@ def test_reserved_all_upfront_zero_recurring_rate_still_returned():
     """A $0/hr recurring rate (All Upfront) is still a real, present value — `0.0`, not
     `None` — distinguishing "priced at zero" from "no price data at all"."""
     result = lookup_reserved_price(
-        sku=KNOWN_RESERVED_SKU, pricing_term="reserved_1yr", purchase_option="all_upfront"
+        sku=KNOWN_RESERVED_SKU,
+        pricing_term="reserved_1yr",
+        purchase_option="all_upfront",
+        region="us-east-1",
     )
     assert result is not None
     assert result.recurring_rate == 0.0
@@ -110,7 +123,10 @@ def test_reserved_unknown_sku_returns_none():
     """FR-005: no matching row at all (any unit) — `None` outright, the same "unpriceable"
     signal `lookup_price`/`resolve_units` already use."""
     result = lookup_reserved_price(
-        sku="THIS-SKU-DOES-NOT-EXIST", pricing_term="reserved_1yr", purchase_option="no_upfront"
+        sku="THIS-SKU-DOES-NOT-EXIST",
+        pricing_term="reserved_1yr",
+        purchase_option="no_upfront",
+        region="us-east-1",
     )
     assert result is None
 
@@ -121,7 +137,10 @@ def test_reserved_price_lookup_rejects_on_demand_term():
     error, not a data gap; fail loudly rather than silently returning nonsense."""
     with pytest.raises(ValueError):
         lookup_reserved_price(
-            sku=KNOWN_ON_DEMAND_SKU, pricing_term="on_demand", purchase_option="not_applicable"
+            sku=KNOWN_ON_DEMAND_SKU,
+            pricing_term="on_demand",
+            purchase_option="not_applicable",
+            region="us-east-1",
         )
 
 
@@ -130,7 +149,10 @@ def test_reserved_price_lookup_rejects_on_demand_term():
 
 def test_duplicate_row_sku_on_demand_still_prices():
     price = lookup_price(
-        sku=KNOWN_DUPLICATE_ROW_SKU, pricing_term="on_demand", purchase_option="not_applicable"
+        sku=KNOWN_DUPLICATE_ROW_SKU,
+        pricing_term="on_demand",
+        purchase_option="not_applicable",
+        region="us-east-1",
     )
     assert price is not None
     assert price > 0
@@ -155,7 +177,10 @@ def test_duplicate_row_sku_every_reserved_combination_still_prices(
     number, `0.0` is valid for some All-Upfront rows), and `upfront_fee` is present whenever the
     purchase option isn't `no_upfront`."""
     result = lookup_reserved_price(
-        sku=KNOWN_DUPLICATE_ROW_SKU, pricing_term=pricing_term, purchase_option=purchase_option
+        sku=KNOWN_DUPLICATE_ROW_SKU,
+        pricing_term=pricing_term,
+        purchase_option=purchase_option,
+        region="us-east-1",
     )
     assert result is not None
     assert result.recurring_rate is not None
@@ -173,7 +198,9 @@ def test_unit_matches_the_row_lookup_price_actually_prices():
     resolved unit must describe whichever row `lookup_price` actually prices, not an
     arbitrary same-key row, or the displayed unit would mislabel the shown price."""
     sku = "QZ9R39S2Y8MCC9Y8"
-    price = lookup_price(sku=sku, pricing_term="reserved_1yr", purchase_option="partial_upfront")
-    result = resolve_units([(sku, "reserved_1yr", "partial_upfront")])
+    price = lookup_price(
+        sku=sku, pricing_term="reserved_1yr", purchase_option="partial_upfront", region="us-east-1"
+    )
+    result = resolve_units([(sku, "reserved_1yr", "partial_upfront")], region="us-east-1")
     assert price is not None
     assert result[(sku, "reserved_1yr", "partial_upfront")] == "Hrs"

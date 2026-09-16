@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { CalculationDuration, CalculationResult } from "../../api/client";
 import { useMeasuredWidth } from "../../hooks/useMeasuredWidth";
 import { awsDataTransferLabel } from "../../lib/awsDataTransfer";
+import { groupLineItemsByRegion } from "../../lib/regionPricingGroups";
 import { splitForWrap } from "../../lib/textWrap";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
@@ -224,9 +225,12 @@ function PriceChangeIndicator({ amount }: { amount: string }) {
   );
 }
 
-/** FR-017: every priced (non-excluded) SKU together with its own total, sorted highest-first
- * so the biggest cost driver is always at the top (Clarifications) — a view over
- * `CalculationResult.line_items` the backend already returns, no new field needed. */
+/** 010-multi-region-support, spec FR-011/FR-012/FR-014: every priced (non-excluded) SKU,
+ * grouped into one labeled section per region (a `"Global"` section for the FR-015 defensive
+ * fallback), each with a subtotal — within each section, still sorted highest-first so the
+ * biggest cost driver is always at the top (Clarifications, preserved from the prior flat
+ * list) — a view over `CalculationResult.line_items` the backend already returns, no new
+ * field needed beyond `region`. */
 function PricePerSkuSection({
   calculation,
   skuAttributesById,
@@ -240,36 +244,46 @@ function PricePerSkuSection({
    * indented line, instead of discarding it. */
   wordWrap: boolean;
 }) {
-  const priced = calculation.line_items
-    .filter((item) => item.priceable && item.price !== null)
-    .sort((a, b) => Number(b.price) - Number(a.price));
-
+  const priced = calculation.line_items.filter(
+    (item): item is typeof item & { price: string } => item.priceable && item.price !== null,
+  );
   if (priced.length === 0) return null;
+
+  const groups = groupLineItemsByRegion(priced);
 
   return (
     <>
       <Separator />
-      <section aria-label="Price per Sku" className="flex flex-col gap-1.5">
+      <section aria-label="Price per Sku" className="flex flex-col gap-3">
         <h4 className="text-2xs font-semibold">Price per Sku</h4>
-        <ul className="flex flex-col gap-1">
-          {priced.map((item) => {
-            // 009-ui-fixes-next-iteration, US9, FR-027/028: the derived region-pair label
-            // replaces the raw SKU here for AWSDataTransfer Services; every other Service is
-            // unaffected (FR-030) since this is `null` for them.
-            const dataTransferLabel = awsDataTransferLabel(
-              item.service_code,
-              skuAttributesById.get(item.sku_selection_id) ?? {},
-            );
-            return (
-              <PriceLine
-                key={item.sku_selection_id}
-                text={`${item.service_code} / ${dataTransferLabel ?? item.sku}`}
-                price={formatPrice(item.price!)}
-                wordWrap={wordWrap}
-              />
-            );
-          })}
-        </ul>
+        {groups.map((group) => (
+          <div key={group.region} className="flex flex-col gap-1.5">
+            <h5 className="text-2xs font-medium text-muted-foreground">Region {group.region}</h5>
+            <ul className="flex flex-col gap-1">
+              {group.items.map((item) => {
+                // 009-ui-fixes-next-iteration, US9, FR-027/028: the derived region-pair label
+                // replaces the raw SKU here for AWSDataTransfer Services; every other Service
+                // is unaffected (FR-030) since this is `null` for them.
+                const dataTransferLabel = awsDataTransferLabel(
+                  item.service_code,
+                  skuAttributesById.get(item.sku_selection_id) ?? {},
+                );
+                return (
+                  <PriceLine
+                    key={item.sku_selection_id}
+                    text={`${item.service_code} / ${dataTransferLabel ?? item.sku}`}
+                    price={formatPrice(item.price!)}
+                    wordWrap={wordWrap}
+                  />
+                );
+              })}
+            </ul>
+            <div className="flex items-center justify-between gap-2 border-t border-border pt-1 text-2xs font-medium">
+              <span>{group.region} total</span>
+              <span className="tabular-nums">{formatPrice(String(group.subtotal))}</span>
+            </div>
+          </div>
+        ))}
       </section>
     </>
   );

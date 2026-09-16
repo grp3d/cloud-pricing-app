@@ -12,6 +12,7 @@ router = APIRouter(tags=["catalog"])
 
 @router.get("/catalog/skus", response_model=CatalogSearchResult)
 async def search_skus(
+    region: str,
     service_code: str | None = None,
     product_family: str | None = None,
     q: str | None = None,
@@ -20,8 +21,13 @@ async def search_skus(
     limit: int = 50,
     offset: int = 0,
 ) -> CatalogSearchResult:
+    """010-multi-region-support, spec FR-005: `region` picks which Parquet partition is
+    searched — the selected collection's region, or a connector's "from" collection's region
+    (FR-006). Distinct from `from_region_code`/`to_region_code`, which remain AWSDataTransfer
+    attribute filters unrelated to which partition is read."""
     limit = min(max(limit, 1), 200)
     rows, snapshot_date, total = search_catalog(
+        region=region,
         service_code=service_code,
         product_family=product_family,
         text=q,

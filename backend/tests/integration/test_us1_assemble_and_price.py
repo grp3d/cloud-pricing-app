@@ -25,7 +25,7 @@ async def test_full_assemble_and_price_flow(client, auth_headers):
     # 3. Add a Collection.
     coll_resp = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "Web tier"},
+        json={"type": "application_component", "name": "Web tier", "region": "us-east-1"},
         headers=auth_headers,
     )
     assert coll_resp.status_code == 201
@@ -34,7 +34,12 @@ async def test_full_assemble_and_price_flow(client, auth_headers):
     # 4. Search the real catalog for an EC2 SKU.
     search_resp = await client.get(
         "/api/v1/catalog/skus",
-        params={"service_code": "AmazonEC2", "product_family": "Compute Instance", "q": "t3.medium"},
+        params={
+            "service_code": "AmazonEC2",
+            "product_family": "Compute Instance",
+            "q": "t3.medium",
+            "region": "us-east-1",
+        },
         headers=auth_headers,
     )
     assert search_resp.status_code == 200
@@ -59,7 +64,9 @@ async def test_full_assemble_and_price_flow(client, auth_headers):
     # 6. Calculate — expect a real, snapshot-traceable result (SC-002). Note: this specific SKU
     # may legitimately be $0 (e.g. a reservation-only variant) or unpriceable for its
     # term/purchase_option — either way it must be traceable and never fabricated.
-    calc_resp = await client.post(f"/api/v1/architectures/{arch_id}/calculate", headers=auth_headers)
+    calc_resp = await client.post(
+        f"/api/v1/architectures/{arch_id}/calculate", headers=auth_headers
+    )
     assert calc_resp.status_code == 200
     body = calc_resp.json()
     assert body["snapshot_date"]

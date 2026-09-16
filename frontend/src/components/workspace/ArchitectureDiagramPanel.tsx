@@ -6,6 +6,7 @@ import {
   ConnectionMode,
   Controls,
   Handle,
+  MarkerType,
   NodeResizeControl,
   Panel,
   Position,
@@ -31,6 +32,7 @@ import { RefreshCw } from "lucide-react";
 import { type Collection, type DataConnector } from "../../api/client";
 import { useMeasuredHeight } from "../../hooks/useMeasuredHeight";
 import { decideNestingChange } from "../../pages/dropTargetDetection";
+import { updateOrderedSelection } from "../../pages/connectorSelection";
 import {
   type MeasuredLayoutNode,
   childYOffsets,
@@ -304,6 +306,10 @@ interface ApplicationComponentNodeData {
   onMeasuredHeight: (height: number) => void;
   onSelectService: (skuSelectionId: string) => void;
   onManualResize: (width: number, height: number, x: number, y: number) => void;
+  /** 010-multi-region-support, spec FR-019: shown in the bottom-right corner only while
+   * `isNested` is false — once nested inside a VPC, the VPC's own label already conveys it. */
+  region: string;
+  isNested: boolean;
 }
 
 /** Custom node type for an Application Component (spec FR-007, 005, 006). See prior features'
@@ -331,6 +337,8 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
     onMeasuredHeight,
     onSelectService,
     onManualResize,
+    region,
+    isNested,
   } = data as unknown as ApplicationComponentNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
@@ -360,6 +368,11 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
           />
         </div>
       </div>
+      {/* 010-multi-region-support, spec FR-019: only while unnested — a nested Application's
+          containing VPC already shows its region. */}
+      {!isNested && (
+        <span className="absolute bottom-1 right-1 text-4xs text-muted-foreground">{region}</span>
+      )}
     </div>
   );
 }
@@ -378,6 +391,8 @@ interface VpcNodeData {
    * Application Component — see `ServiceList`'s `hideEmptyMessage` for why this suppresses
    * the VPC's own "No services yet." text rather than being shown unconditionally. */
   hasChildren: boolean;
+  /** 010-multi-region-support, spec FR-018: shown in the bottom-right corner, always. */
+  region: string;
 }
 
 /** Custom node type for a VPC (002-006). 007 adds the same per-service click targets; 008
@@ -394,6 +409,7 @@ function VpcNode({ data, selected }: NodeProps) {
     onSelectService,
     onManualResize,
     hasChildren,
+    region,
   } = data as unknown as VpcNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
@@ -425,6 +441,8 @@ function VpcNode({ data, selected }: NodeProps) {
           />
         </div>
       </div>
+      {/* 010-multi-region-support, spec FR-018: always shown for a VPC. */}
+      <span className="absolute bottom-1 right-1 text-4xs text-muted-foreground">{region}</span>
     </div>
   );
 }
@@ -692,6 +710,11 @@ export interface ArchitectureDiagramPanelProps {
   onDeselectAll: () => void;
   onCreateConnector: (from: string, to: string) => void;
   onUpdateCollectionParent: (id: string, parentId: string | null) => void;
+  /** 010-multi-region-support, spec FR-004: called instead of `onUpdateCollectionParent` when
+   * a drag targets a VPC in a different region than the dragged Application — no API call is
+   * made; the caller surfaces this as a visible message (research.md §8: no prior rejection
+   * pattern existed in this flow). */
+  onRejectedNesting: (applicationName: string, vpcName: string) => void;
   /** 009-ui-fixes-next-iteration follow-up: a fresh Architecture refetch, for the new manual
    * refresh button (a temporary workaround for the still-not-root-caused "diagram goes
    * blank" issue — US3/research.md §3's investigation, and this session's own `diagramSelection`
@@ -724,6 +747,7 @@ export function ArchitectureDiagramPanel({
   onDeselectAll,
   onCreateConnector,
   onUpdateCollectionParent,
+  onRejectedNesting,
   onRefresh,
 }: ArchitectureDiagramPanelProps) {
   const { getIntersectingNodes } = useReactFlow();
@@ -767,9 +791,20 @@ export function ArchitectureDiagramPanel({
   // scope.
   const [diagramHeight, setDiagramHeight] = useState(640);
 
+  // 010-multi-region-support, spec FR-008: React Flow's own `selectedNodes` array is in its
+  // internal node-array order, not click order — track click order ourselves so "first
+  // selected = from, second selected = to" (the column-2 connect flow, WorkspacePage.tsx's
+  // `handleConnect`) is actually correct rather than incidentally matching diagram order.
+  const orderedSelectedIdsRef = useRef<string[]>([]);
   useOnSelectionChange({
-    onChange: ({ nodes: selectedNodes }) =>
-      onSelectedNodeIdsChange(selectedNodes.map((n) => n.id)),
+    onChange: ({ nodes: selectedNodes }) => {
+      const next = updateOrderedSelection(
+        orderedSelectedIdsRef.current,
+        selectedNodes.map((n) => n.id),
+      );
+      orderedSelectedIdsRef.current = next;
+      onSelectedNodeIdsChange(next);
+    },
   });
 
   // A user's drag-to-resize (FR-001, research.md §1a — root cause of "resize doesn't
@@ -868,6 +903,8 @@ export function ArchitectureDiagramPanel({
           // `VpcNodeData`/`ServiceList`'s `hideEmptyMessage`) — harmlessly unused by
           // `ApplicationComponentNode`, which can never have children.
           hasChildren: children.length > 0,
+          region: c.region,
+          isNested: false,
         },
         style: { width: finalWidth, height: finalHeight },
       });
@@ -897,6 +934,8 @@ export function ArchitectureDiagramPanel({
               onSelectService(skuSelectionId, child.id),
             onManualResize: (w: number, h: number, x: number, y: number) =>
               onManualResize(child.id, w, h, x, y),
+            region: child.region,
+            isNested: true,
           },
           style: { width: childFinalWidth, height: childFinalHeight },
         });
@@ -977,6 +1016,10 @@ export function ArchitectureDiagramPanel({
         // inline style object, which `BaseEdge` does support) instead of a styled element.
         label: conn.sku_selection ? dataTransferLabel ?? conn.sku_selection.sku : undefined,
         labelStyle: { fontSize: "var(--text-4xs)", textDecoration: isSelected ? "underline" : "none" },
+        // 010-multi-region-support, spec FR-009: a directional arrow pointing from "from" to
+        // "to" — `OffsetEdge` already forwards `markerEnd` to `<BaseEdge>` (it just never had a
+        // value before this).
+        markerEnd: { type: MarkerType.ArrowClosed },
       };
     });
     const offsets = edgeOffsetIndex(rawEdges);
@@ -1085,10 +1128,21 @@ export function ArchitectureDiagramPanel({
       .filter((n) => collections.find((c) => c.id === n.id)?.type === "vpc")
       .map((n) => n.id);
 
-    const { changed, newParentId } = decideNestingChange(
+    // 010-multi-region-support, spec FR-004: same-region nesting only.
+    const vpcRegions = Object.fromEntries(
+      collections.filter((c) => c.type === "vpc").map((c) => [c.id, c.region]),
+    );
+    const { changed, newParentId, rejected, rejectedVpcId } = decideNestingChange(
       intersectingVpcIds,
       dragged.parent_collection_id ?? null,
+      dragged.region,
+      vpcRegions,
     );
+    if (rejected) {
+      const vpcName = collections.find((c) => c.id === rejectedVpcId)?.name ?? "that VPC";
+      onRejectedNesting(dragged.name, vpcName);
+      return;
+    }
     if (changed) {
       onUpdateCollectionParent(dragged.id, newParentId);
 

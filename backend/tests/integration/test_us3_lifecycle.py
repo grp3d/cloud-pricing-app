@@ -16,7 +16,9 @@ async def test_soft_delete_lifecycle(client, auth_headers):
     names = {a["name"] for a in listing.json()}
     assert names == {"Keep Me", "Delete Me"}
 
-    del_resp = await client.delete(f"/api/v1/architectures/{arch2.json()['id']}", headers=auth_headers)
+    del_resp = await client.delete(
+        f"/api/v1/architectures/{arch2.json()['id']}", headers=auth_headers
+    )
     assert del_resp.status_code == 204
 
     listing_after = await client.get("/api/v1/architectures?provider=aws", headers=auth_headers)
@@ -24,5 +26,7 @@ async def test_soft_delete_lifecycle(client, auth_headers):
     assert names_after == {"Keep Me"}
 
     # The other architecture (and its data) is untouched.
-    still_there = await client.get(f"/api/v1/architectures/{arch1.json()['id']}", headers=auth_headers)
+    still_there = await client.get(
+        f"/api/v1/architectures/{arch1.json()['id']}", headers=auth_headers
+    )
     assert still_there.status_code == 200

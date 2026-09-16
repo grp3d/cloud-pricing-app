@@ -45,21 +45,25 @@ def test_parse_attributes_coerces_non_string_values():
 
 
 def test_resolve_attributes_known_sku():
-    result = resolve_attributes([(KNOWN_SERVICE_CODE, KNOWN_SKU)])
+    result = resolve_attributes([(KNOWN_SERVICE_CODE, KNOWN_SKU)], region="us-east-1")
     assert result[(KNOWN_SERVICE_CODE, KNOWN_SKU)]["instanceType"] == "t3.medium"
 
 
 def test_resolve_attributes_unknown_sku_returns_empty_map_not_missing_key():
-    result = resolve_attributes([(KNOWN_SERVICE_CODE, "THIS-SKU-DOES-NOT-EXIST")])
+    result = resolve_attributes(
+        [(KNOWN_SERVICE_CODE, "THIS-SKU-DOES-NOT-EXIST")], region="us-east-1"
+    )
     assert result[(KNOWN_SERVICE_CODE, "THIS-SKU-DOES-NOT-EXIST")] == {}
 
 
 def test_resolve_attributes_batches_multiple_skus():
     other_sku = "2QF2GD6XUCJHFMKF"
-    result = resolve_attributes([(KNOWN_SERVICE_CODE, KNOWN_SKU), (KNOWN_SERVICE_CODE, other_sku)])
+    result = resolve_attributes(
+        [(KNOWN_SERVICE_CODE, KNOWN_SKU), (KNOWN_SERVICE_CODE, other_sku)], region="us-east-1"
+    )
     assert result[(KNOWN_SERVICE_CODE, KNOWN_SKU)] != {}
     assert result[(KNOWN_SERVICE_CODE, other_sku)] != {}
 
 
 def test_resolve_attributes_empty_input_returns_empty_map():
-    assert resolve_attributes([]) == {}
+    assert resolve_attributes([], region="us-east-1") == {}

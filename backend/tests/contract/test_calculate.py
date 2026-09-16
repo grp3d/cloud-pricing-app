@@ -15,7 +15,7 @@ async def test_calculate_sums_priceable_line_items(client, auth_headers):
     arch_id = arch.json()["id"]
     coll = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "Web"},
+        json={"type": "application_component", "name": "Web", "region": "us-east-1"},
         headers=auth_headers,
     )
     coll_id = coll.json()["id"]
@@ -51,7 +51,7 @@ async def test_calculate_flags_unpriceable_sku_without_estimating(client, auth_h
     arch_id = arch.json()["id"]
     coll = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "Web"},
+        json={"type": "application_component", "name": "Web", "region": "us-east-1"},
         headers=auth_headers,
     )
     coll_id = coll.json()["id"]

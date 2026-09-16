@@ -23,12 +23,12 @@ async def test_architecture_tree_carries_units_for_every_nested_sku_selection(cl
 
     coll_a = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "App A"},
+        json={"type": "application_component", "name": "App A", "region": "us-east-1"},
         headers=auth_headers,
     )
     coll_b = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "application_component", "name": "App B"},
+        json={"type": "application_component", "name": "App B", "region": "us-east-1"},
         headers=auth_headers,
     )
 

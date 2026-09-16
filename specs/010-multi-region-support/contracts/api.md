@@ -27,27 +27,22 @@ All schema changes below are Pydantic-native (`backend/src/models/schemas.py`) p
 
 **New error cases**: `400` — `region` missing (no parent given) or not in the available-regions list; `400` — `parent_collection_id` given but doesn't reference a `vpc`-type collection.
 
-## 2. `PATCH /collections/{id}/region` (new)
+## 2. `PATCH /collections/{id}` (modified — course-corrected during implementation)
 
-Mirrors the existing per-field `PATCH .../parent_collection_id` convention (`client.ts:107-111`) rather than a generic collection-update endpoint (research.md §7's sibling reasoning: Principle VI — smallest addition consistent with existing style).
+**Implementation-time finding**: the plan above assumed a new, separate `PATCH /collections/{id}/region` sub-route mirroring a "per-field PATCH" convention. Reading the actual code found this was wrong: there is no per-field convention — the existing nesting endpoint is already the single generic `PATCH /collections/{id}` (`backend/src/api/collections.py`, request schema then named `CollectionNestingUpdate`, `{parent_collection_id}`). The correct, minimal-diff change was to extend that *same* endpoint and schema (renamed `CollectionUpdate`) with an optional `region` field, using Pydantic's `model_fields_set` to distinguish "field omitted" from "field explicitly `null`" (needed because `parent_collection_id: null` is itself a meaningful request — un-nest).
 
-**Request**:
+**Request** `CollectionUpdate` — both fields optional, either or both may be present:
 ```jsonc
-{ "region": "string" }
+{ "parent_collection_id": "uuid | null", "region": "string" }
 ```
 
-**Response**: `200` + updated `CollectionOut`.
+**Server behavior**: only fields actually present in the request body (`model_fields_set`) are applied. If `region` is present: `409` if the collection is locked (data-model.md's `locked(collection)`, FR-003: has a `SKUSelection`, or, for a VPC, a child `Collection`); `400` if not in `GET /regions`'s current list. If `parent_collection_id` is present: existing nesting rules apply, plus the new FR-004 check below.
 
-**Errors**:
-- `409 Conflict` — collection is locked (data-model.md's `locked(collection)`, FR-003): has at least one `SKUSelection`, or (VPC only) at least one child `Collection`.
-- `400` — `region` not in the current `GET /regions` list.
-- `404` — collection not found.
+**Response**: `200` + updated `CollectionOut` (unchanged shape from the pre-existing endpoint, now including `region`).
 
-## 3. `PATCH /collections/{id}/parent_collection_id` (modified — new error case)
+**New error case on `parent_collection_id`** (FR-004, research.md §8): `409 Conflict` when the Application's `region` doesn't match the destination VPC's `region`. Response body: `{"detail": {"error": "region_mismatch", "application_region": "us-east-1", "vpc_region": "eu-west-1"}}` — a structured object, not a plain string (the frontend's `request()` helper in `client.ts` special-cases this shape to build a readable message, since the generic `body.detail` fallback assumes a string).
 
-Existing endpoint (`client.ts:107-111`, `api.updateCollectionParent`) — request/response shape unchanged. New validation (FR-004, research.md §8):
-
-**New error case**: `409 Conflict` — the dragged/target Application's `region` does not match the destination VPC's `region`. Response body includes both regions so the frontend can render a specific message (e.g. `{"detail": "region_mismatch", "application_region": "us-east-1", "vpc_region": "eu-west-1"}`).
+**New error cases on `region`**: `409 Conflict` (locked); `400` (region not in `GET /regions`'s list).
 
 ## 4. `GET /catalog/skus` (modified)
 

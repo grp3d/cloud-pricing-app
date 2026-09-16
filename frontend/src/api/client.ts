@@ -19,6 +19,7 @@ export type CollectionType = components["schemas"]["CollectionType"];
 export type PricingTerm = components["schemas"]["PricingTerm"];
 export type PurchaseOption = components["schemas"]["PurchaseOption"];
 export type SnapshotSelection = components["schemas"]["SnapshotSelection"];
+export type Region = components["schemas"]["RegionOut"];
 
 const BASE = "/api/v1";
 
@@ -76,6 +77,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (body.error === "invalid_regex_pattern") {
       throw new InvalidRegexPatternError(body.message ?? "Invalid pattern.", body.field);
     }
+    // 010-multi-region-support, spec FR-004: the server-side region-match gate on
+    // PATCH /collections/{id} returns a structured `detail` object, not a plain string —
+    // build a readable message from it rather than stringifying the object.
+    if (body.detail && typeof body.detail === "object" && body.detail.error === "region_mismatch") {
+      throw new Error(
+        `This Application is in ${body.detail.application_region}, but that VPC is in ` +
+          `${body.detail.vpc_region} — they must match to nest.`,
+      );
+    }
     throw new Error(body.detail ?? body.message ?? `Request failed: ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
@@ -96,21 +106,47 @@ export const api = {
   deleteArchitecture: (id: string) =>
     request<void>(`/architectures/${id}`, { method: "DELETE" }),
 
-  createCollection: (architectureId: string, type: CollectionType, name: string) =>
+  /** 010-multi-region-support, spec FR-001/FR-001a: `region` is required unless
+   * `parentCollectionId` is given, in which case the server ignores it and inherits the
+   * parent VPC's region instead. */
+  createCollection: (
+    architectureId: string,
+    type: CollectionType,
+    name: string,
+    region?: string,
+    parentCollectionId?: string,
+  ) =>
     request<Collection>(`/architectures/${architectureId}/collections`, {
       method: "POST",
-      body: JSON.stringify({ type, name }),
+      body: JSON.stringify({
+        type,
+        name,
+        region,
+        parent_collection_id: parentCollectionId,
+      }),
     }),
   deleteCollection: (id: string) => request<void>(`/collections/${id}`, { method: "DELETE" }),
   /** Nest, move, or un-nest an Application Component (002-vpc-component-nesting, FR-001-003).
-   * Pass a VPC's id to nest/move into it, or `null` to un-nest back to top-level. */
+   * Pass a VPC's id to nest/move into it, or `null` to un-nest back to top-level. May reject
+   * with a `409` region-mismatch (010-multi-region-support, spec FR-004). */
   updateCollectionParent: (id: string, parentCollectionId: string | null) =>
     request<Collection>(`/collections/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ parent_collection_id: parentCollectionId }),
     }),
+  /** Change a collection's region while it's still unlocked (010-multi-region-support, spec
+   * FR-003) — `409` once it has content. */
+  updateCollectionRegion: (id: string, region: string) =>
+    request<Collection>(`/collections/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ region }),
+    }),
+
+  /** Regions the pricing dataset currently has data for (010-multi-region-support, FR-017). */
+  listRegions: () => request<{ regions: Region[] }>("/regions"),
 
   searchCatalog: (params: {
+    region: string;
     service_code?: string;
     product_family?: string;
     q?: string;

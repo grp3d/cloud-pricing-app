@@ -16,12 +16,12 @@ async def _create_connector(client, auth_headers) -> tuple[str, str]:
     arch_id = arch.json()["id"]
     c1 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC A"},
+        json={"type": "vpc", "name": "VPC A", "region": "us-east-1"},
         headers=auth_headers,
     )
     c2 = await client.post(
         f"/api/v1/architectures/{arch_id}/collections",
-        json={"type": "vpc", "name": "VPC B"},
+        json={"type": "vpc", "name": "VPC B", "region": "us-east-1"},
         headers=auth_headers,
     )
     conn = await client.post(
