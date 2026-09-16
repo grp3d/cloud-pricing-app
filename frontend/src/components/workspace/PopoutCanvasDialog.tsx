@@ -6,8 +6,16 @@ import { type Collection, type DataConnector } from "../../api/client";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { ArchitectureDiagramPanel } from "./ArchitectureDiagramPanel";
 
-const DEFAULT_WIDTH_RATIO = 0.9;
-const DEFAULT_HEIGHT_RATIO = 0.85;
+// Default position/size (011-canvas-connector-popout follow-up): anchored toward the
+// bottom-right rather than centered/near-full-viewport, matching
+// ../../../../../../screenshot-samples/arch_canvas_popout.png — ratios measured directly from
+// that screenshot's actual pixel bounds (content area, excluding browser chrome), so columns
+// 1–3 and column 4's own top strip stay visible by default without the user needing to drag it
+// first.
+const DEFAULT_LEFT_RATIO = 0.36;
+const DEFAULT_TOP_RATIO = 0.1;
+const DEFAULT_WIDTH_RATIO = 0.62;
+const DEFAULT_HEIGHT_RATIO = 0.84;
 const MIN_WIDTH = 480;
 const MIN_HEIGHT = 360;
 // How much of the dialog must stay reachable on-screen while dragging — a floor, not a full
@@ -110,6 +118,19 @@ export interface PopoutCanvasDialogProps {
   onUpdateCollectionParent: (id: string, parentId: string | null) => void;
   onRejectedNesting: (applicationName: string, vpcName: string) => void;
   onRefresh: () => void;
+  /** 011-canvas-connector-popout follow-up: the same selection state/handlers
+   * `WorkspacePage.tsx` passes to column 4's own `ArchitectureDiagramPanel` — selecting
+   * something in either canvas now drives columns 2/3 identically (confirmed against the
+   * user's own reference screenshot, which showed a pop-out selection reflected in both). This
+   * replaced an earlier design (research.md §3) where the pop-out kept fully independent local
+   * selection state — reconsidered after the reference screenshot showed the opposite was
+   * actually wanted. */
+  diagramSelection: { kind: "collection" | "connector" | "service"; id: string } | null;
+  onSelectedNodeIdsChange: (ids: string[]) => void;
+  onSelectCollection: (id: string) => void;
+  onSelectConnector: (id: string) => void;
+  onSelectService: (skuSelectionId: string, containingCollectionId: string) => void;
+  onDeselectAll: () => void;
 }
 
 /**
@@ -117,9 +138,11 @@ export interface PopoutCanvasDialogProps {
  * in-tab view of the same architecture canvas as column 4 — a second, fully independent
  * `ArchitectureDiagramPanel` instance (its own `ReactFlowProvider`, since one provider only
  * ever manages one React Flow instance's internal store; two under the same provider would
- * fight over shared state rather than behave independently) with its own local
- * selection/box-height state, mirroring the shape `WorkspacePage.tsx` owns for column 4 without
- * sharing it. `collections`/`connectors`/the mutation callbacks are the exact same props/
+ * fight over shared state rather than behave independently) sharing `WorkspacePage.tsx`'s own
+ * selection state (follow-up: originally local/independent per research.md §3, changed after a
+ * reference screenshot showed a pop-out selection expected to reflect in columns 2/3 too — see
+ * `PopoutCanvasDialogProps`'s own doc comment) — only box-height measurement stays local per
+ * instance. `collections`/`connectors`/the mutation callbacks are the exact same props/
  * functions `WorkspacePage.tsx` already passes to column 4 — both instances read the same
  * TanStack Query cache, so any edit from columns 2/3 (which already invalidates that cache)
  * appears in both automatically (FR-009), with no new sync mechanism.
@@ -141,17 +164,24 @@ export function PopoutCanvasDialog({
   onUpdateCollectionParent,
   onRejectedNesting,
   onRefresh,
+  diagramSelection,
+  onSelectedNodeIdsChange,
+  onSelectCollection,
+  onSelectConnector,
+  onSelectService,
+  onDeselectAll,
 }: PopoutCanvasDialogProps) {
   const [size, setSize] = useState(() => ({
     width: Math.round(window.innerWidth * DEFAULT_WIDTH_RATIO),
     height: Math.round(window.innerHeight * DEFAULT_HEIGHT_RATIO),
   }));
   // Explicit pixel position (not `DialogContent`'s default centered-via-transform placement)
-  // so it can be dragged — initialized to the same centered spot that default would have
-  // produced, so opening the pop-out looks unchanged until the user actually drags it.
+  // so it can be dragged — initialized to the bottom-right-anchored default position above,
+  // not centered, so columns 1–3 stay visible/reachable without the user needing to drag it
+  // first.
   const [position, setPosition] = useState(() => ({
-    x: Math.round((window.innerWidth - window.innerWidth * DEFAULT_WIDTH_RATIO) / 2),
-    y: Math.round((window.innerHeight - window.innerHeight * DEFAULT_HEIGHT_RATIO) / 2),
+    x: Math.round(window.innerWidth * DEFAULT_LEFT_RATIO),
+    y: Math.round(window.innerHeight * DEFAULT_TOP_RATIO),
   }));
 
   const onResizeDrag = useCallback((deltaX: number, deltaY: number) => {
@@ -171,55 +201,14 @@ export function PopoutCanvasDialog({
     }));
   }, []);
 
-  // 011-canvas-connector-popout, spec FR-011: its own local selection/box-height state,
-  // separate from `WorkspacePage.tsx`'s — selecting/connecting here doesn't drive columns 2/3
-  // (only column 4's own selection does, unchanged); this pop-out is an additional,
-  // independently-usable view, not a replacement selection source (research.md §3).
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
-  const [selectedConnectorId, setSelectedConnectorId] = useState<string | null>(null);
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
-  // `ArchitectureDiagramPanel` requires this callback (multi-select order tracking), but
-  // nothing in the pop-out currently consumes the ordered id list itself — unlike column 2's
-  // "Connect" button, there's no connector-creation control inside the pop-out to pre-populate
-  // (spec: connector creation stays consolidated at column 2 only).
-  const [, setSelectedNodeIds] = useState<string[]>([]);
+  // Box-height measurements stay local/independent (research.md §3 unaffected by the
+  // selection-sync change above) — each instance measures its own rendered layout, and nothing
+  // downstream needs these two views to agree on it.
   const [ownHeights, setOwnHeights] = useState<Record<string, number>>({});
 
   const reportHeight = useCallback((id: string, height: number) => {
     setOwnHeights((prev) => (prev[id] === height ? prev : { ...prev, [id]: height }));
   }, []);
-
-  const diagramSelection = selectedServiceId
-    ? { kind: "service" as const, id: selectedServiceId }
-    : selectedConnectorId
-      ? { kind: "connector" as const, id: selectedConnectorId }
-      : selectedCollectionId
-        ? { kind: "collection" as const, id: selectedCollectionId }
-        : null;
-
-  function deselectAll() {
-    setSelectedCollectionId(null);
-    setSelectedConnectorId(null);
-    setSelectedServiceId(null);
-  }
-
-  function selectCollection(id: string) {
-    setSelectedCollectionId(id);
-    setSelectedConnectorId(null);
-    setSelectedServiceId(null);
-  }
-
-  function selectConnector(id: string) {
-    setSelectedConnectorId(id);
-    setSelectedCollectionId(null);
-    setSelectedServiceId(null);
-  }
-
-  function selectService(skuSelectionId: string, containingCollectionId: string) {
-    setSelectedCollectionId(containingCollectionId);
-    setSelectedConnectorId(null);
-    setSelectedServiceId(skuSelectionId);
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
@@ -281,11 +270,11 @@ export function PopoutCanvasDialog({
               ownHeights={ownHeights}
               reportHeight={reportHeight}
               diagramSelection={diagramSelection}
-              onSelectedNodeIdsChange={setSelectedNodeIds}
-              onSelectCollection={selectCollection}
-              onSelectConnector={selectConnector}
-              onSelectService={selectService}
-              onDeselectAll={deselectAll}
+              onSelectedNodeIdsChange={onSelectedNodeIdsChange}
+              onSelectCollection={onSelectCollection}
+              onSelectConnector={onSelectConnector}
+              onSelectService={onSelectService}
+              onDeselectAll={onDeselectAll}
               onCreateConnector={onCreateConnector}
               onUpdateCollectionParent={onUpdateCollectionParent}
               onRejectedNesting={onRejectedNesting}

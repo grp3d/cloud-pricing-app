@@ -217,3 +217,32 @@ text is larger than the current default while the zoom level is unchanged.
   changes since the last commit).
 - Verify `npm run check-api-types` is unaffected (it should be — no backend/API changes in this
   feature) as a final regression check once all three stories are done.
+
+---
+
+## Phase 4: Post-Implementation Follow-Ups (live user feedback)
+
+Found and fixed after the above was reported complete, while actually using the pop-out —
+tracked here for traceability rather than left undocumented.
+
+- [X] T016 [US1] Hide the pop-out trigger button inside the pop-out's own canvas instance
+      (`onOpenPopout` made optional on `ArchitectureDiagramPanel`) — it duplicated the close
+      button in the same corner with nothing to pop out to.
+- [X] T017 [US1] Fix width resize being silently capped at 512px (`sm:max-w-lg` surviving the
+      `cn`/tailwind-merge merge alongside `max-w-none` as a different "slot") — added
+      `sm:max-w-none`.
+- [X] T018 [US1] Add drag-to-move (spec FR-008a) via a visible grip handle, so the pop-out can
+      be moved clear of columns 1–3 while open. Required two follow-on CSS fixes, found live:
+      Tailwind v4's centering classes use the standalone `translate` property, not `transform`
+      (`style.translate = "none"` was the actual fix, not the already-present
+      `style.transform = "none"`); and `DialogContent`'s entrance-animation classes got stuck
+      applying their starting scaled/translated keyframe state for a dialog whose
+      position/size are externally managed (added an `animated` opt-out prop to
+      `DialogContent`).
+- [X] T019 [US1] Default the pop-out's position/size to match a user-supplied reference
+      screenshot (bottom-right anchored, not centered/near-full-viewport) so columns 1–3 stay
+      visible without dragging first.
+- [X] T020 [US1] Share one selection state between column 4 and the pop-out (spec FR-011a)
+      instead of two independent ones — confirmed against the same reference screenshot, which
+      showed a pop-out selection reflected in columns 2/3. `PopoutCanvasDialog` now receives
+      `WorkspacePage`'s own selection state/callbacks as props instead of owning local copies.

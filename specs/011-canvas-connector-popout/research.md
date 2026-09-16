@@ -46,17 +46,28 @@ represent two simultaneously-selected Collections the way `selectedNodeIds` alre
 
 ## §3. Live-synced, independently-interactive pop-out (US1/FR-007–FR-011)
 
-**Decision**: The pop-out renders a **second, independent instance** of
-`ArchitectureDiagramPanel`, each wrapped in its own `<ReactFlowProvider>`. A new small
-component (`PopoutCanvasDialog`, rendered from `WorkspacePage.tsx` next to the existing column 4
-panel) owns:
+**Decision**: The pop-out renders a **second instance** of `ArchitectureDiagramPanel`, wrapped
+in its own `<ReactFlowProvider>`. A new small component (`PopoutCanvasDialog`, rendered from
+`WorkspacePage.tsx` next to the existing column 4 panel) owns:
 - its own `<ReactFlowProvider>` (required — see Rationale),
-- its own local selection state (`diagramSelection`, `selectedNodeIds`, and the
-  `onSelectCollection`/`onSelectConnector`/`onSelectService`/`onDeselectAll`/
-  `onSelectedNodeIdsChange` callbacks that update it), separate from `WorkspacePage`'s own,
 - its own local `ownHeights`/`reportHeight` box-height map (each instance measures its own
-  layout independently),
-- open/closed state and pixel width/height for the resize handle (§4).
+  layout independently — this is the one thing that does stay local; see the Amendment below
+  for why selection itself does not),
+- open/closed state and pixel width/height/position for the resize/move handles (§4).
+
+**Amendment (follow-up, after initial implementation)**: The original version of this decision
+also gave the pop-out its own local *selection* state (`diagramSelection`, `selectedNodeIds`,
+and the `onSelectCollection`/`onSelectConnector`/`onSelectService`/`onDeselectAll`/
+`onSelectedNodeIdsChange` callbacks), kept fully separate from `WorkspacePage`'s own — see the
+struck-through paragraph below for the reasoning at the time. A user-supplied reference
+screenshot of the intended UI showed the opposite: a service selected inside the pop-out shown
+underlined there *and* simultaneously reflected in columns 2/3 (Selected Collection, Service
+Editor) — i.e. one shared selection, not two independent ones. `PopoutCanvasDialog` now simply
+receives `WorkspacePage`'s own `diagramSelection`/selection callbacks as props and passes them
+straight through, the same way it already does for `collections`/`connectors`/the mutation
+callbacks — removing the ~30 lines of duplicated local selection state entirely rather than
+adding anything. Live-verified both directions: selecting in the pop-out updates column 4's own
+highlighted selection and columns 2/3, and selecting in column 4 updates the pop-out too.
 
 `collections`/`connectors` (the actual architecture data) and the mutation callbacks
 (`onCreateConnector`, `onUpdateCollectionParent`, `onRejectedNesting`, `onRefresh`,
@@ -76,16 +87,19 @@ already props `WorkspacePage` threads in (not internal to `ArchitectureDiagramPa
 the pop-out its own local copies of exactly those props is a small, additive change — no
 existing column 4 behavior changes.
 
-Per the resolved clarification, selecting/connecting inside the pop-out does not drive columns
+~~Per the resolved clarification, selecting/connecting inside the pop-out does not drive columns
 2/3 (only column 4's own selection does, unchanged from today) — the pop-out is an additional,
 independently-usable view, not a replacement selection source. A user who wants the
 Connect-dialog pre-population (§2) from a pop-out-made selection still makes that selection on
-column 4's own canvas, as today.
+column 4's own canvas, as today.~~ Superseded by the Amendment above — selection is shared, so a
+pop-out-made selection now feeds the Connect dialog's pre-population too.
 
-**Alternatives considered**: Sharing one `ReactFlowProvider`/selection state between column 4
-and the pop-out — rejected, technically fights React Flow's one-store-per-provider model and
-contradicts the resolved "independently interactive" requirement. Making the pop-out
-read-only (no `ReactFlowProvider`, no interaction) — rejected by the resolved clarification.
+**Alternatives considered**: Sharing one `ReactFlowProvider` between column 4 and the pop-out —
+rejected, technically fights React Flow's one-store-per-provider model (each canvas still needs
+its own `ReactFlowProvider`/React Flow instance even though they now share application-level
+selection state via ordinary React props, not React Flow's own internal store). Making the
+pop-out read-only (no `ReactFlowProvider`, no interaction) — rejected by the resolved
+clarification (FR-011).
 
 ## §4. Pop-out presentation & resize (US1/FR-008, Clarifications)
 

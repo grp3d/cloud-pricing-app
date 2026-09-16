@@ -791,6 +791,12 @@ function WorkspacePageInner() {
             )
           }
           onRefresh={invalidateArchitecture}
+          diagramSelection={diagramSelection}
+          onSelectedNodeIdsChange={setSelectedNodeIds}
+          onSelectCollection={selectCollection}
+          onSelectConnector={selectConnector}
+          onSelectService={selectService}
+          onDeselectAll={deselectAll}
         />
       )}
     </div>
