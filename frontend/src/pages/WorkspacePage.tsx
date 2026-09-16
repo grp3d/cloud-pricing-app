@@ -10,7 +10,6 @@ import {
   api,
 } from "../api/client";
 import { ArchitectureDiagramPanel } from "../components/workspace/ArchitectureDiagramPanel";
-import { canConnect } from "./connectorSelection";
 import { CollectionsPanel, type CollectionsPanelSelection } from "../components/workspace/CollectionsPanel";
 import { PopoutCanvasDialog } from "../components/workspace/PopoutCanvasDialog";
 import { PricingPanel } from "../components/workspace/PricingPanel";
@@ -402,12 +401,6 @@ function WorkspacePageInner() {
     onError: (err) => setActionError(errorMessageOf(err)),
   });
 
-  function handleConnect() {
-    if (!canConnect(selectedNodeIds)) return;
-    const [from, to] = selectedNodeIds;
-    createConnector.mutate({ from, to });
-  }
-
   // --- SKU Selection mutations (column 3) ---
   async function submitNewSku(inputs: PricingInputs) {
     if (serviceConfigSelection?.kind !== "new") return;
@@ -657,8 +650,9 @@ function WorkspacePageInner() {
             onNewCollectionNameChange={setNewCollectionName}
             onAddCollection={handleAddCollectionClick}
             isAddingCollection={createCollection.isPending}
-            canConnect={canConnect(selectedNodeIds)}
-            onConnect={handleConnect}
+            collections={collections}
+            selectedNodeIds={selectedNodeIds}
+            onCreateConnector={(from, to) => createConnector.mutate({ from, to })}
             hasSelectedConnector={Boolean(selectedConnectorId)}
             onRemoveConnector={() =>
               selectedConnectorId && setPendingDeleteConnectorId(selectedConnectorId)

@@ -1,14 +1,141 @@
 import { Link2, Link2Off, PanelLeftClose, PanelLeftOpen, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import type { CatalogSKU, CollectionType, Region } from "../../api/client";
+import type { CatalogSKU, Collection, CollectionType, Region } from "../../api/client";
 import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
 import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { CatalogSearchPanel } from "../CatalogSearchPanel";
 import { ErrorMessage } from "../ErrorMessage";
+
+/** 011-canvas-connector-popout, spec FR-002/FR-003: the connector-creation dialog, relocated
+ * here verbatim from the canvas's own former `AddConnectorDialog`
+ * (`ArchitectureDiagramPanel.tsx`) — same markup/validation, same `onCreateConnector` mutation
+ * (research.md §2). The only new behavior is pre-population (FR-005): opening the dialog seeds
+ * "From"/"To" from whichever Collections are currently selected on the canvas, in selection
+ * order, only for the 0/1/2-selected cases — more than two leaves both empty, same as zero. */
+function ConnectDialog({
+  collections,
+  selectedNodeIds,
+  onCreateConnector,
+}: {
+  collections: Collection[];
+  selectedNodeIds: string[];
+  onCreateConnector: (from: string, to: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [from, setFrom] = useState<string | undefined>(undefined);
+  const [to, setTo] = useState<string | undefined>(undefined);
+
+  // FR-026a (009): the same Collection can't be chosen in both dropdowns.
+  const canConfirm = Boolean(from) && Boolean(to) && from !== to;
+
+  function reset() {
+    setFrom(undefined);
+    setTo(undefined);
+  }
+
+  function handleConfirm() {
+    if (!canConfirm || !from || !to) return;
+    onCreateConnector(from, to);
+    setOpen(false);
+    reset();
+  }
+
+  // FR-005: pre-populate from the canvas's current multi-selection, in selection order, only
+  // for the 0/1/2-selected cases (more than two leaves both empty, same as zero). This has to
+  // run from the *trigger* button's own click, not `Dialog`'s `onOpenChange` — Radix only
+  // calls `onOpenChange` for transitions it initiates itself (Escape, overlay/outside click,
+  // `DialogClose`), not when a parent externally flips the `open` prop via a plain sibling
+  // button click like this one (found live: `onOpenChange`'s open-path was simply never
+  // reached from this button, so pre-population silently never ran).
+  function handleOpenClick() {
+    if (selectedNodeIds.length === 1) {
+      setFrom(selectedNodeIds[0]);
+      setTo(undefined);
+    } else if (selectedNodeIds.length === 2) {
+      setFrom(selectedNodeIds[0]);
+      setTo(selectedNodeIds[1]);
+    } else {
+      reset();
+    }
+    setOpen(true);
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset();
+      }}
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={handleOpenClick}
+        title="Connect two Collections"
+      >
+        <Link2 /> Connect
+      </Button>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Connector</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium" htmlFor="add-connector-from">
+              From Collection
+            </label>
+            <Select value={from} onValueChange={setFrom}>
+              <SelectTrigger id="add-connector-from" className="w-full">
+                <SelectValue placeholder="Select a Collection" />
+              </SelectTrigger>
+              <SelectContent>
+                {collections.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium" htmlFor="add-connector-to">
+              To Collection
+            </label>
+            <Select value={to} onValueChange={setTo}>
+              <SelectTrigger id="add-connector-to" className="w-full">
+                <SelectValue placeholder="Select a Collection" />
+              </SelectTrigger>
+              <SelectContent>
+                {collections.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {from && to && from === to && (
+            <p className="text-xs text-destructive">
+              From and To must be different Collections.
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" onClick={handleConfirm} disabled={!canConfirm}>
+            Add Connector
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export type CollectionsPanelSelection =
   | { kind: "collection"; id: string; name: string; region: string; locked: boolean }
@@ -23,8 +150,13 @@ export interface CollectionsPanelProps {
   onAddCollection: () => void;
   isAddingCollection: boolean;
 
-  canConnect: boolean;
-  onConnect: () => void;
+  /** 011-canvas-connector-popout, spec FR-003/FR-005: the full Collections list (for the
+   * relocated Connect dialog's From/To dropdowns) and the canvas's currently-selected node
+   * ids, in selection order (for pre-populating them) — replaces the prior `canConnect`/
+   * `onConnect` (which gated an immediate-connect action rather than opening a dialog). */
+  collections: Collection[];
+  selectedNodeIds: string[];
+  onCreateConnector: (from: string, to: string) => void;
   hasSelectedConnector: boolean;
   onRemoveConnector: () => void;
 
@@ -67,8 +199,9 @@ export function CollectionsPanel({
   onNewCollectionNameChange,
   onAddCollection,
   isAddingCollection,
-  canConnect,
-  onConnect,
+  collections,
+  selectedNodeIds,
+  onCreateConnector,
   hasSelectedConnector,
   onRemoveConnector,
   actionError,
@@ -157,15 +290,11 @@ export function CollectionsPanel({
               </Button>
             </form>
             <div className="flex gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onConnect}
-                disabled={!canConnect}
-                title="Select exactly two boxes on the diagram to connect them"
-              >
-                <Link2 /> Connect
-              </Button>
+              <ConnectDialog
+                collections={collections}
+                selectedNodeIds={selectedNodeIds}
+                onCreateConnector={onCreateConnector}
+              />
               <Button
                 variant="outline"
                 size="sm"

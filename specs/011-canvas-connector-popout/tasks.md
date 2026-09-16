@@ -98,35 +98,35 @@ accordingly and that no Connector is created until the user explicitly confirms.
 
 ### Implementation for User Story 2
 
-- [ ] T007 [US2] Remove the `AddConnectorDialog` function and its
+- [X] T007 [US2] Remove the `AddConnectorDialog` function and its
       `<Panel position="top-right"><AddConnectorDialog .../></Panel>` usage from
       `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx` (FR-002) — do this after
       T001 so the pop-out trigger already occupies that screen position before this is removed
-- [ ] T008 [US2] Add `collections: Collection[]`, `selectedNodeIds: string[]`, and
+- [X] T008 [US2] Add `collections: Collection[]`, `selectedNodeIds: string[]`, and
       `onCreateConnector: (from: string, to: string) => void` props to
       `CollectionsPanelProps` in `frontend/src/components/workspace/CollectionsPanel.tsx`,
       replacing `canConnect`/`onConnect`
-- [ ] T009 [US2] In `CollectionsPanel.tsx`, move the dialog markup (From/To `Select` dropdowns,
+- [X] T009 [US2] In `CollectionsPanel.tsx`, move the dialog markup (From/To `Select` dropdowns,
       the same-Collection guard, the confirm button) from the removed `AddConnectorDialog`
       (T007) into a local dialog rendered from the "Connect" button, which is now always
       enabled (no `disabled` prop) and opens the dialog instead of connecting immediately
       (FR-003, FR-004, FR-006) — depends on T007, T008
-- [ ] T010 [US2] Seed the dialog's local `from`/`to` state from `selectedNodeIds` when it opens:
+- [X] T010 [US2] Seed the dialog's local `from`/`to` state from `selectedNodeIds` when it opens:
       `selectedNodeIds[0]` → `from`, `selectedNodeIds[1]` → `to` if present, both left empty if
       `selectedNodeIds` has zero or more than two entries (FR-005) — depends on T009
-- [ ] T011 [US2] In `frontend/src/pages/WorkspacePage.tsx`, remove `handleConnect` and pass
+- [X] T011 [US2] In `frontend/src/pages/WorkspacePage.tsx`, remove `handleConnect` and pass
       `collections={collections}`, `selectedNodeIds={selectedNodeIds}`, and
       `onCreateConnector={(from, to) => createConnector.mutate({ from, to })}` into
       `<CollectionsPanel>` in place of the removed `canConnect`/`onConnect` props — depends on
       T008
-- [ ] T012 [US2] Delete the now-dead `canConnect` function from
+- [X] T012 [US2] Delete the now-dead `canConnect` function from
       `frontend/src/pages/connectorSelection.ts` and its `describe("canConnect", ...)` test
       block from `frontend/tests/unit/connectorSelection.test.ts` (`updateOrderedSelection` and
       its own tests stay — still used by `ArchitectureDiagramPanel.tsx`'s selection handler,
       unrelated to this feature) — its only callers were the `canConnect`/`onConnect` props T008
       removed and the `handleConnect` T011 removed, confirmed via grep to have no other
       references (`/speckit-analyze` finding M1) — depends on T008, T011
-- [ ] T013 [US2] Live-verify via `claude-in-chrome` against `quickstart.md`'s US2 section: zero/
+- [X] T013 [US2] Live-verify via `claude-in-chrome` against `quickstart.md`'s US2 section: zero/
       one/two-selection pre-population, no-connector-until-confirm, and that the "Connect"
       button is always clickable (FR-002–FR-006, SC-002, SC-003) — depends on T007-T012
 
