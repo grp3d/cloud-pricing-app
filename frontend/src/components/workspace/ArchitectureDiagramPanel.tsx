@@ -614,8 +614,11 @@ export interface ArchitectureDiagramPanelProps {
   /** 011-canvas-connector-popout, spec FR-007: opens `PopoutCanvasDialog`
    * (`WorkspacePage.tsx`), a second, independent instance of this same panel enlarged in an
    * in-tab overlay — this panel only triggers it, `WorkspacePage.tsx` owns the open/closed
-   * state since the trigger (here) and the dialog itself are siblings, not parent/child. */
-  onOpenPopout: () => void;
+   * state since the trigger (here) and the dialog itself are siblings, not parent/child.
+   * Optional and omitted by `PopoutCanvasDialog` itself when it renders this same panel a
+   * second time inside the pop-out — that instance has no nested pop-out affordance of its
+   * own (there's nothing further to pop out to), so the trigger button doesn't render there. */
+  onOpenPopout?: () => void;
 }
 
 /**
@@ -1229,19 +1232,22 @@ export function ArchitectureDiagramPanel({
         {/* 011-canvas-connector-popout, spec FR-007: opens an enlarged, independent, live-synced
             view of this same canvas (`PopoutCanvasDialog`, `WorkspacePage.tsx`) — see
             `onOpenPopout`'s own doc comment above for why the open/closed state itself lives one
-            level up. */}
-        <Panel position="top-right">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            aria-label="Open the architecture canvas in an enlarged view"
-            title="Open the architecture canvas in an enlarged view"
-            onClick={onOpenPopout}
-          >
-            <ArrowUpRight />
-          </Button>
-        </Panel>
+            level up, and why this is omitted (not rendered at all) inside the pop-out's own
+            instance of this panel. */}
+        {onOpenPopout && (
+          <Panel position="top-right">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-label="Open the architecture canvas in an enlarged view"
+              title="Open the architecture canvas in an enlarged view"
+              onClick={onOpenPopout}
+            >
+              <ArrowUpRight />
+            </Button>
+          </Panel>
+        )}
       </ReactFlow>
       <DiagramResizeHandle
         onDrag={(deltaY) =>

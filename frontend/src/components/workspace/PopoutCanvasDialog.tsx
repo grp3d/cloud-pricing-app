@@ -165,7 +165,14 @@ export function PopoutCanvasDialog({
       <DialogContent
         overlay={false}
         showCloseButton
-        className="max-w-none gap-2 p-2"
+        // `max-w-none` alone doesn't override `DialogContent`'s base `sm:max-w-lg` (32rem) —
+        // found live: `max-w-none` and `sm:max-w-lg` are different "slots" to the `cn`/
+        // tailwind-merge engine (unprefixed vs. `sm:`-prefixed), so both survive the merge and
+        // `sm:max-w-lg` wins at runtime via ordinary CSS cascade at viewport widths ≥640px,
+        // silently capping this dialog's width at 512px regardless of the inline `style` below
+        // (that's exactly why only height, which has no equivalent `sm:max-h-*` base class, was
+        // ever actually resizable). `sm:max-w-none` neutralizes that specific slot too.
+        className="max-w-none sm:max-w-none gap-2 p-2"
         style={{ width: size.width, height: size.height }}
         onPointerDownOutside={(e) => e.preventDefault()}
       >
@@ -194,9 +201,8 @@ export function PopoutCanvasDialog({
               onUpdateCollectionParent={onUpdateCollectionParent}
               onRejectedNesting={onRejectedNesting}
               onRefresh={onRefresh}
-              onOpenPopout={() => {
-                /* Already the pop-out itself — no nested pop-out affordance needed. */
-              }}
+              // `onOpenPopout` deliberately omitted — this is already the pop-out; see its
+              // doc comment on `ArchitectureDiagramPanelProps`.
             />
           </ReactFlowProvider>
         </div>
