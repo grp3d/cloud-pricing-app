@@ -145,13 +145,13 @@ text is larger than the current default while the zoom level is unchanged.
 
 ### Implementation for User Story 3
 
-- [ ] T014 [P] [US3] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`,
+- [X] T014 [P] [US3] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`,
       replace every `text-3xs` usage with `text-2xs` for: `ServiceList`'s "No services yet."
       text and its `<ul>`, both node types' `<strong>{label}</strong>`, both region-label
       `<span>`s, and the connector `labelStyle.fontSize` (`var(--text-3xs)` →
       `var(--text-2xs)`) — leave the bottom-left zoom-% `<Panel>` at `text-4xs` (UI chrome, not
       diagram content) (FR-001, research.md §1)
-- [ ] T015 [US3] Live-verify via `claude-in-chrome` against `quickstart.md`'s US3 section:
+- [X] T015 [US3] Live-verify via `claude-in-chrome` against `quickstart.md`'s US3 section:
       confirm larger, non-overflowing/non-clipped text at the diagram's default zoom (FR-001,
       SC-001) — depends on T014
 
