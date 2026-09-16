@@ -98,11 +98,11 @@ function ServiceList({
 }) {
   if (skuSelections.length === 0) {
     return hideEmptyMessage ? null : (
-      <p className="mt-1 text-4xs text-muted-foreground">No services yet.</p>
+      <p className="mt-1 text-3xs text-muted-foreground">No services yet.</p>
     );
   }
   return (
-    <ul className="mt-1 list-none pl-0 text-4xs">
+    <ul className="mt-1 list-none pl-0 text-3xs">
       {skuSelections.map((s) => {
         const detail = summarizeAttributes(s.attributes);
         // 009-ui-fixes-next-iteration, US9, FR-027/028: the derived region-pair label
@@ -360,7 +360,7 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
         }`}
       >
         <div ref={contentRef} className="h-auto">
-          <strong className={`text-4xs ${isSelected ? "underline" : ""}`}>{label}</strong>
+          <strong className={`text-3xs ${isSelected ? "underline" : ""}`}>{label}</strong>
           <ServiceList
             skuSelections={skuSelections}
             selectedServiceId={selectedServiceId}
@@ -371,7 +371,7 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
       {/* 010-multi-region-support, spec FR-019: only while unnested — a nested Application's
           containing VPC already shows its region. */}
       {!isNested && (
-        <span className="absolute bottom-1 right-1 text-4xs text-muted-foreground">{region}</span>
+        <span className="absolute bottom-1 right-1 text-3xs text-muted-foreground">{region}</span>
       )}
     </div>
   );
@@ -432,7 +432,7 @@ function VpcNode({ data, selected }: NodeProps) {
         }`}
       >
         <div ref={contentRef} className="h-auto">
-          <strong className={`text-4xs ${isSelected ? "underline" : ""}`}>{label}</strong>
+          <strong className={`text-3xs ${isSelected ? "underline" : ""}`}>{label}</strong>
           <ServiceList
             skuSelections={skuSelections}
             selectedServiceId={selectedServiceId}
@@ -442,7 +442,7 @@ function VpcNode({ data, selected }: NodeProps) {
         </div>
       </div>
       {/* 010-multi-region-support, spec FR-018: always shown for a VPC. */}
-      <span className="absolute bottom-1 right-1 text-4xs text-muted-foreground">{region}</span>
+      <span className="absolute bottom-1 right-1 text-3xs text-muted-foreground">{region}</span>
     </div>
   );
 }
@@ -1015,7 +1015,7 @@ export function ArchitectureDiagramPanel({
         // fix — not just unreadable. Fixed by passing a plain string plus `labelStyle` (an
         // inline style object, which `BaseEdge` does support) instead of a styled element.
         label: conn.sku_selection ? dataTransferLabel ?? conn.sku_selection.sku : undefined,
-        labelStyle: { fontSize: "var(--text-4xs)", textDecoration: isSelected ? "underline" : "none" },
+        labelStyle: { fontSize: "var(--text-3xs)", textDecoration: isSelected ? "underline" : "none" },
         // 010-multi-region-support, spec FR-009: a directional arrow pointing from "from" to
         // "to" — `OffsetEdge` already forwards `markerEnd` to `<BaseEdge>` (it just never had a
         // value before this).

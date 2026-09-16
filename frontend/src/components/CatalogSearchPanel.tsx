@@ -204,12 +204,13 @@ export function CatalogSearchPanel({ onAdd, region }: Props) {
               className="flex items-start justify-between gap-2 rounded border border-transparent px-1 py-1 text-2xs hover:border-border"
             >
               <span className="min-w-0 break-words">{summaryText(r)}</span>
-              {/* 009-ui-fixes-next-iteration follow-up: "Edit ->", not "+ Add" -- this button
-                  doesn't add the Service to the Architecture yet, only opens it in the Service
-                  Editor (column 3) for configuration. "Edit" (not "Configure") per a follow-up
-                  request to shrink the button further -- ~58px wide vs. "Configure"'s ~90px. */}
-              <Button type="button" size="sm" variant="outline" onClick={() => onAdd(r)}>
-                Edit <ArrowRight />
+              {/* 009-ui-fixes-next-iteration follow-up: this button doesn't add the Service to
+                  the Architecture yet, only opens it in the Service Editor (column 3) for
+                  configuration. Shrunk to just the arrow (a follow-up request) -- same
+                  `default` variant/color as the Service Editor's own "+ Add" button
+                  (`PricingInputsForm.tsx`) so the two feel like one flow. */}
+              <Button type="button" size="sm" variant="default" onClick={() => onAdd(r)}>
+                <ArrowRight />
               </Button>
             </li>
           ))}
