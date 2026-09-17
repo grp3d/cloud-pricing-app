@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   chooseConnectorSides,
+  offsetPoint,
   routeAroundObstacles,
   sampleCubicBezier,
   sampleQuadraticBezier,
@@ -22,7 +23,7 @@ describe("chooseConnectorSides", () => {
   it("picks right/left for boxes side by side horizontally, with open sides", () => {
     const from = BOX(0, 0);
     const to = BOX(300, 0);
-    expect(chooseConnectorSides(from, to, NO_USAGE, NO_USAGE)).toEqual({
+    expect(chooseConnectorSides(from, to, NO_USAGE)).toEqual({
       fromSide: "right",
       toSide: "left",
     });
@@ -31,7 +32,7 @@ describe("chooseConnectorSides", () => {
   it("picks bottom/top for boxes stacked vertically", () => {
     const from = BOX(0, 0);
     const to = BOX(0, 300);
-    expect(chooseConnectorSides(from, to, NO_USAGE, NO_USAGE)).toEqual({
+    expect(chooseConnectorSides(from, to, NO_USAGE)).toEqual({
       fromSide: "bottom",
       toSide: "top",
     });
@@ -40,53 +41,54 @@ describe("chooseConnectorSides", () => {
   it("mirrors left/right when the target is to the left instead", () => {
     const from = BOX(300, 0);
     const to = BOX(0, 0);
-    expect(chooseConnectorSides(from, to, NO_USAGE, NO_USAGE)).toEqual({
+    expect(chooseConnectorSides(from, to, NO_USAGE)).toEqual({
       fromSide: "left",
       toSide: "right",
     });
   });
 
-  it("falls back to the next-shortest-path side when the ideal side is already occupied", () => {
+  // Live user rule change: multiple Connectors may now depart a Collection from the same side
+  // -- fromSide always picks the shortest-path side, regardless of how many other Connectors
+  // (in either direction) already use it.
+  it("always picks the shortest-path side for fromSide, even when it's already heavily used", () => {
     const from = BOX(0, 0);
     const to = BOX(300, 0); // ideal fromSide is "right"
-    const fromUsage = usage({ right: 2 }); // right already taken; top/bottom/left are open
-    const { fromSide } = chooseConnectorSides(from, to, fromUsage, NO_USAGE);
-    expect(fromSide).not.toBe("right");
-    expect(["top", "bottom"]).toContain(fromSide); // top/bottom are equidistant and shorter than left
-  });
-
-  it("never picks an occupied side while any side is still open", () => {
-    const from = BOX(0, 0);
-    const to = BOX(300, 0);
-    const fromUsage = usage({ right: 1, top: 1, bottom: 1 }); // only "left" is open
-    const { fromSide } = chooseConnectorSides(from, to, fromUsage, NO_USAGE);
-    expect(fromSide).toBe("left");
-  });
-
-  it("when every side is occupied, picks the side with the fewest connectors", () => {
-    const from = BOX(0, 0);
-    const to = BOX(300, 0);
-    const fromUsage = usage({ right: 3, top: 2, bottom: 2, left: 1 });
-    const { fromSide } = chooseConnectorSides(from, to, fromUsage, NO_USAGE);
-    expect(fromSide).toBe("left");
-  });
-
-  it("ties in occupied-side counts still break by shortest path", () => {
-    const from = BOX(0, 0);
-    const to = BOX(300, 0); // ideal is "right"
-    // Every side has exactly 1 connector -- "right" (shortest path) should win the tie.
-    const fromUsage = usage({ right: 1, top: 1, bottom: 1, left: 1 });
-    const { fromSide } = chooseConnectorSides(from, to, fromUsage, NO_USAGE);
+    const { fromSide } = chooseConnectorSides(from, to, NO_USAGE);
     expect(fromSide).toBe("right");
   });
 
-  it("chooses each box's side independently -- one box's usage doesn't affect the other's", () => {
+  it("falls back to the next-shortest-path side for toSide when the ideal side is already occupied", () => {
+    const from = BOX(0, 0);
+    const to = BOX(300, 0); // ideal toSide is "left"
+    const toUsage = usage({ left: 2 }); // left already taken; top/bottom/right are open
+    const { toSide } = chooseConnectorSides(from, to, toUsage);
+    expect(toSide).not.toBe("left");
+    expect(["top", "bottom"]).toContain(toSide); // top/bottom are equidistant and shorter than right
+  });
+
+  it("never picks an occupied toSide while any side is still open", () => {
     const from = BOX(0, 0);
     const to = BOX(300, 0);
-    const fromUsage = usage({ right: 5 });
-    const toUsage = NO_USAGE;
-    const { toSide } = chooseConnectorSides(from, to, fromUsage, toUsage);
-    expect(toSide).toBe("left"); // unaffected by `from`'s occupied "right" side
+    const toUsage = usage({ left: 1, top: 1, bottom: 1 }); // only "right" is open
+    const { toSide } = chooseConnectorSides(from, to, toUsage);
+    expect(toSide).toBe("right");
+  });
+
+  it("when every side is occupied, picks the toSide with the fewest connectors pointing at it", () => {
+    const from = BOX(0, 0);
+    const to = BOX(300, 0);
+    const toUsage = usage({ left: 3, top: 2, bottom: 2, right: 1 });
+    const { toSide } = chooseConnectorSides(from, to, toUsage);
+    expect(toSide).toBe("right");
+  });
+
+  it("ties in occupied toSide counts still break by shortest path", () => {
+    const from = BOX(0, 0);
+    const to = BOX(300, 0); // ideal toSide is "left"
+    // Every side has exactly 1 connector -- "left" (shortest path) should win the tie.
+    const toUsage = usage({ left: 1, top: 1, bottom: 1, right: 1 });
+    const { toSide } = chooseConnectorSides(from, to, toUsage);
+    expect(toSide).toBe("left");
   });
 });
 
@@ -116,6 +118,29 @@ function pathClearsObstacle(path: Point[], obstacle: Rect): boolean {
   return true;
 }
 
+describe("offsetPoint", () => {
+  it("moves top outward (negative y), bottom outward (positive y)", () => {
+    const p = { x: 10, y: 10 };
+    expect(offsetPoint(p, "top", 5)).toEqual({ x: 10, y: 5 });
+    expect(offsetPoint(p, "bottom", 5)).toEqual({ x: 10, y: 15 });
+  });
+
+  it("moves left outward (negative x), right outward (positive x)", () => {
+    const p = { x: 10, y: 10 };
+    expect(offsetPoint(p, "left", 5)).toEqual({ x: 5, y: 10 });
+    expect(offsetPoint(p, "right", 5)).toEqual({ x: 15, y: 10 });
+  });
+});
+
+// routeAroundObstacles always returns exactly 6 points:
+// [source, sourceStub, corner1, corner2, targetStub, target].
+// Without sourceSide/targetSide, sourceStub===source and targetStub===target (a harmless
+// zero-length "stub"), so these indices apply whether or not a test passes sides.
+const SOURCE_STUB = 1;
+const CORNER1 = 2;
+const CORNER2 = 3;
+const TARGET_STUB = 4;
+
 describe("routeAroundObstacles", () => {
   it("returns null when the straight line is already clear", () => {
     const source = { x: 0, y: 50 };
@@ -136,6 +161,7 @@ describe("routeAroundObstacles", () => {
     const obstacle = { x: 100, y: 0, width: 100, height: 100 }; // straddles the line
     const route = routeAroundObstacles(source, target, [obstacle]);
     expect(route).not.toBeNull();
+    expect(route).toHaveLength(6);
     expect(route![0]).toEqual(source);
     expect(route![route!.length - 1]).toEqual(target);
     expect(pathClearsObstacle(route!, obstacle)).toBe(true);
@@ -148,8 +174,8 @@ describe("routeAroundObstacles", () => {
     const route = routeAroundObstacles(source, target, [obstacle]);
     expect(route).not.toBeNull();
     expect(pathClearsObstacle(route!, obstacle)).toBe(true);
-    // Vertical line (dy > dx) -> detour is horizontal (constant x on the middle two points).
-    expect(route![1].x).toBe(route![2].x);
+    // Vertical line (dy > dx) -> detour is horizontal (constant x on the middle two corners).
+    expect(route![CORNER1].x).toBe(route![CORNER2].x);
   });
 
   it("picks the shorter detour side when the line's midpoint is closer to one side", () => {
@@ -158,7 +184,7 @@ describe("routeAroundObstacles", () => {
     const obstacle = { x: 100, y: 0, width: 100, height: 200 }; // midpoint (10) is near top (0)
     const route = routeAroundObstacles(source, target, [obstacle]);
     // Detouring over the top (y < obstacle.y) is the shorter option here.
-    expect(route![1].y).toBeLessThan(obstacle.y);
+    expect(route![CORNER1].y).toBeLessThan(obstacle.y);
   });
 
   it("detours the other way when the midpoint is closer to the opposite side", () => {
@@ -166,7 +192,7 @@ describe("routeAroundObstacles", () => {
     const target = { x: 300, y: 190 };
     const obstacle = { x: 100, y: 0, width: 100, height: 200 };
     const route = routeAroundObstacles(source, target, [obstacle]);
-    expect(route![1].y).toBeGreaterThan(obstacle.y + obstacle.height);
+    expect(route![CORNER1].y).toBeGreaterThan(obstacle.y + obstacle.height);
   });
 
   it("uses the combined bounding box of multiple blocking obstacles", () => {
@@ -193,7 +219,7 @@ describe("routeAroundObstacles", () => {
     const obstacle = { x: 100, y: 0, width: 100, height: 200 };
     const withoutExtra = routeAroundObstacles(source, target, [obstacle]);
     const withExtra = routeAroundObstacles(source, target, [obstacle], 30);
-    expect(withExtra![1].y).toBe(withoutExtra![1].y + 30);
+    expect(withExtra![CORNER1].y).toBe(withoutExtra![CORNER1].y + 30);
   });
 
   // Live user report #2: an obstacle sitting under a *bulging* default bezier curve, whose
@@ -226,6 +252,61 @@ describe("routeAroundObstacles", () => {
       const obstacle = { x: 100, y: 0, width: 100, height: 100 }; // straddles the straight line
       const route = routeAroundObstacles(source, target, [obstacle], 0, [source]);
       expect(route).not.toBeNull(); // still caught via the straight-line fallback
+    });
+  });
+
+  // Live user report #3: without sourceSide/targetSide, a detour's final approach direction had
+  // no relation to the target's actual attached side, so the arrowhead (which orients to the
+  // path's own tangent at its endpoint) could point in an unrelated direction instead of into
+  // the box.
+  describe("sourceSide/targetSide stubs", () => {
+    it("leaves the source stub in the source side's outward direction", () => {
+      const source = { x: 50, y: 50 };
+      const target = { x: 300, y: 50 };
+      const obstacle = { x: 100, y: 0, width: 100, height: 100 };
+      const route = routeAroundObstacles(source, target, [obstacle], 0, undefined, "bottom", "left");
+      // "bottom" points straight down from source: same x, larger y.
+      expect(route![SOURCE_STUB]).toEqual({ x: source.x, y: source.y + 28 });
+    });
+
+    it("approaches the target stub from the target side's outward direction", () => {
+      const source = { x: 0, y: 50 };
+      const target = { x: 250, y: 50 };
+      const obstacle = { x: 100, y: 0, width: 100, height: 100 };
+      const route = routeAroundObstacles(source, target, [obstacle], 0, undefined, "top", "right");
+      // "right" points straight right from target's own perspective, so the stub sits further
+      // right, and the final target-ward segment approaches from the right, pointing left/in.
+      expect(route![TARGET_STUB]).toEqual({ x: target.x + 28, y: target.y });
+    });
+
+    it("the final segment into target is a straight line along the target side's inward normal", () => {
+      const source = { x: 0, y: 50 };
+      const target = { x: 250, y: 50 };
+      const obstacle = { x: 100, y: 0, width: 100, height: 100 };
+      const route = routeAroundObstacles(source, target, [obstacle], 0, undefined, "top", "right");
+      const last = route![route!.length - 1];
+      const secondToLast = route![route!.length - 2];
+      // last - secondToLast should be a pure leftward vector (entering a "right"-side handle
+      // means approaching from further right, heading left/inward) -- no vertical component.
+      expect(last.y).toBe(secondToLast.y);
+      expect(last.x).toBeLessThan(secondToLast.x);
+    });
+
+    it("without a side, the stub falls back to the raw point (no perpendicular correction)", () => {
+      const source = { x: 0, y: 50 };
+      const target = { x: 300, y: 50 };
+      const obstacle = { x: 100, y: 0, width: 100, height: 100 };
+      const route = routeAroundObstacles(source, target, [obstacle]);
+      expect(route![SOURCE_STUB]).toEqual(source);
+      expect(route![TARGET_STUB]).toEqual(target);
+    });
+
+    it("still clears the obstacle with stubs applied", () => {
+      const source = { x: 0, y: 50 };
+      const target = { x: 300, y: 50 };
+      const obstacle = { x: 100, y: 0, width: 100, height: 100 };
+      const route = routeAroundObstacles(source, target, [obstacle], 0, undefined, "right", "left");
+      expect(pathClearsObstacle(route!, obstacle)).toBe(true);
     });
   });
 });

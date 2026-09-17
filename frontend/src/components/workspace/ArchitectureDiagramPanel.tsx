@@ -248,32 +248,35 @@ const EMPTY_SIDE_USAGE: Record<ConnectorSide, number> = { top: 0, right: 0, bott
  * never disagree with each other about what a given Connector's sides *should* be. Silently
  * skips (omits from the result) a Connector whose endpoint Collection isn't found among
  * `nodes` — should never happen, but "no line drawn" beats crashing the whole diagram over
- * one bad reference. */
+ * one bad reference.
+ *
+ * Live user rule change: only tracks each Collection's *arrival*-side usage (`sides.to`) now
+ * — `chooseConnectorSides`' `fromSide` no longer considers occupancy at all (multiple
+ * Connectors may depart the same side), so there's nothing for a `from` assignment to bump. */
 function resolveConnectorSides(
   connectors: DataConnector[],
   nodes: Node[],
   persisted: Record<string, ConnectorSides>,
 ): { resolved: Map<string, ConnectorSides>; newlyComputed: Map<string, ConnectorSides> } {
   const nodesById = new Map(nodes.map((n) => [n.id, n]));
-  const usageByCollection = new Map<string, Record<ConnectorSide, number>>();
-  const bumpUsage = (collectionId: string, side: ConnectorSide) => {
-    const usage = { ...(usageByCollection.get(collectionId) ?? EMPTY_SIDE_USAGE) };
+  const toUsageByCollection = new Map<string, Record<ConnectorSide, number>>();
+  const bumpToUsage = (collectionId: string, side: ConnectorSide) => {
+    const usage = { ...(toUsageByCollection.get(collectionId) ?? EMPTY_SIDE_USAGE) };
     usage[side] += 1;
-    usageByCollection.set(collectionId, usage);
+    toUsageByCollection.set(collectionId, usage);
   };
 
   const resolved = new Map<string, ConnectorSides>();
   const newlyComputed = new Map<string, ConnectorSides>();
 
-  // First pass: every already-persisted Connector claims its sides' usage slots up front, so
-  // a same-pass newly-computed Connector correctly sees them as occupied regardless of which
+  // First pass: every already-persisted Connector claims its "to" side's usage slot up front,
+  // so a same-pass newly-computed Connector correctly sees it as occupied regardless of which
   // order `connectors` happens to list the two groups in.
   for (const conn of connectors) {
     const sides = persisted[conn.id];
     if (!sides) continue;
     resolved.set(conn.id, sides);
-    bumpUsage(conn.from_collection_id, sides.from);
-    bumpUsage(conn.to_collection_id, sides.to);
+    bumpToUsage(conn.to_collection_id, sides.to);
   }
 
   for (const conn of connectors) {
@@ -284,14 +287,12 @@ function resolveConnectorSides(
     const { fromSide, toSide } = chooseConnectorSides(
       fromRect,
       toRect,
-      usageByCollection.get(conn.from_collection_id) ?? EMPTY_SIDE_USAGE,
-      usageByCollection.get(conn.to_collection_id) ?? EMPTY_SIDE_USAGE,
+      toUsageByCollection.get(conn.to_collection_id) ?? EMPTY_SIDE_USAGE,
     );
     const sides: ConnectorSides = { from: fromSide, to: toSide };
     resolved.set(conn.id, sides);
     newlyComputed.set(conn.id, sides);
-    bumpUsage(conn.from_collection_id, fromSide);
-    bumpUsage(conn.to_collection_id, toSide);
+    bumpToUsage(conn.to_collection_id, toSide);
   }
 
   return { resolved, newlyComputed };
@@ -591,16 +592,43 @@ function OffsetEdge({
       // multiple parallel *unobstructed* ones.
       offsetIndex > 0 ? 24 * Math.ceil(offsetIndex / 2) : 0,
       defaultSamples,
+      // Live user report #3: without these, the detour's final approach had no relation to the
+      // target's actual attached side, so the arrowhead (oriented to the path's own tangent at
+      // its endpoint) could point in an unrelated direction instead of into the box — see
+      // `routeAroundObstacles`'s own doc comment. `sourcePosition`/`targetPosition` are
+      // `@xyflow/react`'s `Position` enum, whose values ("top"/"right"/"bottom"/"left") are the
+      // exact same strings as `ConnectorSide`; `isConnectorSide` narrows the type safely rather
+      // than casting.
+      isConnectorSide(sourcePosition) ? sourcePosition : undefined,
+      isConnectorSide(targetPosition) ? targetPosition : undefined,
     );
-  }, [liveNodes, source, target, sourceX, sourceY, targetX, targetY, offsetIndex, defaultSamples]);
+  }, [
+    liveNodes,
+    source,
+    target,
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    offsetIndex,
+    defaultSamples,
+  ]);
 
   if (routed) {
-    const path = `M${routed[0].x},${routed[0].y} C${routed[1].x},${routed[1].y} ${routed[2].x},${routed[2].y} ${routed[3].x},${routed[3].y}`;
-    // The midpoint of the detour's own "far" segment (routed[1]→routed[2], the part that's
-    // actually clearing the obstacle) reads better than the path's literal midpoint, which
-    // can land on one of the short in/out segments right next to a box.
-    const labelX = (routed[1].x + routed[2].x) / 2;
-    const labelY = (routed[1].y + routed[2].y) / 2;
+    const [p0, p1, p2, p3, p4, p5] = routed;
+    // Straight stub segments (`p0`→`p1`, `p4`→`p5`) leave/enter perpendicular to each box's
+    // actual attached side — this is what keeps the arrowhead pointing into the box, since its
+    // marker orients to the path's own tangent at that final vertex. The curved middle
+    // (`p1`→`p2`→`p3`→`p4`, drawn as a single cubic Bezier using `p2`/`p3` as control points)
+    // is what actually swoops around the obstacle.
+    const path = `M${p0.x},${p0.y} L${p1.x},${p1.y} C${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y} L${p5.x},${p5.y}`;
+    // The midpoint of the detour's own curved middle segment (the part that's actually clearing
+    // the obstacle) reads better than the path's literal midpoint, which can land on one of the
+    // short stub segments right next to a box.
+    const labelX = (p1.x + p4.x) / 2;
+    const labelY = (p1.y + p4.y) / 2;
     return (
       <BaseEdge
         id={id}

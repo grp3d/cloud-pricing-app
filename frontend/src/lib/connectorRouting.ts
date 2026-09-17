@@ -1,18 +1,25 @@
 /**
  * Pure geometry logic for auto-choosing which side of each Collection box a new Connector
- * attaches to (009-ui-fixes-next-iteration follow-up, new arch spec requirement). Given two
- * boxes' rects and how many Connectors each of their four sides already carries, picks:
+ * attaches to (009-ui-fixes-next-iteration follow-up, new arch spec requirement).
  *
- * 1. The side giving the shortest path between the boxes ("shortest path" = the side whose
- *    own midpoint is geometrically closest to the other box's center — the natural measure
- *    of how direct a straight connecting line through that side would be) —
- * 2. ...but only among sides with *no* Connector on them yet, if any such side exists;
- * 3. Falling back to *every* side already occupied: the side with the fewest Connectors,
- *    tie-broken by shortest path.
+ * Live user rule change: it's fine for multiple Connectors to depart a Collection from the
+ * same side now, so the *departure* side (`fromSide`) is always simply whichever side gives
+ * the shortest path to the other Collection ("shortest path" = the side whose own midpoint is
+ * geometrically closest to the other box's center) — no occupancy consideration at all
+ * anymore. The *arrival* side (`toSide`) keeps the original rule, since that one still governs
+ * how many arrowheads visually cluster on one side of a box:
+ *
+ * 1. The shortest-path side —
+ * 2. ...but only among sides with *no* Connector already pointing at them, if any such side
+ *    exists;
+ * 3. Falling back to *every* side already occupied: the side with the fewest Connectors
+ *    pointing at it, tie-broken by shortest path.
  *
  * No DOM/React Flow dependency, matching `dropTargetDetection.ts`/`nodeLayout.ts`'s
  * precedent — `ArchitectureDiagramPanel.tsx` is the only caller, supplying real node rects
- * and per-side usage counts derived from `lib/connectorSides.ts`'s persisted assignments.
+ * and per-side "how many Connectors already point at this side" counts derived from
+ * `lib/connectorSides.ts`'s persisted assignments (counting only `to` assignments now — see
+ * `resolveConnectorSides`).
  */
 
 export type ConnectorSide = "top" | "right" | "bottom" | "left";
@@ -81,18 +88,17 @@ function pickSide(rankedSides: ConnectorSide[], usage: Record<ConnectorSide, num
 }
 
 /** Chooses which side of `fromRect` and which side of `toRect` a new Connector between them
- * should attach to, per the module doc above. `fromUsage`/`toUsage` are each box's *current*
- * per-side Connector counts (excluding the Connector being placed, if any). */
+ * should attach to, per the module doc above. `toUsage` is `toRect`'s *current* per-side count
+ * of Connectors already pointing at it (excluding the Connector being placed, if any). */
 export function chooseConnectorSides(
   fromRect: Rect,
   toRect: Rect,
-  fromUsage: Record<ConnectorSide, number>,
   toUsage: Record<ConnectorSide, number>,
 ): { fromSide: ConnectorSide; toSide: ConnectorSide } {
   const fromCenter = center(fromRect);
   const toCenter = center(toRect);
   return {
-    fromSide: pickSide(rankSidesByPath(fromRect, toCenter), fromUsage),
+    fromSide: rankSidesByPath(fromRect, toCenter)[0],
     toSide: pickSide(rankSidesByPath(toRect, fromCenter), toUsage),
   };
 }
@@ -105,6 +111,29 @@ export function chooseConnectorSides(
 /** Margin (px) kept clear between a routed Connector and an obstacle box's own edge — a purely
  * visual buffer so the line reads as "going around" rather than grazing the border. */
 const OBSTACLE_MARGIN = 16;
+
+/** How far (px) a detoured Connector's endpoint "stub" extends straight out from its own box,
+ * in the handle's own outward direction, before bending toward the detour around whatever it's
+ * avoiding — see `routeAroundObstacles`'s own doc comment for why this exists. */
+const STUB_LENGTH = 28;
+
+/** `point`, moved `distance` px outward from its own box in the direction `side` faces —
+ * `top`/`bottom` move along y, `left`/`right` along x. Used to build a detoured Connector's
+ * "stub" segments (`routeAroundObstacles`), which must leave/enter perpendicular to the box's
+ * actual attached side for the arrowhead to render pointing into the box, not at some
+ * unrelated angle. */
+export function offsetPoint(point: Point, side: ConnectorSide, distance: number): Point {
+  switch (side) {
+    case "top":
+      return { x: point.x, y: point.y - distance };
+    case "bottom":
+      return { x: point.x, y: point.y + distance };
+    case "left":
+      return { x: point.x - distance, y: point.y };
+    case "right":
+      return { x: point.x + distance, y: point.y };
+  }
+}
 
 /** True if the segment from `(x1,y1)` to `(x2,y2)` enters `rect` (expanded by `margin` on
  * every side) anywhere along its length, including at either endpoint — the standard
@@ -205,23 +234,38 @@ export function sampleQuadraticBezier(p0: Point, control: Point, p2: Point, step
  * (falling back to just `[source, target]` when omitted, matching the original straight-line-
  * only behavior every existing caller/test still relies on).
  *
- * The detour goes around whichever side — top/bottom if the line is more horizontal than
- * vertical, left/right if more vertical — the straight line's own midpoint already sits
- * closer to, so it takes the shorter of the two ways around, then steps out, across, and back
- * in (a 4-point "U"/"Z" shape) rather than cutting the corner. `extraOffset` (default 0) pushes
- * the detour further from the obstacle by that many additional pixels, always outward
- * regardless of which side was chosen — for disambiguating multiple parallel Connectors that
- * all need to detour around the same obstacle, the same way `OffsetEdge`'s own perpendicular
- * offset already disambiguates parallel *unobstructed* Connectors.
+ * `sourceSide`/`targetSide`, if given, are the actual attached side (`Position`, reused as
+ * `ConnectorSide`) of each endpoint's own box. Live user report #2: without these, the detour's
+ * first/last segments went straight from `source`/`target` to wherever the detour happened to
+ * need, in a direction unrelated to the box's actual attached side — so a Connector detouring
+ * to a `right`-side handle could approach it from directly above, for instance. Since the
+ * arrowhead marker orients to the path's own tangent at its endpoint, that made arrows point in
+ * whatever direction the detour geometry happened to produce, not into the box. When given,
+ * each endpoint gets a short straight "stub" (`STUB_LENGTH` px, via `offsetPoint`) leaving/
+ * entering perpendicular to its own side *before* the detour route starts/ends, guaranteeing
+ * the final approach into `target` — and the marker orientation with it — always points
+ * straight into the box along its actual attached side, the same as an ordinary unobstructed
+ * Connector's `getBezierPath` curve already does via `targetPosition`. Omitting a side falls
+ * back to using the raw point as its own "stub" (no perpendicular correction).
+ *
+ * The detour's middle "rail" goes around whichever side — top/bottom if the line is more
+ * horizontal than vertical, left/right if more vertical — the straight line's own midpoint
+ * already sits closer to, so it takes the shorter of the two ways around. `extraOffset`
+ * (default 0) pushes the rail further from the obstacle by that many additional pixels, always
+ * outward regardless of which side was chosen — for disambiguating multiple parallel
+ * Connectors that all need to detour around the same obstacle, the same way `OffsetEdge`'s own
+ * perpendicular offset already disambiguates parallel *unobstructed* Connectors.
  *
  * Handles the common case — one or a few boxes sitting between two others that are roughly
  * grid-aligned — robustly; not a general-purpose pathfinder, so a dense, irregular cluster of
- * overlapping boxes isn't guaranteed a fully clear route. The returned 4 points are meant to be
- * drawn either as a sharp polyline (guaranteed clear, per the tests below) or as a single cubic
- * Bezier's endpoints/control points (`OffsetEdge`'s choice, for a smoother look) — the latter
- * stays clear in the same common cases this function already targets, since a Bezier curve
- * never leaves the convex hull of its 4 control points and all 4 here already sit outside the
- * obstacle by at least `OBSTACLE_MARGIN`.
+ * overlapping boxes isn't guaranteed a fully clear route. Always returns exactly 6 points —
+ * `[source, sourceStub, corner1, corner2, targetStub, target]` — meant to be drawn as two
+ * straight stub segments (`source`→`sourceStub`, `targetStub`→`target`) bracketing a smooth
+ * curve through the middle 4 (`OffsetEdge`'s choice) for a swooping-but-still-correctly-
+ * oriented look; a Bezier curve never leaves the convex hull of its control points, and
+ * `sourceStub`/`corner1`/`corner2`/`targetStub` already sit outside the obstacle by at least
+ * `OBSTACLE_MARGIN`, so the curved middle stays clear in the same common cases this function
+ * already targets.
  */
 export function routeAroundObstacles(
   source: Point,
@@ -229,6 +273,8 @@ export function routeAroundObstacles(
   obstacles: Rect[],
   extraOffset = 0,
   pathSamples?: Point[],
+  sourceSide?: ConnectorSide,
+  targetSide?: ConnectorSide,
 ): Point[] | null {
   const points = pathSamples && pathSamples.length >= 2 ? pathSamples : [source, target];
   const blocking = obstacles.filter((rect) =>
@@ -245,22 +291,31 @@ export function routeAroundObstacles(
   const right = Math.max(...blocking.map((r) => r.x + r.width));
   const bottom = Math.max(...blocking.map((r) => r.y + r.height));
 
+  const sourceStub = sourceSide ? offsetPoint(source, sourceSide, STUB_LENGTH) : source;
+  const targetStub = targetSide ? offsetPoint(target, targetSide, STUB_LENGTH) : target;
+
   const dx = target.x - source.x;
   const dy = target.y - source.y;
 
+  let corner1: Point;
+  let corner2: Point;
   if (Math.abs(dx) >= Math.abs(dy)) {
     const midY = (source.y + target.y) / 2;
     const detourAboveTop = midY - top <= bottom - midY;
     const detourY = detourAboveTop
       ? top - OBSTACLE_MARGIN - extraOffset
       : bottom + OBSTACLE_MARGIN + extraOffset;
-    return [source, { x: source.x, y: detourY }, { x: target.x, y: detourY }, target];
+    corner1 = { x: sourceStub.x, y: detourY };
+    corner2 = { x: targetStub.x, y: detourY };
+  } else {
+    const midX = (source.x + target.x) / 2;
+    const detourLeftOfLeft = midX - left <= right - midX;
+    const detourX = detourLeftOfLeft
+      ? left - OBSTACLE_MARGIN - extraOffset
+      : right + OBSTACLE_MARGIN + extraOffset;
+    corner1 = { x: detourX, y: sourceStub.y };
+    corner2 = { x: detourX, y: targetStub.y };
   }
 
-  const midX = (source.x + target.x) / 2;
-  const detourLeftOfLeft = midX - left <= right - midX;
-  const detourX = detourLeftOfLeft
-    ? left - OBSTACLE_MARGIN - extraOffset
-    : right + OBSTACLE_MARGIN + extraOffset;
-  return [source, { x: detourX, y: source.y }, { x: detourX, y: target.y }, target];
+  return [source, sourceStub, corner1, corner2, targetStub, target];
 }
