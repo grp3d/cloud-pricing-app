@@ -272,6 +272,7 @@ export function PopoutCanvasDialog({
         <div className="relative min-h-0 flex-1 overflow-auto">
           <ReactFlowProvider>
             <ArchitectureDiagramPanel
+              instanceId="popout"
               architectureId={architectureId}
               collections={collections}
               connectors={connectors}

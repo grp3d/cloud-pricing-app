@@ -733,6 +733,18 @@ export interface ArchitectureDiagramPanelProps {
    * second time inside the pop-out — that instance has no nested pop-out affordance of its
    * own (there's nothing further to pop out to), so the trigger button doesn't render there. */
   onOpenPopout?: () => void;
+  /** 011-canvas-connector-popout follow-up, live user report: with this panel's `<ReactFlow>`
+   * left unkeyed, `@xyflow/react` defaults its internal `rfId` to the *same* static `'1'` for
+   * every instance (confirmed in `node_modules/@xyflow/react`'s own source: `const rfId = id ||
+   * '1'`) — since SVG marker ids are derived purely from `rfId` + the marker's own properties
+   * (`getMarkerId`), column 4's panel and `PopoutCanvasDialog`'s second instance rendered
+   * `<marker id="...">` elements with byte-for-byte identical ids while the pop-out was open.
+   * `id` attributes must be document-unique; closing the pop-out removed whichever `<defs>` the
+   * browser had actually been resolving `url(#id)` references to, silently blanking column 4's
+   * arrows until a full refresh recreated a single consistent tree. Defaults to `"main"` so
+   * every pre-existing caller (just column 4 itself) keeps working without a prop; only
+   * `PopoutCanvasDialog` passes a different value. */
+  instanceId?: string;
 }
 
 /**
@@ -761,6 +773,7 @@ export function ArchitectureDiagramPanel({
   onRejectedNesting,
   onRefresh,
   onOpenPopout,
+  instanceId = "main",
 }: ArchitectureDiagramPanelProps) {
   const { getIntersectingNodes } = useReactFlow();
 
@@ -1266,6 +1279,10 @@ export function ArchitectureDiagramPanel({
         // ever read once, at mount, and this component doesn't otherwise remount on its own.
         // `remountNonce` is the same idea, manually triggered by the refresh button.
         key={`${architectureId}-${remountNonce}`}
+        // `id` (see `instanceId`'s own doc comment on `ArchitectureDiagramPanelProps`): without
+        // this, two simultaneously-mounted instances (column 4 + the pop-out) generate
+        // colliding SVG marker ids.
+        id={instanceId}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
