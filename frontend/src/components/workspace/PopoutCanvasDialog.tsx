@@ -252,6 +252,14 @@ export function PopoutCanvasDialog({
           translate: "none",
         }}
         onPointerDownOutside={(e) => e.preventDefault()}
+        // Live user report: the pop-out closed itself whenever a Collection or Connector was
+        // added/removed via columns 2/3 (outside this dialog's own DOM). Clicking those
+        // controls shifts focus to an element outside `DialogContent`, which Radix's
+        // `DismissableLayer` (used even for `modal={false}`) treats as a dismiss-worthy
+        // "focus outside" interaction independent of `onPointerDownOutside` above (that one
+        // only covers the pointer-down itself, not the resulting focus change) — so it was
+        // closing the dialog even though the click's *default* action was already prevented.
+        onFocusOutside={(e) => e.preventDefault()}
       >
         <DialogTitle className="sr-only">Architecture canvas (enlarged view)</DialogTitle>
         <PopoutDragHandle onDrag={onMoveDrag} />
