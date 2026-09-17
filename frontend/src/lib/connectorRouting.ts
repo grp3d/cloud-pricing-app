@@ -152,12 +152,58 @@ function segmentIntersectsRect(
   );
 }
 
+/** A point on a cubic Bezier curve at parameter `t` (De Casteljau / the standard cubic Bezier
+ * formula) — used to sample `getBezierPath`'s actual rendered curve for the obstacle check
+ * below, not just its straight-line endpoints. */
+function cubicBezierPoint(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Point {
+  const u = 1 - t;
+  return {
+    x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+    y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+  };
+}
+
+/** `steps + 1` evenly-spaced points along the cubic Bezier curve from `p0` to `p3` (control
+ * points `p1`/`p2`), inclusive of both endpoints. */
+export function sampleCubicBezier(p0: Point, p1: Point, p2: Point, p3: Point, steps: number): Point[] {
+  const points: Point[] = [];
+  for (let i = 0; i <= steps; i++) {
+    points.push(cubicBezierPoint(p0, p1, p2, p3, i / steps));
+  }
+  return points;
+}
+
+/** Same as `sampleCubicBezier` but for a quadratic Bezier (one control point) — matches the
+ * `Q` curve `OffsetEdge` draws for its own parallel-Connector perpendicular-offset paths. */
+export function sampleQuadraticBezier(p0: Point, control: Point, p2: Point, steps: number): Point[] {
+  const points: Point[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const u = 1 - t;
+    points.push({
+      x: u * u * p0.x + 2 * u * t * control.x + t * t * p2.x,
+      y: u * u * p0.y + 2 * u * t * control.y + t * t * p2.y,
+    });
+  }
+  return points;
+}
+
 /**
  * Given a straight line from `source` to `target`, finds which of `obstacles` it actually
- * crosses and, if any do, returns a short polyline route around their combined bounding box
- * instead of the straight line — `null` if the straight line is already clear of every
- * obstacle, so the caller keeps using its own default curve/bezier for the (overwhelmingly
- * common) unobstructed case.
+ * crosses and, if any do, returns a short route around their combined bounding box instead of
+ * the straight line — `null` if the line is already clear of every obstacle, so the caller
+ * keeps using its own default curve/bezier for the (overwhelmingly common) unobstructed case.
+ *
+ * `pathSamples`, if given, is the sequence of points (including `source`/`target` as its first
+ * and last entries) the caller's own *default* unobstructed curve would actually draw — e.g.
+ * `sampleCubicBezier`'s output for `getBezierPath`'s curve. Live user report: testing only the
+ * straight `source`→`target` line missed cases where that line was clear but the *rendered*
+ * curve (React Flow's default bezier control-point placement bulges outward, especially for
+ * `Position.Top`/`Position.Bottom` handles) swung through a box the straight line itself would
+ * have missed. Every consecutive pair in `pathSamples` is checked, and every obstacle any pair
+ * touches contributes to the combined bounding box below — not just whichever segment
+ * (falling back to just `[source, target]` when omitted, matching the original straight-line-
+ * only behavior every existing caller/test still relies on).
  *
  * The detour goes around whichever side — top/bottom if the line is more horizontal than
  * vertical, left/right if more vertical — the straight line's own midpoint already sits
@@ -170,16 +216,27 @@ function segmentIntersectsRect(
  *
  * Handles the common case — one or a few boxes sitting between two others that are roughly
  * grid-aligned — robustly; not a general-purpose pathfinder, so a dense, irregular cluster of
- * overlapping boxes isn't guaranteed a fully clear route.
+ * overlapping boxes isn't guaranteed a fully clear route. The returned 4 points are meant to be
+ * drawn either as a sharp polyline (guaranteed clear, per the tests below) or as a single cubic
+ * Bezier's endpoints/control points (`OffsetEdge`'s choice, for a smoother look) — the latter
+ * stays clear in the same common cases this function already targets, since a Bezier curve
+ * never leaves the convex hull of its 4 control points and all 4 here already sit outside the
+ * obstacle by at least `OBSTACLE_MARGIN`.
  */
 export function routeAroundObstacles(
   source: Point,
   target: Point,
   obstacles: Rect[],
   extraOffset = 0,
+  pathSamples?: Point[],
 ): Point[] | null {
+  const points = pathSamples && pathSamples.length >= 2 ? pathSamples : [source, target];
   const blocking = obstacles.filter((rect) =>
-    segmentIntersectsRect(source.x, source.y, target.x, target.y, rect, OBSTACLE_MARGIN),
+    points.some((p, i) =>
+      i === 0
+        ? false
+        : segmentIntersectsRect(points[i - 1].x, points[i - 1].y, p.x, p.y, rect, OBSTACLE_MARGIN),
+    ),
   );
   if (blocking.length === 0) return null;
 

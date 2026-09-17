@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   chooseConnectorSides,
   routeAroundObstacles,
+  sampleCubicBezier,
+  sampleQuadraticBezier,
   type ConnectorSide,
   type Point,
   type Rect,
@@ -192,5 +194,80 @@ describe("routeAroundObstacles", () => {
     const withoutExtra = routeAroundObstacles(source, target, [obstacle]);
     const withExtra = routeAroundObstacles(source, target, [obstacle], 30);
     expect(withExtra![1].y).toBe(withoutExtra![1].y + 30);
+  });
+
+  // Live user report #2: an obstacle sitting under a *bulging* default bezier curve, whose
+  // straight source->target line itself does not cross it -- routeAroundObstacles missed this
+  // entirely until it could be told what the actual rendered curve looks like via `pathSamples`.
+  describe("pathSamples", () => {
+    it("returns null (straight-line-only behavior) when pathSamples is omitted, even if a curve would have crossed the obstacle", () => {
+      const source = { x: 0, y: 50 };
+      const target = { x: 300, y: 50 };
+      // Well clear of the straight line, but this obstacle sits where a bulging curve might go.
+      const obstacle = { x: 100, y: 100, width: 100, height: 100 };
+      expect(routeAroundObstacles(source, target, [obstacle])).toBeNull();
+    });
+
+    it("detects an obstacle the straight line misses but a sampled curve crosses", () => {
+      const source = { x: 0, y: 50 };
+      const target = { x: 300, y: 50 };
+      const obstacle = { x: 100, y: 100, width: 100, height: 100 }; // below the straight line
+      // A curve that bulges downward through the obstacle, even though source/target themselves
+      // (the curve's own first/last sample) sit above it on the clear straight line.
+      const pathSamples = [source, { x: 150, y: 150 }, target];
+      const route = routeAroundObstacles(source, target, [obstacle], 0, pathSamples);
+      expect(route).not.toBeNull();
+      expect(pathClearsObstacle(route!, obstacle)).toBe(true);
+    });
+
+    it("ignores pathSamples with fewer than 2 points and falls back to the straight line", () => {
+      const source = { x: 0, y: 50 };
+      const target = { x: 300, y: 50 };
+      const obstacle = { x: 100, y: 0, width: 100, height: 100 }; // straddles the straight line
+      const route = routeAroundObstacles(source, target, [obstacle], 0, [source]);
+      expect(route).not.toBeNull(); // still caught via the straight-line fallback
+    });
+  });
+});
+
+describe("sampleCubicBezier", () => {
+  it("starts at p0 and ends at p3", () => {
+    const p0 = { x: 0, y: 0 };
+    const p1 = { x: 10, y: 50 };
+    const p2 = { x: 90, y: 50 };
+    const p3 = { x: 100, y: 0 };
+    const points = sampleCubicBezier(p0, p1, p2, p3, 10);
+    expect(points[0]).toEqual(p0);
+    expect(points[points.length - 1]).toEqual(p3);
+    expect(points).toHaveLength(11);
+  });
+
+  it("collapses to the straight line when both control points sit on it", () => {
+    const p0 = { x: 0, y: 0 };
+    const p3 = { x: 100, y: 0 };
+    const points = sampleCubicBezier(p0, { x: 33, y: 0 }, { x: 66, y: 0 }, p3, 4);
+    for (const p of points) expect(p.y).toBeCloseTo(0);
+  });
+});
+
+describe("sampleQuadraticBezier", () => {
+  it("starts at p0 and ends at p2", () => {
+    const p0 = { x: 0, y: 0 };
+    const control = { x: 50, y: 100 };
+    const p2 = { x: 100, y: 0 };
+    const points = sampleQuadraticBezier(p0, control, p2, 8);
+    expect(points[0]).toEqual(p0);
+    expect(points[points.length - 1]).toEqual(p2);
+    expect(points).toHaveLength(9);
+  });
+
+  it("bulges toward the control point at its midpoint", () => {
+    const p0 = { x: 0, y: 0 };
+    const control = { x: 50, y: 100 };
+    const p2 = { x: 100, y: 0 };
+    const points = sampleQuadraticBezier(p0, control, p2, 2);
+    // At t=0.5, a quadratic bezier sits at the midpoint of the two edge-midpoints -- halfway
+    // between the line's own midpoint (50,0) and the control point (50,100).
+    expect(points[1]).toEqual({ x: 50, y: 50 });
   });
 });

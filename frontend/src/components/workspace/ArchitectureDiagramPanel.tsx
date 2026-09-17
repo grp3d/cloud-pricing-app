@@ -53,7 +53,10 @@ import {
   chooseConnectorSides,
   isConnectorSide,
   routeAroundObstacles,
+  sampleCubicBezier,
+  sampleQuadraticBezier,
   type ConnectorSide,
+  type Point,
   type Rect,
 } from "../../lib/connectorRouting";
 import { readConnectorSides, writeConnectorSides, type ConnectorSides } from "../../lib/connectorSides";
@@ -210,6 +213,27 @@ function selfAndAncestorIds(nodeId: string, nodesById: Map<string, Node>): Set<s
     id = nodesById.get(id)?.parentId;
   }
   return ids;
+}
+
+/** Extracts the 4 control points (`M x,y C cx1,cy1 cx2,cy2 x,y`) React Flow's `getBezierPath`
+ * always emits, so `OffsetEdge` below can sample the *actual* curve it's about to render for
+ * `routeAroundObstacles`'s obstacle check (see that function's own doc comment) rather than
+ * re-deriving React Flow's internal curvature formula independently — parsing its own output
+ * stays correct even if that internal formula ever changes. `null` only if the format itself
+ * ever changes (defensive; every real `getBezierPath` call has matched this since the library's
+ * initial release). */
+function parseCubicBezier(path: string): [Point, Point, Point, Point] | null {
+  const match = /M([-\d.]+),([-\d.]+)C([-\d.]+),([-\d.]+) ([-\d.]+),([-\d.]+) ([-\d.]+),([-\d.]+)/.exec(
+    path,
+  );
+  if (!match) return null;
+  const n = match.slice(1).map(Number);
+  return [
+    { x: n[0], y: n[1] },
+    { x: n[2], y: n[3] },
+    { x: n[4], y: n[5] },
+    { x: n[6], y: n[7] },
+  ];
 }
 
 const EMPTY_SIDE_USAGE: Record<ConnectorSide, number> = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -470,14 +494,25 @@ const nodeTypes = {
  *
  * Live user report: neither of those paths knows about any *other* box on the canvas, so a
  * Connector could render straight through one sitting between its own two endpoints.
- * `routeAroundObstacles` (checked first, before either of the above) detects that and returns
- * a short detour route around it instead; the bezier/perpendicular-offset paths only run at
- * all when it reports the straight line is already clear. Obstacles are recomputed here, live,
- * from `useNodes()` (React Flow's own current-node-positions hook) rather than precomputed
- * once in `initialEdges` below — found live: `initialEdges` deliberately only recomputes when
+ * `routeAroundObstacles` detects that and returns a short detour route around it instead;
+ * `defaultPath`/`defaultSamples` below (computed first) are always this edge's *own*
+ * unobstructed bezier/perpendicular-offset curve, used two ways: as the final rendered path
+ * when nothing blocks it, and — live user report #2 — as what actually gets obstacle-tested,
+ * not just the straight `source`→`target` line. That straight-line-only check first shipped
+ * with this feature missed a VPC sitting squarely under a bulging default bezier curve whose
+ * *straight* source/target line happened to clear it; sampling the real curve (`sampleCubic-
+ * Bezier`/`sampleQuadraticBezier`) catches that. Obstacles are recomputed here, live, from
+ * `useNodes()` (React Flow's own current-node-positions hook) rather than precomputed once in
+ * `initialEdges` below — found live: `initialEdges` deliberately only recomputes when
  * `connectors` itself changes (its own comment explains why), so obstacle rects sourced from
  * there would go stale the moment a box is dragged *after* a Connector already exists, exactly
- * the case this feature needs to keep handling. */
+ * the case this feature needs to keep handling.
+ *
+ * A detour route is drawn as a single cubic Bezier through its 4 points as *control* points
+ * (`M source C corner1 corner2 target`), not the sharp right-angle polyline this first shipped
+ * with — live user request, matching a reference screenshot of a smooth curve swooping around
+ * an obstacle. `routeAroundObstacles`'s own doc comment covers why this still stays clear of
+ * the obstacle in the common case this feature targets. */
 function OffsetEdge({
   id,
   source,
@@ -497,6 +532,44 @@ function OffsetEdge({
   const offsetIndex = (data?.offsetIndex as number | undefined) ?? 0;
   const liveNodes = useNodes();
 
+  const { defaultPath, defaultLabelX, defaultLabelY, defaultSamples } = useMemo(() => {
+    if (offsetIndex === 0) {
+      const [path, labelX, labelY] = getBezierPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+      });
+      const controlPoints = parseCubicBezier(path);
+      const samples = controlPoints
+        ? sampleCubicBezier(controlPoints[0], controlPoints[1], controlPoints[2], controlPoints[3], 16)
+        : [{ x: sourceX, y: sourceY }, { x: targetX, y: targetY }];
+      return { defaultPath: path, defaultLabelX: labelX, defaultLabelY: labelY, defaultSamples: samples };
+    }
+
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const length = Math.hypot(dx, dy) || 1;
+    // Unit normal to the source->target line, so the offset is perpendicular regardless of the
+    // line's own angle.
+    const nx = -dy / length;
+    const ny = dx / length;
+    const direction = offsetIndex % 2 === 1 ? 1 : -1;
+    const magnitude = 24 * Math.ceil(offsetIndex / 2) * direction;
+    const midX = (sourceX + targetX) / 2 + nx * magnitude;
+    const midY = (sourceY + targetY) / 2 + ny * magnitude;
+    const path = `M${sourceX},${sourceY} Q${midX},${midY} ${targetX},${targetY}`;
+    const samples = sampleQuadraticBezier(
+      { x: sourceX, y: sourceY },
+      { x: midX, y: midY },
+      { x: targetX, y: targetY },
+      16,
+    );
+    return { defaultPath: path, defaultLabelX: midX, defaultLabelY: midY, defaultSamples: samples };
+  }, [offsetIndex, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition]);
+
   const routed = useMemo(() => {
     const nodesById = new Map(liveNodes.map((n) => [n.id, n]));
     const excluded = new Set([
@@ -511,17 +584,18 @@ function OffsetEdge({
       { x: sourceX, y: sourceY },
       { x: targetX, y: targetY },
       obstacles,
-      // Same magnitude scale as the perpendicular offset below, unsigned here since
+      // Same magnitude scale as the perpendicular offset above, unsigned here since
       // `routeAroundObstacles` already pushes further from the obstacle regardless of which
       // side it detours around — disambiguates multiple parallel Connectors that all need to
       // detour around the same box, the same way the offset curve already disambiguates
       // multiple parallel *unobstructed* ones.
       offsetIndex > 0 ? 24 * Math.ceil(offsetIndex / 2) : 0,
+      defaultSamples,
     );
-  }, [liveNodes, source, target, sourceX, sourceY, targetX, targetY, offsetIndex]);
+  }, [liveNodes, source, target, sourceX, sourceY, targetX, targetY, offsetIndex, defaultSamples]);
 
   if (routed) {
-    const path = routed.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+    const path = `M${routed[0].x},${routed[0].y} C${routed[1].x},${routed[1].y} ${routed[2].x},${routed[2].y} ${routed[3].x},${routed[3].y}`;
     // The midpoint of the detour's own "far" segment (routed[1]→routed[2], the part that's
     // actually clearing the obstacle) reads better than the path's literal midpoint, which
     // can land on one of the short in/out segments right next to a box.
@@ -541,52 +615,16 @@ function OffsetEdge({
     );
   }
 
-  if (offsetIndex === 0) {
-    const [path, labelX, labelY] = getBezierPath({
-      sourceX,
-      sourceY,
-      sourcePosition,
-      targetX,
-      targetY,
-      targetPosition,
-    });
-    return (
-      <BaseEdge
-        id={id}
-        path={path}
-        markerEnd={markerEnd}
-        style={style}
-        label={label}
-        labelStyle={labelStyle}
-        labelX={labelX}
-        labelY={labelY}
-      />
-    );
-  }
-
-  const dx = targetX - sourceX;
-  const dy = targetY - sourceY;
-  const length = Math.hypot(dx, dy) || 1;
-  // Unit normal to the source->target line, so the offset is perpendicular regardless of the
-  // line's own angle.
-  const nx = -dy / length;
-  const ny = dx / length;
-  const direction = offsetIndex % 2 === 1 ? 1 : -1;
-  const magnitude = 24 * Math.ceil(offsetIndex / 2) * direction;
-  const midX = (sourceX + targetX) / 2 + nx * magnitude;
-  const midY = (sourceY + targetY) / 2 + ny * magnitude;
-  const path = `M${sourceX},${sourceY} Q${midX},${midY} ${targetX},${targetY}`;
-
   return (
     <BaseEdge
       id={id}
-      path={path}
+      path={defaultPath}
       markerEnd={markerEnd}
       style={style}
       label={label}
       labelStyle={labelStyle}
-      labelX={midX}
-      labelY={midY}
+      labelX={defaultLabelX}
+      labelY={defaultLabelY}
     />
   );
 }
@@ -992,8 +1030,9 @@ export function ArchitectureDiagramPanel({
         labelStyle: { fontSize: "var(--text-2xs)", textDecoration: isSelected ? "underline" : "none" },
         // 010-multi-region-support, spec FR-009: a directional arrow pointing from "from" to
         // "to" — `OffsetEdge` already forwards `markerEnd` to `<BaseEdge>` (it just never had a
-        // value before this).
-        markerEnd: { type: MarkerType.ArrowClosed },
+        // value before this). `width`/`height` 3x React Flow's own default (12.5) per live user
+        // request — the default read as too small against this diagram's box sizes.
+        markerEnd: { type: MarkerType.ArrowClosed, width: 37.5, height: 37.5 },
       };
     });
     const offsets = edgeOffsetIndex(rawEdges);
