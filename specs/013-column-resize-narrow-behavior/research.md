@@ -9,48 +9,55 @@ All items below were resolved directly from reading the existing implementation
 ## 1. Why does the Create button appear to get hidden when narrowing?
 
 - **Decision**: Treat this as a flex-layout sizing problem in the create-form row, not a
-  `display`/`visibility` bug. Fix it by making sure the row's minimum required width never
-  exceeds the panel's available width — i.e., the name input (already `flex-1 min-w-0`)
-  keeps absorbing all the shrinkage, and the Create button's existing fixed intrinsic size
-  is preserved end-to-end so it's always the last thing to run out of room, never the
-  first.
+  `display`/`visibility` bug. Give the input an explicit non-zero minimum width (e.g.
+  `min-w-[3rem]`) instead of `min-w-0`, keep `flex-1`, and add `flex-wrap` to the form's row
+  so that once the input has shrunk to that floor and the row still doesn't have room for
+  the Create button beside it, the button wraps onto its own line directly under the input
+  instead of overflowing the row.
 - **Rationale**: The shared `Button` component already applies `shrink-0 whitespace-nowrap`
   to every button variant/size (`button.tsx` base class string), so the Create button
-  itself never shrinks below its intrinsic content width today. The input already has
-  `min-w-0 flex-1`, so it already shrinks first in principle. The reported "hidden" symptom
-  therefore isn't the button's own flexbox shrink behavior — it's that once the row's
-  combined minimum width (shrunk input + fixed button) exceeds the panel's inner content
-  width, the surrounding `<aside>` (`overflow-hidden`, fixed pixel `width`) and the Radix
-  `ScrollArea` viewport clip/scroll horizontally rather than reflowing, so the button can
-  end up scrolled out of the visible area at the panel's narrowest widths. The concrete fix
-  is to guarantee the row itself never needs more width than the panel provides: give the
-  input an explicit small minimum (so it never disappears entirely) and verify no ancestor
-  introduces horizontal scroll for this row at the panel's minimum resizable width (56px,
-  the same as the collapsed-rail width) plus its `p-2` padding.
+  itself never shrinks below its intrinsic content width — at the panel's absolute minimum
+  resizable width (56px), the available inner content width (56px minus the `<aside>`'s
+  `p-2` padding and the `<ul>`'s `pr-2` padding, roughly 32px) is smaller than the Create
+  button's own intrinsic width. No amount of input-shrinking changes that: the button
+  physically cannot sit beside any non-zero-width input at that extreme. Without
+  `flex-wrap`, the row's un-shrinkable total width overflows its ancestors and gets clipped
+  by the `<aside>`'s `overflow-hidden` (and/or scrolled out of view within the Radix
+  `ScrollArea` viewport, which this row lives inside) — that clipping/scrolling-out is the
+  reported "hidden button" symptom. Letting the row wrap converts that overflow into a
+  second line: the button stays fully rendered and visible, just relocated below the input
+  once space runs out, rather than clipped or requiring horizontal scroll.
 - **Alternatives considered**: (a) Let the row overflow and rely on horizontal scroll —
   rejected, this is exactly the "hidden control" experience the spec calls out as the
-  problem. (b) Shrink the Create button's own padding/font at narrow widths — rejected,
-  spec explicitly wants the button to stay visible/usable as-is and only the entry field to
-  narrow first.
+  problem. (b) Shrink the Create button's own padding/font/label at narrow widths —
+  rejected, spec explicitly wants the button to stay visible/usable as-is and only the
+  entry field to narrow first; wrapping preserves the button unchanged and simply gives it
+  a place to render. (c) Raise the panel's minimum resizable width so everything always
+  fits on one line — rejected, spec says the existing collapse/expand and resize minimum
+  behavior is "fine as-is" and out of scope.
 
 ## 2. How should action buttons (import, share, delete) stay visible?
 
-- **Decision**: No layout change is needed for the import button (header row) or the
-  per-row share/delete icon buttons themselves — `icon-xs`/`icon-sm` buttons are fixed
-  `size-*` squares with `shrink-0` already applied by the shared `Button` component, so
-  they don't shrink. The only thing that must change is the *other* element sharing each
-  row with them: the heading text (already wraps, no change needed) and the architecture
-  name button (currently `truncate`, see item 3) so that the fixed-size icon buttons are
-  never pushed out of the visible/scrollable width by a sibling that refuses to shrink or
-  wrap.
-- **Rationale**: Confirmed via source read — `justify-between` header row and per-row
-  `flex items-center gap-1` rows have no `flex-wrap`, so if every sibling in the row can
-  shrink or wrap to fit, the fixed-size icon buttons stay visible without any change to the
-  buttons themselves.
-- **Alternatives considered**: Wrapping the button row itself (`flex-wrap`) so icons drop
-  to a second line — rejected as unnecessary once the name element shrinks/wraps instead of
-  fighting the icons for space, and it would visually reorder controls in a way the spec
-  doesn't ask for.
+- **Decision**: No change to the import button or its header row — the heading already
+  wraps and a single `icon-xs` button (24px) comfortably fits the panel's smallest inner
+  content width (~32px). For the per-architecture row (name + share + delete), removing
+  `truncate` from the name button (item 3) and adding explicit `min-w-0` to it lets the
+  name shrink/wrap instead of holding a fixed minimum width; additionally add `flex-wrap`
+  to the row itself (`<li className="flex items-center gap-1">` →
+  `flex flex-wrap items-start gap-1`), the same mechanism as item 1's create-form fix. This
+  matters because the two fixed-size icon buttons together (`icon-sm`, 28px each, plus a
+  4px gap = 60px) already exceed the panel's smallest inner content width (~32px) on their
+  own, before the name is even considered — no amount of shrinking the name column closes
+  that gap, so without `flex-wrap` the icons would still get clipped/scrolled out at the
+  most extreme widths.
+- **Rationale**: Confirmed via source read — the per-row `flex items-center gap-1` row has
+  no `flex-wrap` today, so at widths where the two icon buttons plus even a zero-width name
+  don't fit on one line, something must be clipped; wrapping keeps every control rendered
+  and reachable by relocating the icons to their own line instead.
+- **Alternatives considered**: Relying solely on the name shrinking to zero width without
+  `flex-wrap` — rejected once the math showed two `icon-sm` buttons alone (60px) exceed the
+  panel's minimum inner content width (~32px), so shrinking the name alone cannot prevent
+  clipping at the extreme end; `flex-wrap` is necessary, not just cosmetic.
 
 ## 3. How should architecture names word-wrap instead of truncating?
 

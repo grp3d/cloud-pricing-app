@@ -59,7 +59,7 @@ A user narrows the architecture panel while it lists one or more architectures. 
 
 - What happens when the panel is narrowed all the way to its minimum resizable width (equal to the collapsed-rail width) while architectures with long names are listed? All action buttons (import, per-row share/delete, and Create) must still be fully visible; only the name text area shrinks and/or wraps.
 - How does the system handle a name so long that even wrapped text plus the buttons cannot fully fit at the minimum width? The row's action buttons take priority for visibility over showing the entire name on few lines; the name area continues to wrap onto as many lines as needed rather than the buttons yielding space.
-- What happens to the "New Architecture" name input at the minimum resizable width? It remains visible at a reduced (but non-zero) width rather than being removed from the layout, and the Create button remains unaffected in size and position.
+- What happens to the "New Architecture" name input at the minimum resizable width? It remains visible at a reduced (but non-zero) width rather than being removed from the layout, and the Create button keeps its normal size (never shrinks or loses its label). At widths too narrow to fit both the input and the button on one line, the button may move to its own line directly below the input rather than being clipped — it must never be cut off, overlapped, or scrolled out of view.
 - Does narrowing the panel change collapse/expand behavior? No — collapsing and expanding the panel continue to work exactly as they do today; this feature only changes how content lays out while the panel is expanded and being resized.
 
 ## Requirements *(mandatory)*
