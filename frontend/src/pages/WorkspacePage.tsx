@@ -11,6 +11,7 @@ import {
 } from "../api/client";
 import { ArchitectureDiagramPanel } from "../components/workspace/ArchitectureDiagramPanel";
 import { CollectionsPanel, type CollectionsPanelSelection } from "../components/workspace/CollectionsPanel";
+import { ImportArchitectureDialog } from "../components/workspace/ImportArchitectureDialog";
 import { PopoutCanvasDialog } from "../components/workspace/PopoutCanvasDialog";
 import { PricingPanel } from "../components/workspace/PricingPanel";
 import { ProviderArchitecturePanel } from "../components/workspace/ProviderArchitecturePanel";
@@ -166,6 +167,11 @@ function WorkspacePageInner() {
     queryKey: ["architectures", selectedProvider],
     queryFn: () => api.listArchitectures(selectedProvider),
   });
+  // 012-user-accounts-sharing: same query key `TopTabs`'s `IdentityMenu` uses, so this never
+  // costs a second network round trip — only whether the sharing/import affordances render
+  // (guests never get them, FR-022/FR-027) depends on it here.
+  const currentUser = useQuery({ queryKey: ["currentUser"], queryFn: api.getCurrentUser });
+  const isGuest = currentUser.data?.username == null;
 
   const createArchitecture = useMutation({
     mutationFn: (name: string) => api.createArchitecture(name, selectedProvider),
@@ -190,6 +196,29 @@ function WorkspacePageInner() {
       setPendingDeleteArchitectureId(null);
       setActionError(errorMessageOf(err));
     },
+  });
+
+  // 012-user-accounts-sharing, spec FR-020: owner-only public/private toggle.
+  const toggleArchitecturePublic = useMutation({
+    mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
+      api.setArchitecturePublic(id, isPublic),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["architectures"] }),
+    onError: (err) => setActionError(errorMessageOf(err)),
+  });
+
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const importableArchitectures = useQuery({
+    queryKey: ["importableArchitectures"],
+    queryFn: api.listImportableArchitectures,
+    enabled: importDialogOpen,
+  });
+  const importArchitecture = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.importArchitecture(id, name),
+    onSuccess: () => {
+      setImportDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["architectures"] });
+    },
+    onError: (err) => setActionError(errorMessageOf(err)),
   });
 
   // --- The selected Architecture's data (columns 2-5) ---
@@ -603,7 +632,7 @@ function WorkspacePageInner() {
   );
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden">
       <ProviderArchitecturePanel
         providers={providers.data ?? []}
         selectedProvider={selectedProvider}
@@ -622,6 +651,19 @@ function WorkspacePageInner() {
         actionError={actionError}
         onDismissActionError={() => setActionError(null)}
         width={columnWidths.provider}
+        isGuest={isGuest}
+        onToggleArchitecturePublic={(id, isPublic) =>
+          toggleArchitecturePublic.mutate({ id, isPublic })
+        }
+        onOpenImportDialog={() => setImportDialogOpen(true)}
+      />
+
+      <ImportArchitectureDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        data={importableArchitectures.data}
+        onConfirm={(id, name) => importArchitecture.mutate({ id, name })}
+        isSubmitting={importArchitecture.isPending}
       />
 
       <ColumnResizeHandle

@@ -25,11 +25,24 @@ def _uuid_pk() -> Mapped[uuid.UUID]:
 
 
 class User(Base):
-    """The distinct identity that owns Architectures (spec FR-002)."""
+    """The distinct identity that owns Architectures (spec FR-002).
+
+    `username IS NULL` rows are anonymous, lazily-created guest identities (one per browser,
+    unchanged since 001) — `username` is set exactly once, at admin creation time, for a named
+    account (012-user-accounts-sharing, spec FR-005). `is_default_admin` marks only the single
+    seeded Admin row (migration `0004_user_accounts_sharing`) that can never be deactivated or
+    purged (FR-013) — kept distinct from `is_admin` so a future admin-*promoted* user would
+    remain purgeable/deactivatable.
+    """
 
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
+    username: Mapped[str | None] = mapped_column(String(255), default=None)
+    password_hash: Mapped[str | None] = mapped_column(default=None)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    is_admin: Mapped[bool] = mapped_column(default=False)
+    is_default_admin: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     architectures: Mapped[list[Architecture]] = relationship(back_populates="user")
@@ -47,6 +60,10 @@ class Architecture(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     provider: Mapped[str] = mapped_column(String(20), nullable=False, default="aws")
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Owner-toggled visibility (012-user-accounts-sharing, spec FR-020) — only a named user's
+    # (username IS NOT NULL) architecture may ever be public; enforced in the service layer,
+    # not here, since it depends on the *owner's* row, not this one.
+    is_public: Mapped[bool] = mapped_column(default=False)
     deleted_at: Mapped[datetime | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

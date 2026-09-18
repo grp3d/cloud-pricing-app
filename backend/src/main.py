@@ -79,7 +79,9 @@ async def health() -> dict[str, str]:
 
 
 # Routers are registered here as each user story's endpoints are implemented.
+from src.api.admin_users import router as admin_users_router  # noqa: E402
 from src.api.architectures import router as architectures_router  # noqa: E402
+from src.api.auth import router as auth_router  # noqa: E402
 from src.api.calculate import router as calculate_router  # noqa: E402
 from src.api.catalog import router as catalog_router  # noqa: E402
 from src.api.collections import router as collections_router  # noqa: E402
@@ -95,4 +97,6 @@ app.include_router(architectures_router, prefix="/api/v1")
 app.include_router(collections_router, prefix="/api/v1")
 app.include_router(sku_selections_router, prefix="/api/v1")
 app.include_router(calculate_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(admin_users_router, prefix="/api/v1")
 app.include_router(connectors_router, prefix="/api/v1")

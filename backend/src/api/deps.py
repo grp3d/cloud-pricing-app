@@ -48,7 +48,24 @@ async def get_current_user(
         user = User(id=user_id)
         session.add(user)
         await session.commit()
+    elif user.username is not None and not user.is_active:
+        # A named (non-guest) account the admin has deactivated (012-user-accounts-sharing,
+        # spec FR-008) — enforced on the *next* auth check, not instantly (spec Edge Cases).
+        # Guest rows have no `is_active` concept of their own beyond the always-true default.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Account is deactivated"
+        )
     return user
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+async def require_admin(user: CurrentUser) -> User:
+    """Gate admin-only routes (012-user-accounts-sharing, spec FR-003) on `User.is_admin`."""
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return user
+
+
+AdminUser = Annotated[User, Depends(require_admin)]

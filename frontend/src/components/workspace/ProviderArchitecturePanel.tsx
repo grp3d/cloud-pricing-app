@@ -1,4 +1,4 @@
-import { PanelLeftClose, PanelLeftOpen, Plus, Cloud } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Plus, Cloud, Users, Download } from "lucide-react";
 import { useState } from "react";
 
 import type { ArchitectureSummary, Provider } from "../../api/client";
@@ -43,6 +43,11 @@ export interface ProviderArchitecturePanelProps {
    * and persisted by `WorkspacePage`; ignored while collapsed, which always uses the rail
    * width below. */
   width: number;
+  /** 012-user-accounts-sharing, spec FR-022/FR-027: the sharing icon and Import action never
+   * appear for a guest identity — guest architectures can never be public. */
+  isGuest: boolean;
+  onToggleArchitecturePublic: (id: string, isPublic: boolean) => void;
+  onOpenImportDialog: () => void;
 }
 
 /**
@@ -70,6 +75,9 @@ export function ProviderArchitecturePanel({
   actionError,
   onDismissActionError,
   width,
+  isGuest,
+  onToggleArchitecturePublic,
+  onOpenImportDialog,
 }: ProviderArchitecturePanelProps) {
   const [expanded, setExpanded] = useState(() => !readColumnCollapsed().provider);
 
@@ -156,9 +164,26 @@ export function ProviderArchitecturePanel({
 
       <section aria-label="Architectures" className="flex min-h-0 flex-1 flex-col gap-1">
         {expanded && (
-          <h3 className="px-1 text-2xs font-medium text-muted-foreground">
-            {selectedProvider.toUpperCase()} Architectures
-          </h3>
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-2xs font-medium text-muted-foreground">
+              {selectedProvider.toUpperCase()} Architectures
+            </h3>
+            {!isGuest && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Import an architecture"
+                    onClick={onOpenImportDialog}
+                  >
+                    <Download />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Import</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         )}
 
         {architecturesLoading && expanded && <p className="px-1 text-2xs">Loading…</p>}
@@ -182,14 +207,47 @@ export function ProviderArchitecturePanel({
                   >
                     {arch.name}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Delete ${arch.name}`}
-                    onClick={() => onDeleteArchitecture(arch.id)}
-                  >
-                    ✕
-                  </Button>
+                  {!isGuest && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={
+                            arch.is_public
+                              ? `Make ${arch.name} private`
+                              : `Make ${arch.name} public`
+                          }
+                          onClick={() => onToggleArchitecturePublic(arch.id, !arch.is_public)}
+                        >
+                          <Users
+                            className={
+                              arch.is_public
+                                ? "rounded-sm border border-green-500"
+                                : "rounded-sm border border-transparent"
+                            }
+                          />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {arch.is_public ? "Click to make private" : "Click to make public"}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Delete ${arch.name}`}
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => onDeleteArchitecture(arch.id)}
+                      >
+                        ✕
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to remove</TooltipContent>
+                  </Tooltip>
                 </li>
               ) : (
                 <li key={arch.id}>
@@ -209,30 +267,37 @@ export function ProviderArchitecturePanel({
                 </li>
               ),
             )}
+
+            {/* Follow-up fix: the create control lives inside the scrollable list itself
+             * (not as a sibling after it) so it always sits directly under the last
+             * architecture — a sibling with a flex-1 ScrollArea above it would instead get
+             * pushed to the bottom of the whole column, leaving a gap when the list is short. */}
+            {expanded && (
+              <li>
+                <form
+                  className="mt-1 flex gap-1"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (newArchitectureName.trim()) onCreateArchitecture();
+                  }}
+                >
+                  <input
+                    className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-2xs"
+                    value={newArchitectureName}
+                    onChange={(e) => onNewArchitectureNameChange(e.target.value)}
+                    placeholder="New Architecture name"
+                    aria-label="New Architecture name"
+                  />
+                  <Button type="submit" size="sm" disabled={isCreatingArchitecture}>
+                    Create
+                  </Button>
+                </form>
+              </li>
+            )}
           </ul>
         </ScrollArea>
 
-        {/* FR-002: create control below the list, not above it. */}
-        {expanded ? (
-          <form
-            className="mt-1 flex gap-1"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (newArchitectureName.trim()) onCreateArchitecture();
-            }}
-          >
-            <input
-              className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-2xs"
-              value={newArchitectureName}
-              onChange={(e) => onNewArchitectureNameChange(e.target.value)}
-              placeholder="New Architecture name"
-              aria-label="New Architecture name"
-            />
-            <Button type="submit" size="sm" disabled={isCreatingArchitecture}>
-              Create
-            </Button>
-          </form>
-        ) : (
+        {!expanded && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

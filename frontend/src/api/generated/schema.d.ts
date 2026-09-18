@@ -96,6 +96,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/architectures/importable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Importable Architectures
+         * @description Every other user's public architectures, grouped by owner and pre-sorted
+         *     (012-user-accounts-sharing, spec FR-023-026): the Admin group always first, other groups
+         *     alphabetical, architecture names alphabetical within a group; an owner with zero public
+         *     architectures never appears.
+         */
+        get: operations["list_importable_architectures_api_v1_architectures_importable_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/architectures/{architecture_id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Public Architecture
+         * @description Deep-copies a public architecture owned by someone else into the caller's own list
+         *     (spec FR-029) — the copy is fully independent from the moment it's created.
+         */
+        post: operations["import_public_architecture_api_v1_architectures__architecture_id__import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/architectures/{architecture_id}": {
         parameters: {
             query?: never;
@@ -114,7 +158,11 @@ export interface paths {
         delete: operations["delete_architecture_api_v1_architectures__architecture_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Architecture
+         * @description Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020-022).
+         */
+        patch: operations["update_architecture_api_v1_architectures__architecture_id__patch"];
         trace?: never;
     };
     "/api/v1/architectures/{architecture_id}/collections": {
@@ -237,6 +285,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Me */
+        get: operations["get_me_api_v1_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/check-username": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Username */
+        post: operations["check_username_api_v1_auth_check_username_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login */
+        post: operations["login_api_v1_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Users */
+        get: operations["list_users_api_v1_admin_users_get"];
+        put?: never;
+        /** Create User */
+        post: operations["create_user_api_v1_admin_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete User */
+        delete: operations["delete_user_api_v1_admin_users__user_id__delete"];
+        options?: never;
+        head?: never;
+        /** Set User Active */
+        patch: operations["set_user_active_api_v1_admin_users__user_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set User Password */
+        put: operations["set_user_password_api_v1_admin_users__user_id__password_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/architectures/{architecture_id}/connectors": {
         parameters: {
             query?: never;
@@ -303,6 +455,41 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminPasswordUpdate */
+        AdminPasswordUpdate: {
+            /** Password */
+            password: string;
+        };
+        /** AdminUserActiveUpdate */
+        AdminUserActiveUpdate: {
+            /** Is Active */
+            is_active: boolean;
+        };
+        /** AdminUserCreate */
+        AdminUserCreate: {
+            /** Username */
+            username: string;
+        };
+        /** AdminUserOut */
+        AdminUserOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Username */
+            username: string;
+            /** Is Active */
+            is_active: boolean;
+            /** Has Password */
+            has_password: boolean;
+            /** Password Hash Suffix */
+            password_hash_suffix: string | null;
+            /** Is Admin */
+            is_admin: boolean;
+            /** Is Default Admin */
+            is_default_admin: boolean;
+        };
         /** ArchitectureCreate */
         ArchitectureCreate: {
             /** Name */
@@ -329,6 +516,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Is Public */
+            is_public: boolean;
             /**
              * Collections
              * @default []
@@ -339,6 +528,11 @@ export interface components {
              * @default []
              */
             connectors: components["schemas"]["DataConnectorOut"][];
+        };
+        /** ArchitectureImportRequest */
+        ArchitectureImportRequest: {
+            /** Name */
+            name: string;
         };
         /** ArchitectureSummaryOut */
         ArchitectureSummaryOut: {
@@ -356,6 +550,16 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Is Public */
+            is_public: boolean;
+        };
+        /**
+         * ArchitectureUpdate
+         * @description Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020).
+         */
+        ArchitectureUpdate: {
+            /** Is Public */
+            is_public: boolean;
         };
         /** CalculateSnapshotRequest */
         CalculateSnapshotRequest: {
@@ -429,6 +633,18 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** CheckUsernameOut */
+        CheckUsernameOut: {
+            /** Exists */
+            exists: boolean;
+            /** Has Password */
+            has_password: boolean;
+        };
+        /** CheckUsernameRequest */
+        CheckUsernameRequest: {
+            /** Username */
+            username: string;
+        };
         /** CollectionCreate */
         CollectionCreate: {
             type: components["schemas"]["CollectionType"];
@@ -478,6 +694,20 @@ export interface components {
             /** Region */
             region?: string | null;
         };
+        /** CurrentUserOut */
+        CurrentUserOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Username */
+            username: string | null;
+            /** Is Admin */
+            is_admin: boolean;
+            /** Is Active */
+            is_active: boolean;
+        };
         /** DataConnectorCreate */
         DataConnectorCreate: {
             /**
@@ -514,6 +744,35 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** ImportableArchitectureGroupOut */
+        ImportableArchitectureGroupOut: {
+            /** Owner Username */
+            owner_username: string;
+            /** Architectures */
+            architectures: components["schemas"]["ImportableArchitectureOut"][];
+        };
+        /** ImportableArchitectureOut */
+        ImportableArchitectureOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** ImportableArchitecturesOut */
+        ImportableArchitecturesOut: {
+            /** Groups */
+            groups: components["schemas"]["ImportableArchitectureGroupOut"][];
+        };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Username */
+            username: string;
+            /** Password */
+            password: string;
         };
         /** PriceLineItem */
         PriceLineItem: {
@@ -830,6 +1089,74 @@ export interface operations {
             };
         };
     };
+    list_importable_architectures_api_v1_architectures_importable_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportableArchitecturesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_public_architecture_api_v1_architectures__architecture_id__import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                architecture_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchitectureImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchitectureSummaryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_architecture_api_v1_architectures__architecture_id__get: {
         parameters: {
             query?: never;
@@ -882,6 +1209,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_architecture_api_v1_architectures__architecture_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                architecture_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchitectureUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchitectureSummaryOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -1161,6 +1525,274 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CalculationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_me_api_v1_auth_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_username_api_v1_auth_check_username_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckUsernameRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckUsernameOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_api_v1_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_users_api_v1_admin_users_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_user_api_v1_admin_users_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_user_api_v1_admin_users__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_user_active_api_v1_admin_users__user_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserActiveUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_user_password_api_v1_admin_users__user_id__password_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPasswordUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
                 };
             };
             /** @description Validation Error */

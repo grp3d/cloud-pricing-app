@@ -37,6 +37,54 @@ class RegionsOut(BaseModel):
     regions: list[RegionOut]
 
 
+# --- Users and Auth (012-user-accounts-sharing) -------------------------------------------
+
+
+class CurrentUserOut(BaseModel):
+    id: uuid.UUID
+    username: str | None
+    is_admin: bool
+    is_active: bool
+
+
+class CheckUsernameRequest(BaseModel):
+    username: str = Field(min_length=1)
+
+
+class CheckUsernameOut(BaseModel):
+    exists: bool
+    has_password: bool
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+
+
+class AdminUserCreate(BaseModel):
+    username: str = Field(min_length=1)
+
+
+class AdminPasswordUpdate(BaseModel):
+    password: str = Field(min_length=1)
+
+
+class AdminUserActiveUpdate(BaseModel):
+    is_active: bool
+
+
+class AdminUserOut(BaseModel):
+    id: uuid.UUID
+    username: str
+    is_active: bool
+    has_password: bool
+    # Last 4 characters of the stored password hash string (FR-009) — never the full hash or
+    # anything else password-derived.
+    password_hash_suffix: str | None
+    is_admin: bool
+    is_default_admin: bool
+
+
 # --- Enums (mirror the DB check constraints in models/orm.py) ------------------------------
 
 
@@ -162,6 +210,7 @@ class ArchitectureSummaryOut(ORMBase):
     name: str
     provider: str
     created_at: datetime
+    is_public: bool
 
 
 class ArchitectureDetailOut(ORMBase):
@@ -169,8 +218,33 @@ class ArchitectureDetailOut(ORMBase):
     name: str
     provider: str
     created_at: datetime
+    is_public: bool
     collections: list[CollectionOut] = []
     connectors: list[DataConnectorOut] = []
+
+
+class ArchitectureUpdate(BaseModel):
+    """Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020)."""
+
+    is_public: bool
+
+
+class ImportableArchitectureOut(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
+class ImportableArchitectureGroupOut(BaseModel):
+    owner_username: str
+    architectures: list[ImportableArchitectureOut]
+
+
+class ImportableArchitecturesOut(BaseModel):
+    groups: list[ImportableArchitectureGroupOut]
+
+
+class ArchitectureImportRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
 
 
 # --- Catalog search ------------------------------------------------------------------------

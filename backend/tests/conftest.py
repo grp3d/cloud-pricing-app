@@ -32,10 +32,18 @@ TestSessionLocal = async_sessionmaker(test_engine, expire_on_commit=False)
 
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_db():
-    """Truncate all app tables before each test for isolation."""
+    """Truncate all app tables before each test for isolation.
+
+    The seeded default Admin account (012-user-accounts-sharing, migration
+    `0004_user_accounts_sharing`) is deliberately excluded from the `users` truncation — it's
+    meant to durably survive forever in a real database (the app itself refuses to deactivate
+    or purge it, `is_default_admin`), so preserving it here across tests mirrors that same
+    invariant rather than working around it.
+    """
     async with test_engine.begin() as conn:
-        for table in (SKUSelection, DataConnector, Collection, Architecture, User):
+        for table in (SKUSelection, DataConnector, Collection, Architecture):
             await conn.execute(table.__table__.delete())
+        await conn.execute(User.__table__.delete().where(User.is_default_admin.is_(False)))
     yield
 
 
@@ -62,3 +70,15 @@ async def client():
 def auth_headers() -> dict[str, str]:
     """A fresh, valid bearer token — a new distinct user identity per test (FR-002)."""
     return {"Authorization": f"Bearer {uuid.uuid4()}"}
+
+
+@pytest_asyncio.fixture
+async def admin_headers() -> dict[str, str]:
+    """Bearer headers for the seeded default Admin account (012-user-accounts-sharing)."""
+    async with TestSessionLocal() as session:
+        from sqlalchemy import select
+
+        admin_id = (
+            await session.execute(select(User.id).where(User.is_default_admin.is_(True)))
+        ).scalar_one()
+    return {"Authorization": f"Bearer {admin_id}"}

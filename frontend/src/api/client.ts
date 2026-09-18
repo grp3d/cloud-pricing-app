@@ -20,19 +20,41 @@ export type PricingTerm = components["schemas"]["PricingTerm"];
 export type PurchaseOption = components["schemas"]["PurchaseOption"];
 export type SnapshotSelection = components["schemas"]["SnapshotSelection"];
 export type Region = components["schemas"]["RegionOut"];
+export type CurrentUser = components["schemas"]["CurrentUserOut"];
+export type AdminUser = components["schemas"]["AdminUserOut"];
+export type ImportableArchitectures = components["schemas"]["ImportableArchitecturesOut"];
 
 const BASE = "/api/v1";
 
-/** The v1 placeholder identity (spec FR-002 / research.md): a stable per-browser user id,
- * sent as a bearer token. No login UI yet — see research.md for why. */
-function getUserId(): string {
-  const key = "cloud-pricing-user-id";
+/** The permanent per-browser guest identity (unchanged since 001) — the fallback every fresh
+ * browser starts as (spec FR-015), and what "change user" → guest reverts to. Never
+ * overwritten once created. */
+function getGuestId(): string {
+  const key = "cloud-pricing-guest-id";
   let id = localStorage.getItem(key);
   if (!id) {
     id = crypto.randomUUID();
     localStorage.setItem(key, id);
   }
   return id;
+}
+
+/** The bearer token actually sent on every request — the browser's "current identity"
+ * (012-user-accounts-sharing, research.md §3). Defaults to the permanent guest id; overwritten
+ * with a named user's id on login, and persists across reloads/restarts via `localStorage`
+ * itself (FR-019a) — no separate expiry/session logic needed. */
+function getCurrentIdentityId(): string {
+  const key = "cloud-pricing-current-identity-id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = getGuestId();
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+function setCurrentIdentityId(id: string): void {
+  localStorage.setItem("cloud-pricing-current-identity-id", id);
 }
 
 /** Raised when the pricing data source itself is unavailable (HTTP 503) — kept structurally
@@ -61,7 +83,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${getUserId()}`,
+      Authorization: `Bearer ${getCurrentIdentityId()}`,
       ...init?.headers,
     },
   });
@@ -95,6 +117,40 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   listProviders: () => request<Provider[]>("/providers"),
 
+  // --- Identity/auth (012-user-accounts-sharing) ---
+  getCurrentUser: () => request<CurrentUser>("/auth/me"),
+  checkUsername: (username: string) =>
+    request<{ exists: boolean; has_password: boolean }>("/auth/check-username", {
+      method: "POST",
+      body: JSON.stringify({ username }),
+    }),
+  /** Also sets the account's password on first use (FR-017) — the server, not the client,
+   * decides which case applies. On success, updates the browser's current identity. */
+  login: async (username: string, password: string) => {
+    const user = await request<CurrentUser>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    setCurrentIdentityId(user.id);
+    return user;
+  },
+
+  // --- Admin user management (012-user-accounts-sharing) ---
+  listAdminUsers: () => request<AdminUser[]>("/admin/users"),
+  createAdminUser: (username: string) =>
+    request<AdminUser>("/admin/users", { method: "POST", body: JSON.stringify({ username }) }),
+  setAdminUserActive: (id: string, isActive: boolean) =>
+    request<AdminUser>(`/admin/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: isActive }),
+    }),
+  setAdminUserPassword: (id: string, password: string) =>
+    request<AdminUser>(`/admin/users/${id}/password`, {
+      method: "PUT",
+      body: JSON.stringify({ password }),
+    }),
+  deleteAdminUser: (id: string) => request<void>(`/admin/users/${id}`, { method: "DELETE" }),
+
   listArchitectures: (provider = "aws") =>
     request<ArchitectureSummary[]>(`/architectures?provider=${provider}`),
   getArchitecture: (id: string) => request<ArchitectureDetail>(`/architectures/${id}`),
@@ -105,6 +161,21 @@ export const api = {
     }),
   deleteArchitecture: (id: string) =>
     request<void>(`/architectures/${id}`, { method: "DELETE" }),
+  /** Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020). */
+  setArchitecturePublic: (id: string, isPublic: boolean) =>
+    request<ArchitectureSummary>(`/architectures/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_public: isPublic }),
+    }),
+  /** Every other user's public architectures, pre-grouped/sorted server-side (FR-023-026). */
+  listImportableArchitectures: () =>
+    request<ImportableArchitectures>("/architectures/importable"),
+  /** Deep-copies a public architecture into the caller's own list under `name` (FR-028/029). */
+  importArchitecture: (architectureId: string, name: string) =>
+    request<ArchitectureSummary>(`/architectures/${architectureId}/import`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
 
   /** 010-multi-region-support, spec FR-001/FR-001a: `region` is required unless
    * `parentCollectionId` is given, in which case the server ignores it and inherits the
