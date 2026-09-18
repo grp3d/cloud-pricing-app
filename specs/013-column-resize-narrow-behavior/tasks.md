@@ -36,7 +36,7 @@ below are relative to the repository root.
 
 **Purpose**: Confirm a clean baseline before touching the component.
 
-- [ ] T001 Run `cd frontend && npm run lint && npm test` to confirm the existing suite is
+- [X] T001 Run `cd frontend && npm run lint && npm test` to confirm the existing suite is
   green before any edits (baseline for comparison once this feature's changes land).
 
 ---
@@ -48,17 +48,21 @@ tests to the same new file.
 
 **⚠️ CRITICAL**: Complete this before starting any user story's test task.
 
-- [ ] T002 Create `frontend/src/components/workspace/ProviderArchitecturePanel.test.tsx`
-  with: the necessary imports (`render`, `screen`, `vi` from vitest/RTL, `Tooltip`
-  provider wrapper if the existing `Tooltip` components require one — check how other
-  component tests in `frontend/src/components/**/*.test.tsx` wrap tooltip-using
-  components, if any exist, for the established pattern), and a `renderPanel(overrides)`
-  helper that supplies all required `ProviderArchitecturePanelProps` (a `providers` array
-  with one active provider, an `architectures` array containing at least one entry with a
-  long `name` — e.g. 60+ characters — so wrap behavior is observable, `isGuest: false` so
-  both share and delete buttons render, all callback props as `vi.fn()`, and a `width`
-  prop that defaults to `250` but can be overridden per test, e.g. to `56` to simulate the
-  panel's minimum resizable width).
+- [X] T002 Create `frontend/tests/unit/ProviderArchitecturePanel.test.tsx`, following the
+  existing convention in `frontend/tests/unit/ServiceConfigPanel.test.tsx` (imports
+  `render`/`screen` from `@testing-library/react`, `vi` from `vitest`, wraps the component
+  under test in `TooltipProvider` from `../../src/components/ui/tooltip`). Add: the
+  necessary imports (component under test from
+  `../../src/components/workspace/ProviderArchitecturePanel`, its `ProviderArchitecturePanelProps`
+  type, and `ArchitectureSummary`/`Provider` types from `../../src/api/client`), and a
+  `panel(overrides)` helper (mirroring `ServiceConfigPanel.test.tsx`'s `panel()` helper)
+  that wraps `<ProviderArchitecturePanel {...props} />` in `<TooltipProvider>` and supplies
+  all required `ProviderArchitecturePanelProps` (a `providers` array with one active
+  provider, an `architectures` array containing at least one entry with a long `name` —
+  e.g. 60+ characters — so wrap behavior is observable, `isGuest: false` so both share and
+  delete buttons render, all callback props as `vi.fn()`, and a `width` prop that defaults
+  to `250` but can be overridden per test, e.g. to `56` to simulate the panel's minimum
+  resizable width).
 
 **Checkpoint**: Foundation ready — user story tests/implementation can now proceed.
 
@@ -77,20 +81,24 @@ while the name input is also present and narrower than at the default width.
 
 ### Tests for User Story 1
 
-- [ ] T003 [US1] In `frontend/src/components/workspace/ProviderArchitecturePanel.test.tsx`,
-  add a test that renders via `renderPanel({ width: 56 })` and asserts
-  `screen.getByRole("button", { name: "Create" })` is present and enabled, and
-  `screen.getByPlaceholderText("New Architecture name")` is also present (both controls
-  exist simultaneously at the minimum width — neither is removed from the DOM).
+- [X] T003 [US1] In `frontend/tests/unit/ProviderArchitecturePanel.test.tsx`, add a test
+  that renders via `panel()` at `width: 56` and asserts structurally that clipping cannot
+  occur: the create-form's `<form>` element (found via
+  `getByPlaceholderText("New Architecture name").closest("form")`) has `flex-wrap` in its
+  className, and the input's className no longer contains `min-w-0`. (jsdom does not
+  compute real layout/overflow, so a plain `.toBeInTheDocument()` check on the Create
+  button would pass even against the unfixed code — assert on the classes that
+  structurally prevent clipping instead; see the comment block at the top of the
+  `describe` in that file.)
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] In
+- [X] T004 [US1] In
   `frontend/src/components/workspace/ProviderArchitecturePanel.tsx`, update the
   create-form `<form>` element (currently `className="mt-1 flex gap-1"`, around line 277)
   to `className="mt-1 flex flex-wrap gap-1"` so the Create button can wrap onto its own
   line instead of overflowing when the input has hit its minimum width.
-- [ ] T005 [US1] In the same file, update the name `<input>` element (currently
+- [X] T005 [US1] In the same file, update the name `<input>` element (currently
   `className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1
   text-2xs"`, around line 284-285) by replacing `min-w-0` with `min-w-[3rem]` so the input
   always keeps a small but visible, usable width instead of shrinking all the way to zero
@@ -120,18 +128,18 @@ are in place), just not fully independently *implementable* in isolation from T0
 
 ### Tests for User Story 2
 
-- [ ] T006 [US2] In
-  `frontend/src/components/workspace/ProviderArchitecturePanel.test.tsx`, add a test that
-  renders via `renderPanel({ width: 56 })` with `isGuest: false` and at least one
-  architecture, and asserts the import button
-  (`screen.getByRole("button", { name: "Import an architecture" })`), the share button for
-  that architecture (`screen.getByRole("button", { name: /Make .* (public|private)/ })`),
-  and its delete button (`screen.getByRole("button", { name: /Delete /  })`) are all
-  present in the DOM.
+- [X] T006 [US2] In `frontend/tests/unit/ProviderArchitecturePanel.test.tsx`, add a test
+  that renders via `panel()` at `width: 56` with `isGuest: false` and one architecture, and
+  asserts structurally that the row's icon buttons cannot be clipped: the architecture
+  row's `<li>` element (found via
+  `getByRole("button", { name: `Delete ${name}` }).closest("li")`) has `flex-wrap` in its
+  className, plus confirms the import, share, and delete buttons are queryable by their
+  accessible names (same jsdom caveat as T003 — the class assertion is what makes this test
+  meaningful, not the presence check alone).
 
 ### Implementation for User Story 2
 
-- [ ] T007 [US2] In
+- [X] T007 [US2] In
   `frontend/src/components/workspace/ProviderArchitecturePanel.tsx`, update the
   per-architecture `<li>` element in the expanded-row branch (currently
   `className="flex items-center gap-1"`, around line 201) to
@@ -155,17 +163,15 @@ button's className no longer includes `truncate`).
 
 ### Tests for User Story 3
 
-- [ ] T008 [US3] In
-  `frontend/src/components/workspace/ProviderArchitecturePanel.test.tsx`, add a test that
-  renders via `renderPanel({ width: 56 })` with an architecture whose `name` is a long
-  string (e.g. 60+ characters) and asserts: (a) `screen.getByText(longName)` finds the full
-  name text in the DOM, and (b) the rendered name button element does not have the
-  `truncate` class (query via `screen.getByRole("button", { name: longName })` and check
-  `element.className` does not include `"truncate"`).
+- [X] T008 [US3] In `frontend/tests/unit/ProviderArchitecturePanel.test.tsx`, add a test
+  that renders via `panel()` at `width: 56` with an architecture whose `name` is a long
+  string (60+ characters) and asserts: (a) `screen.getByRole("button", { name: longName })`
+  finds the button with the full name as its accessible name, (b) its className does not
+  include `"truncate"`, and (c) its className includes `"whitespace-normal"`.
 
 ### Implementation for User Story 3
 
-- [ ] T009 [US3] In
+- [X] T009 [US3] In
   `frontend/src/components/workspace/ProviderArchitecturePanel.tsx`, update the
   architecture-name `<Button>` element in the expanded-row branch (currently
   `className="flex-1 justify-start truncate"`, around line 202-207) to
@@ -184,12 +190,39 @@ button's className no longer includes `truncate`).
 
 **Purpose**: Final verification across all three stories together.
 
-- [ ] T010 Run `cd frontend && npm run lint && npm test` and confirm the whole suite
+- [X] T010 Run `cd frontend && npm run lint && npm test` and confirm the whole suite
   (including the new `ProviderArchitecturePanel.test.tsx`) passes with no regressions.
-- [ ] T011 Manually run through `specs/013-column-resize-narrow-behavior/quickstart.md`
+- [X] T011 Manually run through `specs/013-column-resize-narrow-behavior/quickstart.md`
   end-to-end in a real browser (drag column 1 from its default width down to the minimum
   and back), confirming every check in its step 5 and step 6 (collapse/expand still
   unaffected) holds.
+
+  **Finding from this manual pass (not caught by the jsdom test suite, which doesn't
+  compute real layout): Radix's `ScrollArea` component (`frontend/src/components/ui/scroll-area.tsx`),
+  which wrapped the architecture list, injects an internal `display: table; min-width: 100%`
+  node around its content — confirmed via live `getBoundingClientRect()`/computed-style
+  inspection in the browser. That node always sizes itself to its content's *unwrapped*
+  natural width (so Radix can measure true content size for its custom scrollbar thumb),
+  which means the list's rows were never actually constrained to the panel's visible
+  width — `flex-wrap` on T004/T007/T009's rows could never trigger, because their
+  container was never narrower than their own unwrapped content. This fully explained the
+  original bug and meant T004/T005/T007/T009 alone were insufficient.**
+
+  **Fix applied**: replaced `<ScrollArea className="min-h-0 flex-1">...</ScrollArea>`
+  (`frontend/src/components/workspace/ProviderArchitecturePanel.tsx`, was ~line 197) with a
+  plain `<div className="min-h-0 flex-1 overflow-y-auto">...</div>` — a plain scrolling
+  `div` has no such content-based sizing quirk, so `flex-wrap` on the rows inside it now
+  works correctly. Removed the now-unused `ScrollArea` import from this file (confirmed via
+  `grep` that no other file in the codebase imports `ui/scroll-area` — it's a shadcn/ui
+  primitive kept in place, not deleted, since removing an unused shared UI-kit file is out
+  of scope for this fix). Re-verified in the browser afterward: at the panel's minimum
+  drag width (measured ~63px via `getBoundingClientRect`), the Create button, the New
+  Architecture input, the import button, and every row's share/delete buttons were all
+  fully visible (wrapped onto additional lines where needed, never clipped or scrolled out
+  of view); at normal/default widths nothing wraps unnecessarily; collapse/expand was
+  re-verified unaffected. Re-ran `npm run lint`, `npx tsc -b`, and `npm test` after this
+  change — 0 lint errors (7 pre-existing unrelated warnings unchanged), clean type-check,
+  188/188 tests passing (185 baseline + 3 new).
 
 ---
 

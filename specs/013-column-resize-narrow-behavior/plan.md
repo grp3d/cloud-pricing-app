@@ -97,8 +97,9 @@ frontend/
 │   │   └── WorkspacePage.tsx                   # renders the panel + resize handle; unchanged
 │   └── lib/
 │       └── columnWidths.ts                     # MIN_WIDTH clamp; unchanged
-└── src/components/workspace/
-    └── ProviderArchitecturePanel.test.tsx       # new test file for this feature
+└── tests/unit/
+    └── ProviderArchitecturePanel.test.tsx       # new test file for this feature (matches
+                                                  # existing convention, e.g. ServiceConfigPanel.test.tsx)
 
 backend/                                        # untouched by this feature
 ```

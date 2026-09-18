@@ -3,7 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/cloud-pricing-backend.iml" filepath="$PROJECT_DIR$/.idea/cloud-pricing-backend.iml" />
-      <module fileurl="file://$PROJECT_DIR$/.idea/cloud-pricing-ui.iml" filepath="$PROJECT_DIR$/.idea/cloud-pricing-ui.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/cloud-pricing-app.iml" filepath="$PROJECT_DIR$/.idea/cloud-pricing-app.iml" />
     </modules>
   </component>
 </project>

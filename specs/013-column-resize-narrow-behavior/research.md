@@ -6,6 +6,20 @@ All items below were resolved directly from reading the existing implementation
 `frontend/src/pages/WorkspacePage.tsx`); no external research was required. No
 `NEEDS CLARIFICATION` markers remain from Technical Context.
 
+**Post-implementation addendum (found during manual browser verification, T011 in
+tasks.md, not by static code reading)**: items 1 and 2 below correctly identified that the
+create-form row and each architecture row needed `flex-wrap` to avoid clipping — but that
+alone turned out to be insufficient. Live inspection in the browser (via
+`getBoundingClientRect()`/computed styles) showed Radix's `ScrollArea` component, which
+wrapped this list, injects an internal `display: table; min-width: 100%` node around its
+content. That node always sizes itself to its content's *unwrapped* natural width (so
+Radix can measure true content size for its custom scrollbar thumb) — meaning the rows
+were never actually width-constrained by the visible panel, so `flex-wrap` could never
+trigger; the container was always exactly as wide as its own unwrapped content. The actual
+fix was replacing that `ScrollArea` with a plain `overflow-y-auto` `<div>` for this list,
+which has no such quirk. See tasks.md's T011 for the verified fix and its browser
+confirmation.
+
 ## 1. Why does the Create button appear to get hidden when narrowing?
 
 - **Decision**: Treat this as a flex-layout sizing problem in the create-form row, not a

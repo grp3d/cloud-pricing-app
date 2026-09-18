@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { ArchitectureSummary, Provider } from "../../api/client";
 import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
 import { Button } from "../ui/button";
-import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { ErrorMessage } from "../ErrorMessage";
@@ -194,14 +193,21 @@ export function ProviderArchitecturePanel({
           <p className="px-1 text-2xs text-muted-foreground">No Architectures yet.</p>
         )}
 
-        <ScrollArea className="min-h-0 flex-1">
+        {/* A plain scrolling div, not the shared ScrollArea/Radix primitive: Radix's
+         * ScrollArea always wraps its content in an internal `display: table;
+         * min-width: 100%` node so it can measure true content size for its custom
+         * scrollbar thumb -- that wrapper sizes itself to this list's *unwrapped* natural
+         * width, which defeats `flex-wrap` on the rows below (their container is never
+         * actually narrower than their unwrapped content, so wrapping never triggers).
+         * A plain overflow-y-auto div has no such quirk and lets flex-wrap work. */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <ul className="flex flex-col gap-1 pr-2">
             {architectures.map((arch) =>
               expanded ? (
-                <li key={arch.id} className="flex items-center gap-1">
+                <li key={arch.id} className="flex flex-wrap items-start gap-1">
                   <Button
                     variant={arch.id === selectedArchitectureId ? "secondary" : "ghost"}
-                    className="flex-1 justify-start truncate"
+                    className="h-auto min-w-0 flex-1 justify-start whitespace-normal break-words py-1 text-left"
                     size="sm"
                     onClick={() => onSelectArchitecture(arch.id)}
                   >
@@ -275,14 +281,14 @@ export function ProviderArchitecturePanel({
             {expanded && (
               <li>
                 <form
-                  className="mt-1 flex gap-1"
+                  className="mt-1 flex flex-wrap gap-1"
                   onSubmit={(e) => {
                     e.preventDefault();
                     if (newArchitectureName.trim()) onCreateArchitecture();
                   }}
                 >
                   <input
-                    className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-2xs"
+                    className="min-w-[3rem] flex-1 rounded border border-border bg-background px-1.5 py-1 text-2xs"
                     value={newArchitectureName}
                     onChange={(e) => onNewArchitectureNameChange(e.target.value)}
                     placeholder="New Architecture name"
@@ -295,7 +301,7 @@ export function ProviderArchitecturePanel({
               </li>
             )}
           </ul>
-        </ScrollArea>
+        </div>
 
         {!expanded && (
           <Tooltip>
