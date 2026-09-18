@@ -103,10 +103,18 @@ class Collection(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     architecture: Mapped[Architecture] = relationship(back_populates="collections")
+    # `order_by` (live user report): without it, Postgres has no guaranteed return order for
+    # this relationship at all — in practice it often happened to match insertion order until
+    # an UPDATE to one row (e.g. saving a Service Editor change) shifted that row's physical
+    # tuple, which could then change the *whole list's* apparent order on the next fetch, with
+    # no relationship to what the user actually did. Ordering by `created_at` makes "services
+    # appear in the order they were added to the Collection, and stay there regardless of what
+    # gets edited later" a guarantee of the query itself, not an accident of physical storage.
     sku_selections: Mapped[list[SKUSelection]] = relationship(
         back_populates="collection",
         cascade="all, delete-orphan",
         foreign_keys="SKUSelection.collection_id",
+        order_by="SKUSelection.created_at",
     )
     parent: Mapped[Collection | None] = relationship(
         remote_side="Collection.id", foreign_keys=[parent_collection_id], back_populates="children"

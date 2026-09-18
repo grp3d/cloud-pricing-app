@@ -116,3 +116,57 @@ async def test_delete_sku_selection(client, auth_headers):
         headers=auth_headers,
     )
     assert patch_after_delete.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_updating_one_sku_selection_does_not_reorder_its_collections_list(
+    client, auth_headers
+):
+    """Live user report (regression): editing one Service's pricing inputs was silently
+    reordering the whole list of Services in its Collection, with no relationship to what the
+    user actually changed. Root cause: `Collection.sku_selections` (orm.py) had no `order_by`,
+    so Postgres had no guaranteed return order at all for that relationship -- in practice it
+    happened to match insertion order until an UPDATE to one row could shift the *whole list's*
+    apparent order on the next fetch, purely as an artifact of physical row storage. Services
+    must appear in the order they were added to the Collection, and stay there regardless of
+    what gets edited later.
+    """
+    arch = await client.post(
+        "/api/v1/architectures", json={"name": "Arch", "provider": "aws"}, headers=auth_headers
+    )
+    arch_id = arch.json()["id"]
+    coll = await client.post(
+        f"/api/v1/architectures/{arch_id}/collections",
+        json={"type": "application_component", "name": "Web", "region": "us-east-1"},
+        headers=auth_headers,
+    )
+    coll_id = coll.json()["id"]
+
+    selection_ids = []
+    for _ in range(3):
+        created = await client.post(
+            f"/api/v1/collections/{coll_id}/sku-selections",
+            json={
+                "service_code": KNOWN_SERVICE_CODE,
+                "sku": KNOWN_SKU,
+                "pricing_term": "on_demand",
+                "purchase_option": "not_applicable",
+                "usage_quantity": "1",
+            },
+            headers=auth_headers,
+        )
+        selection_ids.append(created.json()["id"])
+
+    # Edit the *first*-added selection -- the one most likely to move under the old, order-by-
+    # less relationship, since it's the one whose row physically changes.
+    await client.patch(
+        f"/api/v1/sku-selections/{selection_ids[0]}",
+        json={"usage_quantity": "999"},
+        headers=auth_headers,
+    )
+
+    arch_after = await client.get(f"/api/v1/architectures/{arch_id}", headers=auth_headers)
+    collection_after = next(
+        c for c in arch_after.json()["collections"] if c["id"] == coll_id
+    )
+    assert [s["id"] for s in collection_after["sku_selections"]] == selection_ids
