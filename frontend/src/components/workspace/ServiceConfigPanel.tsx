@@ -133,10 +133,29 @@ export function ServiceConfigPanel({
 
           <SkuDetail attributes={attributes!} />
 
+          {/* Live user report (regression): editing one service's usage quantity was landing
+              on a *different* service instead. Root cause — `PricingInputsForm`'s `term`/
+              `purchaseOption`/`quantity` are seeded via `useState(initial?.field ?? default)`,
+              which only runs once, on mount. Neither usage below ever had a `key`, so
+              switching the selected service (this panel re-renders with new `selection`/
+              `resolvedExisting` props, same component *instance*) reused the previous
+              service's already-mounted form untouched — its fields kept showing whatever was
+              last typed for the *previous* service. Saving without first retyping every field
+              then submitted that leftover value against the *newly* selected service's id
+              (`onSubmitExisting`/`onSubmitNew` below are correctly scoped to the current
+              selection already — this was never a wrong-id bug, purely stale-input state).
+              `key` forces React to unmount/remount with fresh `useState` initializers whenever
+              the underlying service identity actually changes, the standard fix for exactly
+              this "state needs to reset when an identity prop changes" case. */}
           {selection!.kind === "new" ? (
-            <PricingInputsForm onSubmit={onSubmitNew} unit={unit} />
+            <PricingInputsForm
+              key={`new-${selection!.catalogSku.service_code}-${selection!.catalogSku.sku}`}
+              onSubmit={onSubmitNew}
+              unit={unit}
+            />
           ) : (
             <PricingInputsForm
+              key={resolvedExisting!.id}
               submitLabel="Save"
               initial={{
                 pricing_term: resolvedExisting!.pricing_term,
