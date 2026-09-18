@@ -319,3 +319,98 @@ export function routeAroundObstacles(
 
   return [source, sourceStub, corner1, corner2, targetStub, target];
 }
+
+/** Live user request: let a Connector's curve be manually reshaped by dragging a point on it,
+ * with the result surviving either endpoint moving/resizing later ("maintain the intent of the
+ * manual adjustment"). A bend point is stored chord-relative — as a fraction `t` along the
+ * source→target line and a perpendicular offset `d` expressed as a *fraction of the chord's own
+ * length*, not raw pixels — specifically so it scales naturally with the connector rather than
+ * needing separate recomputation logic: if the boxes move further apart, `t` keeps the point
+ * the same fraction of the way along, and `d` keeps the bulge the same visual proportion of the
+ * connector's own length (including collapsing flat if the boxes end up nearly coincident —
+ * intentional, not a bug). See `bendPointToAbsolute`/`absoluteToBendPoint`, which are exact
+ * inverses of each other. */
+export interface BendControlPoint {
+  /** Fraction along the source→target chord, 0 (at source) to 1 (at target). Clamped away from
+   * the extremes by `absoluteToBendPoint` (never exactly 0 or 1) so `solveQuadraticControlPoint`
+   * below never divides by zero. */
+  t: number;
+  /** Perpendicular offset from the chord, as a fraction of the chord's own length — positive
+   * and negative are the two sides. */
+  d: number;
+}
+
+/** The absolute point `{t, d}` (relative to the `source`→`target` chord) currently refers to —
+ * recomputed from *live* `source`/`target` every call, which is what makes a manual bend track
+ * either endpoint moving without any separate update logic. */
+export function bendPointToAbsolute(source: Point, target: Point, point: BendControlPoint): Point {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const nx = -dy / length;
+  const ny = dx / length;
+  return {
+    x: source.x + point.t * dx + point.d * length * nx,
+    y: source.y + point.t * dy + point.d * length * ny,
+  };
+}
+
+/** The exact inverse of `bendPointToAbsolute`: given a live/dragged-to absolute point, finds
+ * the chord-relative `{t, d}` it corresponds to right now, for immediate storage — `t` is
+ * clamped to `[0.05, 0.95]` so a point dragged very close to (or past) either endpoint still
+ * yields a well-defined, non-degenerate bend rather than one that's ambiguous or that would
+ * later divide by zero in `solveQuadraticControlPoint`. */
+export function absoluteToBendPoint(source: Point, target: Point, absolute: Point): BendControlPoint {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  const nx = -uy;
+  const ny = ux;
+  const relX = absolute.x - source.x;
+  const relY = absolute.y - source.y;
+  const along = relX * ux + relY * uy;
+  const perp = relX * nx + relY * ny;
+  return {
+    t: Math.min(0.95, Math.max(0.05, along / length)),
+    d: perp / length,
+  };
+}
+
+/** Solves the single control point of a quadratic Bezier from `p0` to `p2` such that the curve
+ * passes *exactly* through `through` at parameter `t` — used so a manually-bent Connector's
+ * rendered curve literally passes through the point the user dragged to, not merely bulges
+ * toward it the way an ordinary quadratic control point does (direct manipulation: the curve
+ * tracks the cursor 1:1 while dragging, rather than lagging behind it). Standard closed-form
+ * inversion of the quadratic Bezier formula `B(t) = (1-t)²p0 + 2(1-t)t·C + t²p2` for `C`; safe
+ * from division by zero because `t` always arrives already clamped away from 0/1 (see
+ * `absoluteToBendPoint`). */
+export function solveQuadraticControlPoint(p0: Point, p2: Point, through: Point, t: number): Point {
+  const u = 1 - t;
+  const denom = 2 * u * t;
+  return {
+    x: (through.x - u * u * p0.x - t * t * p2.x) / denom,
+    y: (through.y - u * u * p0.y - t * t * p2.y) / denom,
+  };
+}
+
+/** Everything `OffsetEdge` needs to render a manually-bent Connector: the same perpendicular
+ * entry/exit "stubs" `routeAroundObstacles` uses (so the arrowhead still points correctly into
+ * the target box regardless of how the curve bends — see that function's own doc comment for
+ * why this matters), plus the solved quadratic control point that makes the curve pass through
+ * the bend. `through` is also what `OffsetEdge` positions the drag handle at, so the handle
+ * always sits exactly on the rendered curve. */
+export function buildManualBendRoute(
+  source: Point,
+  target: Point,
+  bendPoint: BendControlPoint,
+  sourceSide?: ConnectorSide,
+  targetSide?: ConnectorSide,
+): { sourceStub: Point; control: Point; targetStub: Point; through: Point } {
+  const sourceStub = sourceSide ? offsetPoint(source, sourceSide, STUB_LENGTH) : source;
+  const targetStub = targetSide ? offsetPoint(target, targetSide, STUB_LENGTH) : target;
+  const through = bendPointToAbsolute(source, target, bendPoint);
+  const control = solveQuadraticControlPoint(sourceStub, targetStub, through, bendPoint.t);
+  return { sourceStub, control, targetStub, through };
+}

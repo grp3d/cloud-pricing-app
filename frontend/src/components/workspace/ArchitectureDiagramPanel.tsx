@@ -5,6 +5,7 @@ import {
   Background,
   ConnectionMode,
   Controls,
+  EdgeLabelRenderer,
   Handle,
   MarkerType,
   NodeResizeControl,
@@ -50,16 +51,25 @@ import {
 import { readDiagramZoom, writeDiagramZoom } from "../../lib/diagramViewport";
 import {
   ALL_CONNECTOR_SIDES,
+  absoluteToBendPoint,
+  buildManualBendRoute,
   chooseConnectorSides,
   isConnectorSide,
   routeAroundObstacles,
   sampleCubicBezier,
   sampleQuadraticBezier,
+  type BendControlPoint,
   type ConnectorSide,
   type Point,
   type Rect,
 } from "../../lib/connectorRouting";
 import { readConnectorSides, writeConnectorSides, type ConnectorSides } from "../../lib/connectorSides";
+import {
+  clearConnectorBend,
+  readConnectorBends,
+  writeConnectorBend,
+  type ConnectorBend,
+} from "../../lib/connectorBends";
 import { Button } from "../ui/button";
 
 /** Shared service-list rendering for both node types (004, FR-015). Each listed service is now
@@ -483,6 +493,83 @@ const nodeTypes = {
   vpc: VpcNode,
 };
 
+/** Drag handle for manually reshaping a Connector's curve (live user request, effort/design
+ * discussion landed on a chord-relative control point — see `connectorRouting.ts`'s
+ * `bendPointToAbsolute`/`absoluteToBendPoint`/`buildManualBendRoute`). Rendered via
+ * `EdgeLabelRenderer` (React Flow's HTML-overlay portal for edges, positioned in flow space via
+ * a `translate()` transform, per its own documented usage pattern) rather than as SVG, so it
+ * can use the same `onPointerDown`/`setPointerCapture`/`pointermove` pattern already proven
+ * elsewhere in this codebase (`PopoutCanvasDialog.tsx`'s drag/resize handles) instead of React
+ * Flow's own node-dragging machinery, which only applies to nodes.
+ *
+ * `point` is always wherever the rendered curve currently actually passes (`OffsetEdge`'s
+ * `activeBendPoint`converted to an absolute position, or that same edge's own already-computed
+ * label position when no bend exists yet), so the handle never drifts from what it visually
+ * controls and is always grabbable exactly on the line. `onDrag` fires on every pointer move
+ * with the live position already converted to flow space (`screenToFlowPosition`) — `OffsetEdge`
+ * re-derives the chord-relative bend from it each time, so the curve tracks the cursor during
+ * the drag itself, not just after release. `onDragEnd` commits (persists) the last live
+ * position; double-click resets the Connector to automatic routing. `nodrag nopan` plus
+ * `pointerEvents: "all"` are required for an interactive `EdgeLabelRenderer` child per its own
+ * doc comment — without them React Flow's pane-pan gesture and node-drag-suppression classes
+ * swallow the pointer events before this handle ever sees them. */
+function EdgeBendHandle({
+  point,
+  onDrag,
+  onDragEnd,
+  onReset,
+}: {
+  point: Point;
+  onDrag: (flowPoint: Point) => void;
+  onDragEnd: () => void;
+  onReset: () => void;
+}) {
+  const { screenToFlowPosition } = useReactFlow();
+
+  return (
+    <EdgeLabelRenderer>
+      <div
+        role="button"
+        aria-label="Drag to bend this connector's curve; double-click to reset it to automatic routing"
+        title="Drag to bend · double-click to reset"
+        className="nodrag nopan absolute size-2.5 cursor-grab rounded-full border border-primary bg-background shadow active:cursor-grabbing"
+        style={{
+          pointerEvents: "all",
+          // Found live: `.react-flow__edgelabel-renderer` has no `z-index` of its own (so its
+          // children stack at the same level as it does, by plain DOM order) while every
+          // `.react-flow__node` carries an explicit inline `z-index` (0 normally, elevated
+          // further on selection/drag) — for a short Connector whose curve midpoint lands
+          // near/under one of its own endpoint boxes, that box's own content was winning the
+          // hit-test and completely swallowing clicks on this handle. A comfortably high
+          // explicit `zIndex` here establishes its own stacking context that wins regardless.
+          zIndex: 1000,
+          transform: `translate(-50%, -50%) translate(${point.x}px, ${point.y}px)`,
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onReset();
+        }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          const target = e.currentTarget;
+          target.setPointerCapture(e.pointerId);
+
+          const handleMove = (moveEvent: PointerEvent) => {
+            onDrag(screenToFlowPosition({ x: moveEvent.clientX, y: moveEvent.clientY }));
+          };
+          const handleUp = () => {
+            target.removeEventListener("pointermove", handleMove);
+            target.removeEventListener("pointerup", handleUp);
+            onDragEnd();
+          };
+          target.addEventListener("pointermove", handleMove);
+          target.addEventListener("pointerup", handleUp);
+        }}
+      />
+    </EdgeLabelRenderer>
+  );
+}
+
 /** Custom edge renderer for parallel Connectors (009-ui-fixes-next-iteration, US4, FR-010,
  * research.md §4). The first edge in a source/target pair group (`offsetIndex` 0) renders as
  * React Flow's normal bezier path, unchanged. Every subsequent one is displaced perpendicular
@@ -513,7 +600,19 @@ const nodeTypes = {
  * (`M source C corner1 corner2 target`), not the sharp right-angle polyline this first shipped
  * with — live user request, matching a reference screenshot of a smooth curve swooping around
  * an obstacle. `routeAroundObstacles`'s own doc comment covers why this still stays clear of
- * the obstacle in the common case this feature targets. */
+ * the obstacle in the common case this feature targets.
+ *
+ * A manual bend (`activeBendPoint` below, live user request) takes precedence over both of the
+ * above when present — checked first, before `routed`/`defaultPath` are even considered for
+ * rendering (though both are still *computed* regardless, since hooks can't be called
+ * conditionally; harmless, just unused work on a bent Connector). `bend`/`dragPreview` are
+ * local component state, not derived from `liveNodes` like the obstacle detour is — a manual
+ * bend's *shape* doesn't need to react to other boxes moving the way auto-routing does, only
+ * to its own two endpoints (via `bendPointToAbsolute`'s live `source`/`target` recompute) —
+ * but it does mean a bend made in one `ArchitectureDiagramPanel` instance (e.g. the pop-out)
+ * isn't reflected in another simultaneously-open instance of the same canvas until that
+ * instance's `OffsetEdge` remounts, the same category of limitation `connectorSides.ts`
+ * assignments already have outside the `connectors`-list-change sync path. */
 function OffsetEdge({
   id,
   source,
@@ -531,7 +630,48 @@ function OffsetEdge({
   data,
 }: EdgeProps) {
   const offsetIndex = (data?.offsetIndex as number | undefined) ?? 0;
+  const architectureId = data?.architectureId as string | undefined;
+  // Not React Flow's own `selected` prop — see the doc comment on `data.isSelected` where
+  // `initialEdges` sets it, below.
+  const isSelected = Boolean(data?.isSelected);
   const liveNodes = useNodes();
+
+  const [bend, setBend] = useState<ConnectorBend | null>(() =>
+    architectureId ? (readConnectorBends(architectureId)[id] ?? null) : null,
+  );
+  // Live position while a drag is in progress; `null` the rest of the time. Kept separate from
+  // `bend` (the last *persisted* value) so a drag that ends up getting cancelled some other way
+  // (e.g. the Connector gets deleted mid-drag) never leaves stale in-progress state mistaken
+  // for a committed one.
+  const [dragPreview, setDragPreview] = useState<BendControlPoint | null>(null);
+
+  const handleBendDrag = useCallback(
+    (flowPoint: Point) => {
+      setDragPreview(
+        absoluteToBendPoint({ x: sourceX, y: sourceY }, { x: targetX, y: targetY }, flowPoint),
+      );
+    },
+    [sourceX, sourceY, targetX, targetY],
+  );
+
+  const handleBendDragEnd = useCallback(() => {
+    setDragPreview((current) => {
+      if (current && architectureId) {
+        const next: ConnectorBend = { controlPoints: [current] };
+        setBend(next);
+        writeConnectorBend(architectureId, id, next);
+      }
+      return null;
+    });
+  }, [architectureId, id]);
+
+  const handleBendReset = useCallback(() => {
+    setBend(null);
+    setDragPreview(null);
+    if (architectureId) clearConnectorBend(architectureId, id);
+  }, [architectureId, id]);
+
+  const activeBendPoint = dragPreview ?? bend?.controlPoints[0] ?? null;
 
   const { defaultPath, defaultLabelX, defaultLabelY, defaultSamples } = useMemo(() => {
     if (offsetIndex === 0) {
@@ -616,6 +756,45 @@ function OffsetEdge({
     defaultSamples,
   ]);
 
+  if (activeBendPoint) {
+    const src = { x: sourceX, y: sourceY };
+    const tgt = { x: targetX, y: targetY };
+    const { sourceStub, control, targetStub, through } = buildManualBendRoute(
+      src,
+      tgt,
+      activeBendPoint,
+      isConnectorSide(sourcePosition) ? sourcePosition : undefined,
+      isConnectorSide(targetPosition) ? targetPosition : undefined,
+    );
+    // Same stub-bracketed shape as the obstacle detour below (`L` stubs around a `Q` curve, not
+    // a `C` — a manual bend only ever has the one solved control point) — for the same reason:
+    // the arrowhead must still point straight into the target box regardless of how the curve
+    // in between is bent.
+    const path = `M${src.x},${src.y} L${sourceStub.x},${sourceStub.y} Q${control.x},${control.y} ${targetStub.x},${targetStub.y} L${tgt.x},${tgt.y}`;
+    return (
+      <>
+        <BaseEdge
+          id={id}
+          path={path}
+          markerEnd={markerEnd}
+          style={style}
+          label={label}
+          labelStyle={labelStyle}
+          labelX={through.x}
+          labelY={through.y}
+        />
+        {isSelected && (
+          <EdgeBendHandle
+            point={through}
+            onDrag={handleBendDrag}
+            onDragEnd={handleBendDragEnd}
+            onReset={handleBendReset}
+          />
+        )}
+      </>
+    );
+  }
+
   if (routed) {
     const [p0, p1, p2, p3, p4, p5] = routed;
     // Straight stub segments (`p0`→`p1`, `p4`→`p5`) leave/enter perpendicular to each box's
@@ -626,34 +805,55 @@ function OffsetEdge({
     const path = `M${p0.x},${p0.y} L${p1.x},${p1.y} C${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y} L${p5.x},${p5.y}`;
     // The midpoint of the detour's own curved middle segment (the part that's actually clearing
     // the obstacle) reads better than the path's literal midpoint, which can land on one of the
-    // short stub segments right next to a box.
+    // short stub segments right next to a box. Also where a fresh manual bend starts from if the
+    // user grabs the handle here — see `EdgeBendHandle`'s own doc comment.
     const labelX = (p1.x + p4.x) / 2;
     const labelY = (p1.y + p4.y) / 2;
     return (
-      <BaseEdge
-        id={id}
-        path={path}
-        markerEnd={markerEnd}
-        style={style}
-        label={label}
-        labelStyle={labelStyle}
-        labelX={labelX}
-        labelY={labelY}
-      />
+      <>
+        <BaseEdge
+          id={id}
+          path={path}
+          markerEnd={markerEnd}
+          style={style}
+          label={label}
+          labelStyle={labelStyle}
+          labelX={labelX}
+          labelY={labelY}
+        />
+        {isSelected && (
+          <EdgeBendHandle
+            point={{ x: labelX, y: labelY }}
+            onDrag={handleBendDrag}
+            onDragEnd={handleBendDragEnd}
+            onReset={handleBendReset}
+          />
+        )}
+      </>
     );
   }
 
   return (
-    <BaseEdge
-      id={id}
-      path={defaultPath}
-      markerEnd={markerEnd}
-      style={style}
-      label={label}
-      labelStyle={labelStyle}
-      labelX={defaultLabelX}
-      labelY={defaultLabelY}
-    />
+    <>
+      <BaseEdge
+        id={id}
+        path={defaultPath}
+        markerEnd={markerEnd}
+        style={style}
+        label={label}
+        labelStyle={labelStyle}
+        labelX={defaultLabelX}
+        labelY={defaultLabelY}
+      />
+      {isSelected && (
+        <EdgeBendHandle
+          point={{ x: defaultLabelX, y: defaultLabelY }}
+          onDrag={handleBendDrag}
+          onDragEnd={handleBendDragEnd}
+          onReset={handleBendReset}
+        />
+      )}
+    </>
   );
 }
 
@@ -1080,7 +1280,20 @@ export function ArchitectureDiagramPanel({
     return rawEdges.map((edge) => ({
       ...edge,
       type: "offset",
-      data: { offsetIndex: offsets[edge.id] ?? 0 },
+      // `architectureId`: `OffsetEdge` needs it to read/write this Connector's manual bend
+      // (`connectorBends.ts`) — threaded through `data` since it's a top-level function
+      // component, not a closure inside this panel, and `EdgeProps` has no prop for it.
+      // `isSelected`: found live — this app never sets React Flow's own `edge.selected` (only
+      // nodes get that treatment, below), so `EdgeProps.selected` is always false for a
+      // Connector; the bend handle needs `data.isSelected` instead, recomputed the same way
+      // the label's underline (`isSelected` above, scoped to the other `.map` this one can't
+      // see into) already is — matching how the sidebar's own "Selected Collection" already
+      // reflects `diagramSelection`.
+      data: {
+        offsetIndex: offsets[edge.id] ?? 0,
+        architectureId,
+        isSelected: diagramSelection?.kind === "connector" && diagramSelection.id === edge.id,
+      },
     }));
   }, [connectors, diagramSelection, architectureId]);
 

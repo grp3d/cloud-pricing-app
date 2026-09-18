@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  absoluteToBendPoint,
+  bendPointToAbsolute,
+  buildManualBendRoute,
   chooseConnectorSides,
   offsetPoint,
   routeAroundObstacles,
   sampleCubicBezier,
   sampleQuadraticBezier,
+  solveQuadraticControlPoint,
   type ConnectorSide,
   type Point,
   type Rect,
@@ -350,5 +354,141 @@ describe("sampleQuadraticBezier", () => {
     // At t=0.5, a quadratic bezier sits at the midpoint of the two edge-midpoints -- halfway
     // between the line's own midpoint (50,0) and the control point (50,100).
     expect(points[1]).toEqual({ x: 50, y: 50 });
+  });
+});
+
+// Manual Connector bending (live user request): a bend point is stored chord-relative -- {t, d}
+// relative to the source->target line -- specifically so it scales naturally when either
+// endpoint moves, rather than needing separate "keep the intent" recomputation logic.
+describe("bendPointToAbsolute", () => {
+  it("t=0.5, d=0 is the exact chord midpoint", () => {
+    const source = { x: 0, y: 0 };
+    const target = { x: 100, y: 0 };
+    expect(bendPointToAbsolute(source, target, { t: 0.5, d: 0 })).toEqual({ x: 50, y: 0 });
+  });
+
+  it("t=0 is the source itself, t=1 is the target itself, regardless of d", () => {
+    const source = { x: 0, y: 0 };
+    const target = { x: 100, y: 0 };
+    expect(bendPointToAbsolute(source, target, { t: 0, d: 0.5 }).x).toBe(0);
+    expect(bendPointToAbsolute(source, target, { t: 1, d: 0.5 }).x).toBe(100);
+  });
+
+  it("d offsets perpendicular to the chord, scaled by the chord's own length", () => {
+    const source = { x: 0, y: 0 };
+    const target = { x: 100, y: 0 }; // horizontal chord, length 100
+    const point = bendPointToAbsolute(source, target, { t: 0.5, d: 0.2 });
+    // Perpendicular to a horizontal chord is vertical; 0.2 * length(100) = 20.
+    expect(point.x).toBe(50);
+    expect(Math.abs(point.y)).toBeCloseTo(20);
+  });
+
+  it("the same d produces a proportionally larger offset on a longer chord", () => {
+    const source = { x: 0, y: 0 };
+    const shortTarget = { x: 100, y: 0 };
+    const longTarget = { x: 400, y: 0 };
+    const shortPoint = bendPointToAbsolute(source, shortTarget, { t: 0.5, d: 0.2 });
+    const longPoint = bendPointToAbsolute(source, longTarget, { t: 0.5, d: 0.2 });
+    expect(Math.abs(longPoint.y)).toBeCloseTo(Math.abs(shortPoint.y) * 4);
+  });
+
+  it("collapses toward zero offset as the chord itself collapses toward zero length", () => {
+    const source = { x: 0, y: 0 };
+    const nearlyCoincidentTarget = { x: 0.001, y: 0 };
+    const point = bendPointToAbsolute(source, nearlyCoincidentTarget, { t: 0.5, d: 0.2 });
+    // Intentional (per design discussion): no minimum floor -- the bulge is allowed to
+    // collapse flat when there's nothing meaningful left to bend around.
+    expect(Math.abs(point.y)).toBeLessThan(0.001);
+  });
+});
+
+describe("absoluteToBendPoint", () => {
+  it("is the exact inverse of bendPointToAbsolute for well-inside points", () => {
+    const source = { x: 10, y: 20 };
+    const target = { x: 210, y: 120 };
+    const original = { t: 0.35, d: -0.15 };
+    const absolute = bendPointToAbsolute(source, target, original);
+    const roundTripped = absoluteToBendPoint(source, target, absolute);
+    expect(roundTripped.t).toBeCloseTo(original.t);
+    expect(roundTripped.d).toBeCloseTo(original.d);
+  });
+
+  it("clamps t away from the endpoints -- never exactly 0 or 1", () => {
+    const source = { x: 0, y: 0 };
+    const target = { x: 100, y: 0 };
+    expect(absoluteToBendPoint(source, target, source).t).toBe(0.05);
+    expect(absoluteToBendPoint(source, target, target).t).toBe(0.95);
+  });
+
+  it("clamps a point dragged past either endpoint the same way", () => {
+    const source = { x: 0, y: 0 };
+    const target = { x: 100, y: 0 };
+    expect(absoluteToBendPoint(source, target, { x: -50, y: 0 }).t).toBe(0.05);
+    expect(absoluteToBendPoint(source, target, { x: 150, y: 0 }).t).toBe(0.95);
+  });
+});
+
+describe("solveQuadraticControlPoint", () => {
+  it("produces a curve that passes exactly through the target point at parameter t", () => {
+    const p0 = { x: 0, y: 0 };
+    const p2 = { x: 100, y: 0 };
+    const through = { x: 40, y: 30 };
+    const t = 0.4;
+    const control = solveQuadraticControlPoint(p0, p2, through, t);
+    const onCurve = sampleQuadraticBezier(p0, control, p2, 1000)[Math.round(t * 1000)];
+    expect(onCurve.x).toBeCloseTo(through.x, 1);
+    expect(onCurve.y).toBeCloseTo(through.y, 1);
+  });
+
+  it("the solved control point equals the target itself at t=0.5 on a symmetric chord", () => {
+    // At t=0.5, B(0.5) = 0.25*p0 + 0.5*C + 0.25*p2, so solving for C when p0/p2 are symmetric
+    // around `through`'s x reduces to a simple, independently-verifiable case.
+    const p0 = { x: 0, y: 0 };
+    const p2 = { x: 100, y: 0 };
+    const through = { x: 50, y: 40 };
+    const control = solveQuadraticControlPoint(p0, p2, through, 0.5);
+    expect(control).toEqual({ x: 50, y: 80 });
+  });
+});
+
+describe("buildManualBendRoute", () => {
+  it("the curve passes through the bend point when no side stubs are given", () => {
+    const source = { x: 0, y: 0 };
+    const target = { x: 100, y: 0 };
+    const bendPoint = { t: 0.5, d: 0.3 };
+    const { sourceStub, control, targetStub, through } = buildManualBendRoute(
+      source,
+      target,
+      bendPoint,
+    );
+    expect(sourceStub).toEqual(source);
+    expect(targetStub).toEqual(target);
+    const onCurve = sampleQuadraticBezier(sourceStub, control, targetStub, 1000)[
+      Math.round(bendPoint.t * 1000)
+    ];
+    expect(onCurve.x).toBeCloseTo(through.x, 1);
+    expect(onCurve.y).toBeCloseTo(through.y, 1);
+  });
+
+  it("extends stubs outward from each side when sides are given", () => {
+    const source = { x: 0, y: 0 };
+    const target = { x: 100, y: 0 };
+    const { sourceStub, targetStub } = buildManualBendRoute(
+      source,
+      target,
+      { t: 0.5, d: 0 },
+      "left",
+      "right",
+    );
+    expect(sourceStub.x).toBeLessThan(source.x); // "left" points outward, i.e. more negative x
+    expect(targetStub.x).toBeGreaterThan(target.x); // "right" points outward, i.e. more positive x
+  });
+
+  it("through matches bendPointToAbsolute for the same inputs", () => {
+    const source = { x: 10, y: 5 };
+    const target = { x: 210, y: 105 };
+    const bendPoint = { t: 0.6, d: -0.25 };
+    const { through } = buildManualBendRoute(source, target, bendPoint);
+    expect(through).toEqual(bendPointToAbsolute(source, target, bendPoint));
   });
 });
