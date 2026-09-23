@@ -43,9 +43,24 @@ types are generated from this — see `frontend/README.md`).
 TEST_DATABASE_URL="postgresql+psycopg://localhost/cloud_pricing_test" pytest
 ```
 
-Contract and integration tests run against a real Postgres database and the real AWS pricing
-Parquet data (no mocks for either — per the constitution, pricing data is only ever read from
-its real source). Unit tests in `tests/unit/` run without either.
+The tests run against a real Postgres database and real AWS pricing Parquet data (no mocks for
+either — per the constitution, pricing data is only ever read from its real source). Every test
+module needs Postgres, because `tests/conftest.py` cleans the tables before each test.
+
+`tests/fixtures/pricing_parquet/` is a small (~300 KB) verbatim subset of the upstream data. It
+holds one snapshot, with every table and region partition, but only the SKUs the tests reference.
+CI uses it, and you can too:
+
+```bash
+AWS_PRICING_PARQUET_DIR="$PWD/tests/fixtures/pricing_parquet" \
+TEST_DATABASE_URL="postgresql+psycopg://localhost/cloud_pricing_test" pytest
+```
+
+Rebuild it after a test starts depending on a new SKU (add the SKU to `SEED_SKUS` first):
+
+```bash
+uv run python scripts/build_test_pricing_fixture.py --source /path/to/DATA/pricing_aws/parquet
+```
 
 ## Lint
 

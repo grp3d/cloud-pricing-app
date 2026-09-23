@@ -238,7 +238,7 @@ def test_invalid_to_region_code_pattern_raises_with_field_name():
 KNOWN_US_EAST_1_ONLY_SKU = "NN4EGUUQRWVYP98C"
 # A real AmazonEC2 t3.medium SKU whose product_dim row's own `region_code` is genuinely
 # `eu-west-1` (verified directly against the real Parquet data).
-KNOWN_EU_WEST_1_ONLY_SKU = "FRY78BUQYV58QJXY"
+KNOWN_EU_WEST_1_ONLY_SKU = "47NTBKB4KMUU98P8"
 
 
 def test_search_excludes_a_sku_whose_own_region_code_does_not_match_the_requested_region():

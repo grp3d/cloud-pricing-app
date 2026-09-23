@@ -13,12 +13,21 @@ jobs:
         image: postgres:18
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: cloud_pricing_test
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+    env:
+      # tests/conftest.py reads TEST_DATABASE_URL (not DATABASE_URL) and its default has no
+      # user, so without it the runner's OS user ("runner") is used and doesn't exist.
+      DATABASE_URL: postgresql+psycopg://postgres@localhost/cloud_pricing_test
+      TEST_DATABASE_URL: postgresql+psycopg://postgres@localhost/cloud_pricing_test
+      # A small real subset of the upstream AWS pricing Parquet data, committed to the repo
+      # (rebuild with backend/scripts/build_test_pricing_fixture.py).
+      AWS_PRICING_PARQUET_DIR: ${{ github.workspace }}/backend/tests/fixtures/pricing_parquet
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
@@ -26,15 +35,10 @@ jobs:
         working-directory: backend
       - run: uv run ruff check src/
         working-directory: backend
-      # Contract/integration tests need the real AWS pricing Parquet fixture data, which lives
-      # outside this repo (produced by a separate upstream project) — CI runs the DB-independent
-      # unit suite only. Contract/integration tests are run locally per backend/README.md.
       - run: |
           uv run alembic upgrade head
-          uv run pytest tests/unit -v
+          uv run pytest -v
         working-directory: backend
-        env:
-          DATABASE_URL: postgresql+psycopg://postgres@localhost/postgres
 
   frontend:
     runs-on: ubuntu-latest
