@@ -33,9 +33,19 @@ import {
 } from "../lib/columnWidths";
 import {
   decideBaselineUpdate,
+  pricedContentsEqual,
   type PriceChangeSelection,
-  type PriorCalculation,
+  type PricedContentsEntry,
 } from "../lib/priceChange";
+import {
+  applyCalculationSuccess,
+  readPricingResult,
+  removePricingResult,
+  shouldAutoCalculate,
+  writePricingResult,
+  type CalculationRequestVars,
+  type PricingResultEntry,
+} from "../lib/architecturePricingResults";
 import { readPriorCalculation, writePriorCalculation } from "../lib/priorCalculation";
 
 function errorMessageOf(err: unknown): string {
@@ -189,6 +199,18 @@ function WorkspacePageInner() {
     onSuccess: (_data, id) => {
       setPendingDeleteArchitectureId(null);
       setActionError(null);
+      // 015-canvas-service-icons, spec Edge Cases: a deleted Architecture's stored result goes too.
+      removePricingResult(id);
+      setResultEntries((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+      setCalculationErrors((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
       queryClient.invalidateQueries({ queryKey: ["architectures"] });
       if (architectureId === id) navigate("/");
     },
@@ -275,6 +297,28 @@ function WorkspacePageInner() {
       })),
     [skuSelectionsById],
   );
+
+  // 015-canvas-service-icons, FR-018a (data-model.md §4): the same pricing inputs plus the
+  // region each is priced in — a Collection's own region, or a Connector's "from" Collection's
+  // — compared against a stored result's to flag it as out of date.
+  const currentPricedContents = useMemo<PricedContentsEntry[]>(() => {
+    const regionByCollectionId = new Map(collections.map((c) => [c.id, c.region]));
+    const entries: PricedContentsEntry[] = [];
+    const add = (s: (typeof collections)[number]["sku_selections"][number], region?: string) =>
+      entries.push({
+        service_code: s.service_code,
+        sku: s.sku,
+        pricing_term: s.pricing_term,
+        purchase_option: s.purchase_option,
+        usage_quantity: s.usage_quantity,
+        region: region ?? null,
+      });
+    for (const c of collections) for (const s of c.sku_selections) add(s, c.region);
+    for (const conn of connectors) {
+      if (conn.sku_selection) add(conn.sku_selection, regionByCollectionId.get(conn.from_collection_id));
+    }
+    return entries;
+  }, [collections, connectors]);
 
   // --- Selection state shared across columns 2-4 ---
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
@@ -488,65 +532,158 @@ function WorkspacePageInner() {
 
   // --- Column 5: duration + Calculate ---
   const [calculationDuration, setCalculationDuration] = useState<CalculationDuration>("1_month");
-  const [calculation, setCalculation] = useState<Awaited<ReturnType<typeof api.calculate>> | null>(
-    null,
-  );
-  const [calculationError, setCalculationError] = useState<string | null>(null);
 
-  // --- Price Change (US5, FR-015/016/016a/016b) ---
-  // The last-accepted baseline for the *current* Architecture, and the currently-displayed
-  // Price Change derived from it — both reloaded fresh whenever the selected Architecture
-  // changes (Edge Cases: switching Architectures never mixes baselines), and otherwise left
-  // untouched by anything except a content-changed Calculate (FR-016).
-  const [priorCalculation, setPriorCalculation] = useState<PriorCalculation | null>(null);
-  const [priceChange, setPriceChange] = useState<string | null>(null);
-  useEffect(() => {
-    setPriorCalculation(architectureId ? readPriorCalculation(architectureId) : null);
-    setPriceChange(null);
-  }, [architectureId]);
+  // 015-canvas-service-icons, US4 (FR-015-FR-022, research.md §6): column 5 shows the *active*
+  // Architecture's own last result, never whichever calculation happened to run last. Results
+  // are kept per Architecture (in memory here, persisted per browser by
+  // `architecturePricingResults.ts` so they survive a reload); errors and in-flight requests are
+  // per Architecture too, in memory only. Each calculation carries everything it needs as
+  // mutation variables captured at request time, so one that finishes after the user has
+  // switched Architectures is still recorded against the one it was for (FR-020) — and the
+  // Price Change baseline logic (US5 of 008, `priceChange.ts`) runs against *that*
+  // Architecture's baseline and contents, never the currently-displayed one's.
+  const [resultEntries, setResultEntries] = useState<ReadonlyMap<string, PricingResultEntry>>(
+    () => new Map(),
+  );
+  const resultEntriesRef = useRef(resultEntries);
+  resultEntriesRef.current = resultEntries;
+  const [calculationErrors, setCalculationErrors] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  // The ref is the synchronous source of truth (so a re-render before TanStack's async
+  // `onMutate` can't double-fire an automatic calculation); the state mirrors it for rendering.
+  const inFlightRef = useRef(new Set<string>());
+  const [inFlight, setInFlight] = useState<ReadonlySet<string>>(() => new Set());
+  const markInFlight = useCallback((id: string, pending: boolean) => {
+    if (pending) inFlightRef.current.add(id);
+    else inFlightRef.current.delete(id);
+    setInFlight(new Set(inFlightRef.current));
+  }, []);
+
+  const storedEntry = useMemo(
+    () => (architectureId ? readPricingResult(architectureId) : null),
+    [architectureId],
+  );
+  const activeEntry = architectureId
+    ? (resultEntries.get(architectureId) ?? storedEntry ?? undefined)
+    : undefined;
+  const architectureLoaded = Boolean(architectureId) && architecture.data?.id === architectureId;
 
   const calculate = useMutation({
-    mutationFn: () => api.calculate(architectureId!, calculationDuration),
-    onMutate: () => {
-      setCalculation(null);
-      setCalculationError(null);
-    },
-    onSuccess: async (result) => {
-      setCalculation(result);
-
-      const decision = decideBaselineUpdate({
-        prior: priorCalculation,
-        currentSelections: currentPriceChangeSelections,
-        newDuration: calculationDuration,
+    mutationFn: (vars: CalculationRequestVars) =>
+      api.calculate(vars.architectureId, vars.duration),
+    onMutate: (vars) => {
+      setCalculationErrors((prev) => {
+        const next = new Map(prev);
+        next.delete(vars.architectureId);
+        return next;
       });
-      if (decision === "unchanged") return; // leave the baseline + displayed Price Change as-is
-
-      const newBaseline: PriorCalculation = {
-        total: result.total_price,
-        duration: calculationDuration,
-        selections: currentPriceChangeSelections,
-      };
-
-      if (decision !== "establish") {
-        // "direct": compare directly against the stored baseline's own total. "duration_
-        // adjusted" (content AND Duration both changed, FR-016a) and "duration_only" (Duration
-        // alone changed, 009 FR-002/003) both need the comparison total repriced from the
-        // *prior* selections at the *new* Duration through the real calculation, never a
-        // scaled estimate — this ternary already routes any non-"direct" decision there, so
-        // "duration_only" needed no new branch here.
-        const comparisonTotal =
-          decision === "direct"
-            ? priorCalculation!.total
-            : (await api.calculateSnapshot(calculationDuration, priorCalculation!.selections))
-                .total_price;
-        setPriceChange(String(Number(result.total_price) - Number(comparisonTotal)));
-      }
-
-      setPriorCalculation(newBaseline);
-      if (architectureId) writePriorCalculation(architectureId, newBaseline);
     },
-    onError: (err) => setCalculationError(errorMessageOf(err)),
+    onSuccess: async (result, vars) => {
+      const decision = decideBaselineUpdate({
+        prior: vars.prior,
+        currentSelections: vars.priceChangeSelections,
+        newDuration: vars.duration,
+      });
+      // "direct": compare directly against the stored baseline's own total. "duration_
+      // adjusted" (content AND Duration both changed, FR-016a) and "duration_only" (Duration
+      // alone changed, 009 FR-002/003) both need the comparison total repriced from the
+      // *prior* selections at the *new* Duration through the real calculation, never a
+      // scaled estimate.
+      const comparisonTotal =
+        decision === "direct"
+          ? vars.prior!.total
+          : decision === "duration_adjusted" || decision === "duration_only"
+            ? (await api.calculateSnapshot(vars.duration, vars.prior!.selections)).total_price
+            : null;
+      const { entry, newBaseline } = applyCalculationSuccess({
+        entries: resultEntriesRef.current,
+        vars,
+        result,
+        decision,
+        comparisonTotal,
+        previousEntry:
+          resultEntriesRef.current.get(vars.architectureId) ??
+          readPricingResult(vars.architectureId) ??
+          undefined,
+        now: new Date().toISOString(),
+      });
+      writePricingResult(vars.architectureId, entry);
+      if (newBaseline) writePriorCalculation(vars.architectureId, newBaseline);
+      setResultEntries((prev) => new Map(prev).set(vars.architectureId, entry));
+    },
+    onError: (err, vars) =>
+      setCalculationErrors((prev) =>
+        new Map(prev).set(vars.architectureId, errorMessageOf(err)),
+      ),
+    onSettled: (_data, _err, vars) => markInFlight(vars.architectureId, false),
   });
+
+  const { mutate: mutateCalculation } = calculate;
+
+  /** Start a calculation of the *active* Architecture at `duration`, capturing its contents and
+   * Price Change baseline now (FR-020). Used by Calculate, Retry, and the automatic first
+   * calculation alike, so all three follow the same baseline rules (FR-022). */
+  const startCalculation = useCallback(
+    (duration: CalculationDuration) => {
+      if (!architectureId) return;
+      markInFlight(architectureId, true);
+      mutateCalculation({
+        architectureId,
+        duration,
+        pricedContents: currentPricedContents,
+        priceChangeSelections: currentPriceChangeSelections,
+        prior: readPriorCalculation(architectureId),
+      });
+    },
+    [
+      architectureId,
+      mutateCalculation,
+      currentPricedContents,
+      currentPriceChangeSelections,
+      markInFlight,
+    ],
+  );
+
+  // FR-018b: switching to an Architecture with a stored result shows the Duration that result
+  // was calculated at; one without keeps the current Duration (and is auto-calculated at it).
+  useEffect(() => {
+    if (!architectureId) return;
+    const entry = resultEntriesRef.current.get(architectureId) ?? readPricingResult(architectureId);
+    if (entry) setCalculationDuration(entry.duration);
+  }, [architectureId]);
+
+  // FR-017: calculate automatically the first time an Architecture with services but no stored
+  // result becomes active — once its own data has loaded, so the captured contents are its own.
+  useEffect(() => {
+    if (!architectureLoaded) return;
+    if (
+      shouldAutoCalculate({
+        architectureId,
+        hasSelections: skuSelectionsById.size > 0,
+        hasStoredEntry: activeEntry !== undefined,
+        isInFlight: Boolean(architectureId && inFlightRef.current.has(architectureId)),
+        hasError: Boolean(architectureId && calculationErrors.has(architectureId)),
+      })
+    ) {
+      startCalculation(calculationDuration);
+    }
+  }, [
+    architectureLoaded,
+    architectureId,
+    skuSelectionsById,
+    activeEntry,
+    calculationErrors,
+    startCalculation,
+    calculationDuration,
+  ]);
+
+  const isActiveCalculating = Boolean(architectureId && inFlight.has(architectureId));
+  // FR-018a: the stored result no longer matches what the Architecture would price today.
+  const isOutOfDate =
+    architectureLoaded &&
+    activeEntry !== undefined &&
+    !pricedContentsEqual(activeEntry.pricedContents, currentPricedContents);
 
   // --- Derived view state for the panels ---
   const selectedCollection = collections.find((c) => c.id === selectedCollectionId);
@@ -771,14 +908,16 @@ function WorkspacePageInner() {
           <PricingPanel
             duration={calculationDuration}
             onDurationChange={setCalculationDuration}
-            onCalculate={() => calculate.mutate()}
-            isCalculating={calculate.isPending}
-            calculation={calculation}
-            calculationError={calculationError}
-            onRetry={() => calculate.mutate()}
+            onCalculate={() => startCalculation(calculationDuration)}
+            isCalculating={isActiveCalculating}
+            // As before 015, a result isn't shown while its own recalculation is running.
+            calculation={isActiveCalculating ? null : (activeEntry?.result ?? null)}
+            calculationError={(architectureId && calculationErrors.get(architectureId)) || null}
+            onRetry={() => startCalculation(calculationDuration)}
             width={columnWidths.pricing}
-            priceChange={priceChange}
+            priceChange={activeEntry?.priceChange ?? null}
             skuAttributesById={skuAttributesById}
+            isOutOfDate={isOutOfDate && !isActiveCalculating}
           />
         </>
       )}

@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from src.models.orm import Architecture, Collection, DataConnector, SKUSelection, User
 from src.models.schemas import ArchitectureDetailOut, SKUSelectionOut
-from src.pricing_data.catalog import resolve_attributes
+from src.pricing_data.catalog import resolve_product_details
 from src.pricing_data.pricing import resolve_units
 from src.pricing_data.regions import list_available_regions
 
@@ -229,10 +229,11 @@ def _unit_key(selection: SKUSelection) -> tuple[str, str, str]:
 
 
 def sku_selection_out_with_unit(selection: SKUSelection, *, region: str) -> SKUSelectionOut:
-    """Build a `SKUSelectionOut` for one SKU Selection with `unit` and `attributes` resolved and
-    attached (003-service-selection-improvements FR-004/FR-005;
-    004-canvas-pricing-improvements FR-014). Used by the single-object endpoints (add/update a
-    SKU Selection, attach one to a Data Connector) — for a whole Architecture's nested tree,
+    """Build a `SKUSelectionOut` for one SKU Selection with `unit`, `attributes`, and
+    `product_family` resolved and attached (003-service-selection-improvements FR-004/FR-005;
+    004-canvas-pricing-improvements FR-014; 015-canvas-service-icons, contracts/api.md). Used
+    by the single-object endpoints (add/update a SKU Selection, attach one to a Data
+    Connector) — for a whole Architecture's nested tree,
     batch through `attach_units_to_architecture` instead so many selections cost one DuckDB
     query each, not N. `region` (010-multi-region-support) is the owning Collection's region,
     or, for a Connector-owned selection, the Connector's "from" Collection's region — the
@@ -241,9 +242,10 @@ def sku_selection_out_with_unit(selection: SKUSelection, *, region: str) -> SKUS
     out = SKUSelectionOut.model_validate(selection)
     key = _unit_key(selection)
     out.unit = resolve_units([key], region=region).get(key)
-    out.attributes = resolve_attributes(
-        [(selection.service_code, selection.sku)], region=region
-    ).get((selection.service_code, selection.sku), {})
+    key_pair = (selection.service_code, selection.sku)
+    details = resolve_product_details([key_pair], region=region)[key_pair]
+    out.attributes = details.attributes
+    out.product_family = details.product_family
     return out
 
 
@@ -251,11 +253,12 @@ def _region_grouped_batch_resolve(
     selections: list[SKUSelection], selection_regions: dict[uuid.UUID, str | None]
 ) -> tuple[dict, dict]:
     """Groups `selections` by their resolved region and calls `resolve_units`/
-    `resolve_attributes` once per distinct region, merging the results (010-multi-region-
+    `resolve_product_details` once per distinct region, merging the results (010-multi-region-
     support, research.md §11) — safe to merge since AWS SKU codes are themselves region-scoped,
     so a SKU from one region's partition never collides with another's. Selections with no
-    resolved region (the defensive fallback, data-model.md) are skipped — `unit`/`attributes`
-    stay unresolved (`None`/`{}`) for them, same as any other unmatched key.
+    resolved region (the defensive fallback, data-model.md) are skipped — `unit`/`attributes`/
+    `product_family` stay unresolved (`None`/`{}`/`None`) for them, same as any other unmatched
+    key.
     """
     by_region: dict[str, list[SKUSelection]] = {}
     for selection in selections:
@@ -265,21 +268,22 @@ def _region_grouped_batch_resolve(
         by_region.setdefault(region, []).append(selection)
 
     units: dict = {}
-    attributes: dict = {}
+    details: dict = {}
     for region, region_selections in by_region.items():
         units.update(
             resolve_units([_unit_key(s) for s in region_selections], region=region)
         )
-        attributes.update(
-            resolve_attributes(
+        details.update(
+            resolve_product_details(
                 [(s.service_code, s.sku) for s in region_selections], region=region
             )
         )
-    return units, attributes
+    return units, details
 
 
 def attach_units_to_architecture(detail: ArchitectureDetailOut, architecture: Architecture) -> None:
-    """Batch-resolve and attach `unit` and `attributes` to every SKU Selection nested in an
+    """Batch-resolve and attach `unit`, `attributes`, and `product_family` (015) to every SKU
+    Selection nested in an
     Architecture's response tree — one DuckDB query per field per distinct region present, not
     one per SKU Selection (003-service-selection-improvements FR-004/FR-005, research.md #3;
     004-canvas-pricing-improvements FR-014, research.md #5; 010-multi-region-support §11).
@@ -311,11 +315,14 @@ def attach_units_to_architecture(detail: ArchitectureDetailOut, architecture: Ar
     ]
     if not orm_selections:
         return
-    units, attributes = _region_grouped_batch_resolve(orm_selections, selection_regions)
+    units, details = _region_grouped_batch_resolve(orm_selections, selection_regions)
 
     def _attach(selection_out: SKUSelectionOut, selection: SKUSelection) -> None:
         selection_out.unit = units.get(_unit_key(selection))
-        selection_out.attributes = attributes.get((selection.service_code, selection.sku), {})
+        resolved = details.get((selection.service_code, selection.sku))
+        if resolved is not None:
+            selection_out.attributes = resolved.attributes
+            selection_out.product_family = resolved.product_family
 
     for collection_out, collection in zip(
         detail.collections, architecture.collections, strict=True

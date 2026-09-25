@@ -61,10 +61,15 @@ export function useMeasuredHeight<T extends HTMLElement>(): [RefCallback<T>, num
 
   // Runs after every render (deliberately no dependency array) — the primary measurement
   // path; see the module comment above for why this, not `ResizeObserver` alone, is now the
-  // one this hook leans on.
+  // one this hook leans on. 015-canvas-service-icons: reads `offsetHeight` (layout size), not
+  // `getBoundingClientRect()` — the measured element lives inside React Flow's zoomed viewport,
+  // and a bounding rect includes that CSS transform, so at the default 0.7 zoom it under-reported
+  // (clipping a box's last row) and when zoomed in it over-reported, while the `ResizeObserver`
+  // path above (untransformed `contentRect`) reported the true size. Both paths now agree, in
+  // the node's own coordinate space, which is what the box's height is set in.
   useLayoutEffect(() => {
     if (elRef.current) {
-      setMeasuredHeight(Math.ceil(elRef.current.getBoundingClientRect().height));
+      setMeasuredHeight(Math.ceil(elRef.current.offsetHeight));
     }
   });
 

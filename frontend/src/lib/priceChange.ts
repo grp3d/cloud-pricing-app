@@ -75,14 +75,34 @@ function selectionKey(s: PriceChangeSelection): string {
   ]);
 }
 
-/** Order-independent (multiset) equality — the architecture's contents are "the same" if
- * every selection in one array has a matching selection in the other, regardless of which
+/** Order-independent (multiset) equality under `key` — the architecture's contents are "the
+ * same" if every entry in one array has a matching entry in the other, regardless of which
  * Collection/Connector each came from or what order iteration produced them in. */
-function selectionsEqual(a: PriceChangeSelection[], b: PriceChangeSelection[]): boolean {
+function multisetEqual<T>(a: T[], b: T[], key: (item: T) => string): boolean {
   if (a.length !== b.length) return false;
-  const aKeys = a.map(selectionKey).sort();
-  const bKeys = b.map(selectionKey).sort();
-  return aKeys.every((key, i) => key === bKeys[i]);
+  const aKeys = a.map(key).sort();
+  const bKeys = b.map(key).sort();
+  return aKeys.every((k, i) => k === bKeys[i]);
+}
+
+function selectionsEqual(a: PriceChangeSelection[], b: PriceChangeSelection[]): boolean {
+  return multisetEqual(a, b, selectionKey);
+}
+
+/** One priced service as a stored pricing result recorded it (015-canvas-service-icons,
+ * data-model.md §4): its pricing inputs plus the region it was priced in — the owning
+ * Collection's region, or a Connector's "from" Collection's — since moving a service to a
+ * different region changes its price as surely as changing its quantity does. */
+export interface PricedContentsEntry extends PriceChangeSelection {
+  region: string | null;
+}
+
+/** Whether an architecture's current priced contents still match the ones a stored result was
+ * calculated from — `false` drives the "Architecture has been updated since last pricing"
+ * notice (015, FR-018a, research.md §7). Same multiset semantics as the Price Change baseline
+ * comparison, with the region included. */
+export function pricedContentsEqual(a: PricedContentsEntry[], b: PricedContentsEntry[]): boolean {
+  return multisetEqual(a, b, (e) => JSON.stringify([selectionKey(e), e.region]));
 }
 
 export function decideBaselineUpdate(params: {

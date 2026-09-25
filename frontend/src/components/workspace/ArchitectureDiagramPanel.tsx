@@ -18,6 +18,7 @@ import {
   useNodes,
   useOnSelectionChange,
   useReactFlow,
+  useStore,
   useViewport,
   type Connection,
   type Edge,
@@ -40,9 +41,10 @@ import {
   childYOffsets,
   computeMeasuredHeight,
 } from "../../pages/nodeLayout";
-import { summarizeAttributes } from "../../lib/skuDetail";
 import { edgeOffsetIndex } from "../../lib/edgeOffset";
 import { awsDataTransferLabel } from "../../lib/awsDataTransfer";
+import { resolveAwsServiceIcon } from "../../lib/awsServiceIcons";
+import { buildServicePopupLines, servicePopupAccessibleName } from "../../lib/servicePopup";
 import {
   readDiagramLayout,
   writeCollectionLayout,
@@ -71,18 +73,84 @@ import {
   type ConnectorBend,
 } from "../../lib/connectorBends";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
-/** Shared service-list rendering for both node types (004, FR-015). Each listed service is now
+/** One service on the canvas as its AWS icon (015-canvas-service-icons, FR-001/FR-002/FR-006):
+ * the resolved service icon (product-family override, then service code, then the generic
+ * fallback — `awsServiceIcons.ts`) in a 24px button that selects the service exactly as the
+ * old text row did. Theme-aware icons (the fallback and AWSDataTransfer's Data Stream icon) render
+ * both variants, one hidden per theme. The pixel size is fixed in node space, so it scales with
+ * the canvas zoom through React Flow's viewport transform like every other node label (FR-013).
+ * Hovering or focusing it shows the service's details one labeled line each (FR-008-FR-011,
+ * `servicePopup.ts`), which are also its accessible name (FR-012). The pop-up portals outside
+ * the zoomed viewport, so it can't inherit the canvas's scale: its font size tracks the live
+ * zoom instead (FR-014, research.md §5) — the tooltip's normal `text-xs` at the canvas's default
+ * zoom (the readout's "100%"), proportionally larger or smaller from there. Sized through real
+ * `font-size`/`em` rather than a CSS `transform`, so Radix's placement and collision handling
+ * still measure the true box. */
+function ServiceIconButton({
+  selection,
+  isSelected,
+  onSelectService,
+}: {
+  selection: Collection["sku_selections"][number];
+  isSelected: boolean;
+  onSelectService: (skuSelectionId: string) => void;
+}) {
+  const icon = resolveAwsServiceIcon(selection.service_code, selection.product_family);
+  const popupLines = buildServicePopupLines(selection);
+  const zoom = useStore((state) => state.transform[2]);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={servicePopupAccessibleName(popupLines)}
+          aria-pressed={isSelected}
+          className={`size-6 shrink-0 rounded-sm p-0 hover:ring-2 hover:ring-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+            isSelected ? "ring-2 ring-primary" : ""
+          }`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelectService(selection.id);
+          }}
+        >
+          {icon.lightUrl === icon.darkUrl ? (
+            <img src={icon.lightUrl} alt="" draggable={false} className="size-6" />
+          ) : (
+            <>
+              <img src={icon.lightUrl} alt="" draggable={false} className="size-6 dark:hidden" />
+              <img
+                src={icon.darkUrl}
+                alt=""
+                draggable={false}
+                className="hidden size-6 dark:block"
+              />
+            </>
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        className="max-w-[40em] flex-col items-start gap-0 px-[0.8em] py-[0.5em]"
+        style={{ fontSize: `calc(var(--text-xs) * ${zoom / DEFAULT_DIAGRAM_ZOOM})` }}
+      >
+        {popupLines.map((line, i) => (
+          <div key={i}>{line}</div>
+        ))}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Shared service-list rendering for both node types (004, FR-015). Each listed service is
  * independently clickable (007-ui-overhaul-shadcn, FR-014) — `stopPropagation` keeps that click
  * from also being interpreted as a click on the containing box (which selects the Collection as
- * a whole, unchanged from 002-006).
- *
- * 009-ui-fixes-next-iteration, US7: each item gets its own border (FR-019); the
- * currently-selected service's name is underlined, exclusively (FR-025, `selectedServiceId` —
- * see `WorkspacePage.tsx`'s `diagramSelection`). Text size: `text-4xs` (009) → `text-3xs`
- * (this session's earlier live edit) → `text-2xs` (011-canvas-connector-popout, spec FR-001,
- * one step below 008's `text-xs` floor) — the next increment up the app's own scale. */
-function ServiceList({
+ * a whole, unchanged from 002-006). 015-canvas-service-icons (FR-001, FR-005): each service is
+ * now an icon rather than a `service_code / sku — detail` text row, wrapping onto as many rows
+ * as the box needs (the node's measured height follows); the same service may repeat. The
+ * currently-selected service is marked exclusively (`selectedServiceId` — see
+ * `WorkspacePage.tsx`'s `diagramSelection`). */
+export function ServiceList({
   skuSelections,
   selectedServiceId,
   onSelectService,
@@ -105,32 +173,18 @@ function ServiceList({
     );
   }
   return (
-    <ul className="mt-1 list-none pl-0 text-2xs">
-      {skuSelections.map((s) => {
-        const detail = summarizeAttributes(s.attributes);
-        // 009-ui-fixes-next-iteration, US9, FR-027/028: the derived region-pair label
-        // replaces the raw SKU here for AWSDataTransfer Services; every other Service is
-        // unaffected (FR-030) since this is `null` for them.
-        const dataTransferLabel = awsDataTransferLabel(s.service_code, s.attributes);
-        return (
-          <li key={s.id}>
-            <button
-              type="button"
-              className={`w-full rounded border border-border px-1 py-0.5 text-left hover:bg-accent hover:text-accent-foreground ${
-                s.id === selectedServiceId ? "underline" : ""
-              }`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectService(s.id);
-              }}
-            >
-              {s.service_code} / {dataTransferLabel ?? s.sku}
-              {detail && <> — {detail}</>}
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+    // `pb-3`: keeps a full last row of icons clear of the box's bottom-right region label
+    // (010, FR-019), which is absolutely positioned and so takes no space of its own.
+    <div className="mt-1 flex flex-wrap gap-1 pb-3">
+      {skuSelections.map((s) => (
+        <ServiceIconButton
+          key={s.id}
+          selection={s}
+          isSelected={s.id === selectedServiceId}
+          onSelectService={onSelectService}
+        />
+      ))}
+    </div>
   );
 }
 

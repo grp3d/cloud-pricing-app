@@ -151,6 +151,11 @@ class SKUSelectionOut(ORMBase):
     # when unavailable. Lets the canvas diagram show an identifying detail per service without
     # a second catalog lookup (004, FR-014).
     attributes: dict[str, str] = {}
+    # The SKU's catalog product family (e.g. "NAT Gateway"), resolved read-only from Parquet at
+    # response time alongside `attributes` and never stored — lets the canvas pick a
+    # product-family-specific icon (015-canvas-service-icons, contracts/api.md). `None` when the
+    # SKU has no catalog row or its product family is empty.
+    product_family: str | None = None
 
 
 # --- Collection --------------------------------------------------------------------------

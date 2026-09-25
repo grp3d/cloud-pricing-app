@@ -1027,6 +1027,8 @@ export interface components {
             attributes: {
                 [key: string]: string;
             };
+            /** Product Family */
+            product_family?: string | null;
         };
         /** SKUSelectionUpdate */
         SKUSelectionUpdate: {

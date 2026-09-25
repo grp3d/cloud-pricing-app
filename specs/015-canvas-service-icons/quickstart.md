@@ -113,3 +113,25 @@ succeeds.
    - **Expected**: the lines wrap and unwrap exactly as before.
 3. Narrow column 5 to its minimum.
    - **Expected**: the heading truncates rather than overlapping the toggle.
+
+## Validation notes (2026-09-25 run)
+
+Run against a local dev server as Admin, on the four standard architectures plus one throwaway
+architecture that was created and deleted. §3–§7 behaved as expected, with these findings:
+
+- **Fixed during validation: canvas boxes were measured at the zoomed size.**
+  `useMeasuredHeight`'s layout-effect path read `getBoundingClientRect()`, which includes React
+  Flow's zoom transform. At the default 0.7 zoom this under-sized boxes and clipped the last row
+  of icons (the old text rows were clipped the same way), and when zoomed in it over-sized them.
+  It now reads `offsetHeight`, so both measurement paths agree in the box's own coordinates.
+- **Fixed during validation: region label overlap.** A full last row of icons ran underneath a
+  box's bottom-right region label. The icon row now reserves bottom padding for it.
+- **Pre-existing, not addressed here: Price Change after a Duration change is wrong outside
+  `us-east-1`.** Repricing the prior selections at the new Duration uses
+  `build_transient_architecture`, which pins every selection to `us-east-1`
+  (010-multi-region-support). For an architecture in another region the comparison total is
+  near $0, so "Price Change" shows roughly the whole price (e.g. Serverless Microservices
+  Back-End, `eu-west-1`, 1 month → 1 year showed +1,605.03). A fix would send each selection's
+  region with the snapshot request; the stored result's `pricedContents` now records it.
+- The pop-up follows canvas zoom as designed, so at high zoom (e.g. 257% after fit-view) it is
+  large.

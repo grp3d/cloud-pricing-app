@@ -41,6 +41,8 @@ async def test_add_sku_selection(client, auth_headers):
     assert resp.json()["unit"] == "Hrs"
     # 004-canvas-pricing-improvements FR-014.
     assert resp.json()["attributes"]["instanceType"] == "t3.medium"
+    # 015-canvas-service-icons, contracts/api.md.
+    assert resp.json()["product_family"] == "Compute Instance"
 
 
 @pytest.mark.asyncio
@@ -89,6 +91,7 @@ async def test_update_sku_selection_pricing_inputs(client, auth_headers):
     assert resp.status_code == 200
     assert resp.json()["usage_quantity"] == "500.0000"
     assert resp.json()["unit"] == "Hrs"
+    assert resp.json()["product_family"] == "Compute Instance"  # 015, contracts/api.md
 
 
 @pytest.mark.asyncio

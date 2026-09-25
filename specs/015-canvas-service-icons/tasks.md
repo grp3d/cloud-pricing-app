@@ -35,7 +35,7 @@ tests may follow implementation.
 
 **Purpose**: Generate the static icon assets and mapping that US1–US3 render.
 
-- [ ] T001 Create `backend/scripts/generate_aws_service_icon_map.py` per research.md §1 and §4.
+- [X] T001 Create `backend/scripts/generate_aws_service_icon_map.py` per research.md §1 and §4.
   - **CLI**: `--icons <aws_architecture_icons dir>` and `--parquet <pricing parquet dir>`, defaulting to `Settings().aws_pricing_parquet_dir`.
   - **Service codes**: read distinct `service_code`, with `service_name` from `service_dim` and the `(service_code, product_family)` pairs from `product_dim`, via DuckDB across all regions for the latest snapshot.
   - **Icons**: collect every `Architecture-Service-Icons_*/*/48/Arch_*_48.svg`, using the stem between `Arch_` and `_48`.
@@ -44,7 +44,7 @@ tests may follow implementation.
   - **Overrides**: a checked-in `OVERRIDES: dict[str, str]` holding every service-code override listed in research.md §1 (e.g. `AmazonEKS → Amazon-Elastic-Kubernetes-Service`, `AWSOutposts → AWS-Outposts-family`). It always beats the automatic match.
   - **Family overrides**: a checked-in `FAMILY_OVERRIDES: dict[str, dict[str, str]]` holding every product-family override in research.md §1: EC2 storage families → `Amazon-Elastic-Block-Store`, EC2 `NAT Gateway` → `Amazon-Virtual-Private-Cloud`, EC2 load-balancer families → `Elastic-Load-Balancing`, VPC `VpcEndpoint` → `AWS-PrivateLink`, RDS `Aurora Global Database` → `Amazon-Aurora`.
   - **Special icons**: `AWSDataTransfer` is not mapped by code; it uses the data-transfer icon.
-- [ ] T002 Extend `backend/scripts/generate_aws_service_icon_map.py` to write its outputs deterministically (sorted keys, stable formatting, so running twice is byte-identical):
+- [X] T002 Extend `backend/scripts/generate_aws_service_icon_map.py` to write its outputs deterministically (sorted keys, stable formatting, so running twice is byte-identical):
   - **(a)** `frontend/src/lib/awsServiceIcons.generated.ts`, a header comment saying "generated, do not edit" followed by these exports (shapes in data-model.md §2):
     - `AWS_SERVICE_ICON_BY_CODE`
     - `AWS_SERVICE_ICON_BY_CODE_AND_FAMILY`
@@ -57,7 +57,7 @@ tests may follow implementation.
     - `Resource-Icons_*/Res_General-Icons/Res_48_Light/Res_Data-Stream_48_Light.svg` → `Data-Stream_Light.svg`;
     - the matching `Res_48_Dark` file → `Data-Stream_Dark.svg`.
   - **(c)** Print a report with matched, overridden and fallback sections, and the non-fallback percentage.
-- [ ] T003 Run `cd backend && uv run python scripts/generate_aws_service_icon_map.py --icons ../../images-web/aws_architecture_icons` and review the report:
+- [X] T003 Run `cd backend && uv run python scripts/generate_aws_service_icon_map.py --icons ../../images-web/aws_architecture_icons` and review the report:
   - Confirm at least 90% non-fallback (SC-002).
   - Confirm every service code in `backend/src/db/seed/standard_architectures.json` resolves to a non-fallback icon.
   - If either check fails, add overrides to the script and re-run.
@@ -74,7 +74,7 @@ it to pick product-family icons. US4 does not depend on this phase and may start
 
 ### Tests (write first, confirm they fail)
 
-- [ ] T004 [P] Add failing tests to `backend/tests/unit/test_catalog.py` for a new `resolve_product_details(skus, *, region, snapshot_date=None) -> dict[tuple[str, str], ProductDetails]` in `backend/src/pricing_data/catalog.py`, where `ProductDetails` is a frozen dataclass with `attributes: dict[str, str]` and `product_family: str | None`:
+- [X] T004 [P] Add failing tests to `backend/tests/unit/test_catalog.py` for a new `resolve_product_details(skus, *, region, snapshot_date=None) -> dict[tuple[str, str], ProductDetails]` in `backend/src/pricing_data/catalog.py`, where `ProductDetails` is a frozen dataclass with `attributes: dict[str, str]` and `product_family: str | None`:
   - The fixture NAT Gateway SKU `("AmazonEC2", "2QF2GD6XUCJHFMKF")` in `us-west-2` returns `product_family == "NAT Gateway"` and non-empty attributes containing `usagetype`.
   - A SKU with an empty `product_family` returns `None`.
   - A missing SKU is absent from the dict.
@@ -82,25 +82,25 @@ it to pick product-family icons. US4 does not depend on this phase and may start
   - An empty input returns `{}` without querying.
   - `resolve_attributes` still returns the same values as before (regression).
   - Adjust the SKU and region to what `backend/tests/fixtures/pricing_parquet` actually contains.
-- [ ] T005 [P] Add failing contract tests to `backend/tests/contract/test_architectures.py`:
+- [X] T005 [P] Add failing contract tests to `backend/tests/contract/test_architectures.py`:
   - `GET /architectures/{id}` returns `product_family` on every `collections[].sku_selections[]` item and on `connectors[].sku_selection`.
   - It is `"NAT Gateway"` for the fixture NAT Gateway SKU.
   - It is `null` for a SKU missing from the snapshot, with `attributes == {}` unchanged.
-- [ ] T006 [P] Add failing contract tests to `backend/tests/contract/test_sku_selections.py`: the create (`POST`) and update (`PATCH /sku-selections/{id}`) responses include `product_family`. Add the same assertion for the connector SKU-selection attach response in `backend/tests/contract/test_connector_sku_selection.py`.
+- [X] T006 [P] Add failing contract tests to `backend/tests/contract/test_sku_selections.py`: the create (`POST`) and update (`PATCH /sku-selections/{id}`) responses include `product_family`. Add the same assertion for the connector SKU-selection attach response in `backend/tests/contract/test_connector_sku_selection.py`.
 
 ### Implementation
 
-- [ ] T007 Implement `ProductDetails` and `resolve_product_details` in `backend/src/pricing_data/catalog.py`:
+- [X] T007 Implement `ProductDetails` and `resolve_product_details` in `backend/src/pricing_data/catalog.py`:
   - Reuse `resolve_attributes`' query, adding `product_family` to the `SELECT` while keeping the same region-scoping `WHERE` and the same error handling.
   - Normalize `""` to `None`.
   - Reimplement `resolve_attributes` as a thin wrapper returning `{k: v.attributes}`, so existing callers are unchanged.
   - Makes T004 pass.
-- [ ] T008 Add `product_family: str | None = None` to `SKUSelectionOut` in `backend/src/models/schemas.py`, with a comment that it is resolved read-only from Parquet at response time and never stored (015, contracts/api.md).
-- [ ] T009 Switch `backend/src/services/architecture_service.py` to `resolve_product_details`, attaching both `attributes` and `product_family`:
+- [X] T008 Add `product_family: str | None = None` to `SKUSelectionOut` in `backend/src/models/schemas.py`, with a comment that it is resolved read-only from Parquet at response time and never stored (015, contracts/api.md).
+- [X] T009 Switch `backend/src/services/architecture_service.py` to `resolve_product_details`, attaching both `attributes` and `product_family`:
   - Change `_region_grouped_batch_resolve` to return `(units, details)`. It is still one details query per distinct region.
   - Update `attach_units_to_architecture._attach` and `sku_selection_out_with_unit` to match.
   - Makes T005 and T006 pass.
-- [ ] T010 Regenerate the frontend API types. With the backend running, run `cd frontend && npm run generate-api-types`, then confirm `frontend/src/api/generated/schema.d.ts` contains `product_family?: string | null` on `SKUSelectionOut` and that `npm run check-api-types` is clean.
+- [X] T010 Regenerate the frontend API types. With the backend running, run `cd frontend && npm run generate-api-types`, then confirm `frontend/src/api/generated/schema.d.ts` contains `product_family?: string | null` on `SKUSelectionOut` and that `npm run check-api-types` is clean.
 
 **Checkpoint**: `cd backend && uv run pytest` is green, and `product_family` is visible in the architecture detail response.
 
@@ -117,7 +117,7 @@ its configuration in column 3 (quickstart §3).
 
 ### Tests (write first, confirm they fail)
 
-- [ ] T011 [P] [US1] Create `frontend/tests/unit/awsServiceIcons.test.ts` for `resolveAwsServiceIcon(serviceCode, productFamily)` from `frontend/src/lib/awsServiceIcons.ts`:
+- [X] T011 [P] [US1] Create `frontend/tests/unit/awsServiceIcons.test.ts` for `resolveAwsServiceIcon(serviceCode, productFamily)` from `frontend/src/lib/awsServiceIcons.ts`:
   - `("AmazonDynamoDB", null)` resolves to a URL containing `Amazon-DynamoDB` with `isFallback === false`.
   - `("AmazonEC2", "NAT Gateway")` resolves to `Amazon-Virtual-Private-Cloud`: the family override wins.
   - `("AmazonEC2", "Compute Instance")` resolves to `Amazon-EC2`.
@@ -128,13 +128,13 @@ its configuration in column 3 (quickstart §3).
 
 ### Implementation
 
-- [ ] T012 [US1] Implement `frontend/src/lib/awsServiceIcons.ts`:
+- [X] T012 [US1] Implement `frontend/src/lib/awsServiceIcons.ts`:
   - Load `import.meta.glob("../assets/aws-icons/*.svg", { eager: true, query: "?url", import: "default" })`.
   - Build a stem → URL map.
   - Export `interface ResolvedServiceIcon { lightUrl: string; darkUrl: string; isFallback: boolean }` and `resolveAwsServiceIcon(serviceCode: string, productFamily: string | null | undefined): ResolvedServiceIcon`, following the resolution order in data-model.md §2.
   - Add a module doc comment in the style of `awsDataTransfer.ts`.
   - Makes T011 pass.
-- [ ] T013 [US1] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`, replace `ServiceList`'s `<ul>` of text buttons with a `flex flex-wrap gap-1` container holding one `ServiceIconButton` per SKU selection, in the same order:
+- [X] T013 [US1] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`, replace `ServiceList`'s `<ul>` of text buttons with a `flex flex-wrap gap-1` container holding one `ServiceIconButton` per SKU selection, in the same order:
   - `<button type="button">` 24×24 px with `aria-pressed={s.id === selectedServiceId}`.
   - A selected state shown as a visible ring (e.g. `ring-2 ring-primary`), replacing the underline.
   - The same `onClick` with `stopPropagation()` → `onSelectService(s.id)`.
@@ -142,7 +142,7 @@ its configuration in column 3 (quickstart §3).
   - A temporary `aria-label` of `` `${s.service_code} ${s.sku}` ``; T017 replaces it with the pop-up text.
   - Leave the "No services yet." / `hideEmptyMessage` branch and all box, VPC and connector labels unchanged (FR-007).
   - Remove the now-unused `summarizeAttributes` import only if nothing else in the file uses it.
-- [ ] T014 [P] [US1] Create `frontend/tests/unit/ServiceIconList.test.tsx`. Render `ServiceList`, exporting it from `ArchitectureDiagramPanel.tsx` if needed, as a named export for testing. Assert:
+- [X] T014 [P] [US1] Create `frontend/tests/unit/ServiceIconList.test.tsx`. Render `ServiceList`, exporting it from `ArchitectureDiagramPanel.tsx` if needed, as a named export for testing. Assert:
   - One button per selection, each containing an img, with two DynamoDB selections giving two buttons.
   - No text matching `/ \/ /` is rendered.
   - Clicking a button calls `onSelectService` with that id.
@@ -165,7 +165,7 @@ pop-up (quickstart §4).
 
 ### Tests (write first, confirm they fail)
 
-- [ ] T015 [P] [US2] Create `frontend/tests/unit/servicePopup.test.ts` for `buildServicePopupLines(selection)` from `frontend/src/lib/servicePopup.ts`:
+- [X] T015 [P] [US2] Create `frontend/tests/unit/servicePopup.test.ts` for `buildServicePopupLines(selection)` from `frontend/src/lib/servicePopup.ts`:
   - **(a)** Service code `AmazonDynamoDB`, SKU `3ERQSZWPAMX2JWHN`, attributes `{ groupDescription: "DynamoDB PayPerRequest Read Request Units", usagetype: "EU-ReadRequestUnits", operation: "PayPerRequestThroughput" }` returns exactly `["AmazonDynamoDB", "Sku: 3ERQSZWPAMX2JWHN", "DynamoDB PayPerRequest Read Request Units", "UsageType: EU-ReadRequestUnits", "Operation: PayPerRequestThroughput"]`.
   - **(b)** `operation: ""` omits the Operation line; a missing `usagetype` omits the UsageType line.
   - **(c)** EC2 attributes with `instanceType`/`memory`/`vcpu` produce a summary line equal to `summarizeAttributes(attributes)`.
@@ -175,16 +175,16 @@ pop-up (quickstart §4).
 
 ### Implementation
 
-- [ ] T016 [US2] Implement `frontend/src/lib/servicePopup.ts`:
+- [X] T016 [US2] Implement `frontend/src/lib/servicePopup.ts`:
   - `buildServicePopupLines(selection: Pick<SkuSelection, "service_code" | "sku" | "attributes">): string[]`, following data-model.md §3 and reusing `summarizeAttributes` (`lib/skuDetail.ts`) and `awsDataTransferLabel` (`lib/awsDataTransfer.ts`).
   - `servicePopupAccessibleName(lines: string[]): string`, returning `lines.join(", ")`.
   - Makes T015 pass.
-- [ ] T017 [US2] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`, wrap each `ServiceIconButton` in the existing shadcn `Tooltip` / `TooltipTrigger asChild` / `TooltipContent` (from `../ui/tooltip`):
+- [X] T017 [US2] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`, wrap each `ServiceIconButton` in the existing shadcn `Tooltip` / `TooltipTrigger asChild` / `TooltipContent` (from `../ui/tooltip`):
   - The content renders one `<div>` per line from `buildServicePopupLines(s)`, with no empty lines.
   - Set the button's `aria-label` to `servicePopupAccessibleName(lines)` (FR-012).
   - Keep the Radix default open-on-hover and open-on-focus behavior and close on leave, blur or Escape (FR-011).
   - Make sure `TooltipProvider` is present above the canvas. Reuse the app's existing provider if one wraps the workspace; otherwise add one around the diagram.
-- [ ] T018 [P] [US2] Extend `frontend/tests/unit/ServiceIconList.test.tsx`: the button's accessible name equals the joined pop-up lines, and focusing the button shows tooltip content containing `Sku: <sku>` and `UsageType: …` on separate elements.
+- [X] T018 [P] [US2] Extend `frontend/tests/unit/ServiceIconList.test.tsx`: the button's accessible name equals the joined pop-up lines, and focusing the button shows tooltip content containing `Sku: <sku>` and `UsageType: …` on separate elements.
 
 **Checkpoint**: US1 and US2 together fully replace the old text rows with no loss of information.
 
@@ -200,12 +200,12 @@ pop-up's text scales to match. The pop-out canvas behaves the same (quickstart �
 
 ### Implementation
 
-- [ ] T019 [US3] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`, read the live zoom inside the service-icon subtree with `useStore((s) => s.transform[2])` from `@xyflow/react`, which works inside custom nodes under the panel's `ReactFlowProvider`. Apply it to the `TooltipContent` inner wrapper:
+- [X] T019 [US3] In `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`, read the live zoom inside the service-icon subtree with `useStore((s) => s.transform[2])` from `@xyflow/react`, which works inside custom nodes under the panel's `ReactFlowProvider`. Apply it to the `TooltipContent` inner wrapper:
   - `style={{ fontSize: \`calc(var(--text-2xs) * ${zoom})\` }}`.
   - Padding and line gap in `em` units (e.g. `px-[0.6em] py-[0.4em]`, `gap-[0.2em]`) instead of fixed px classes.
   - Do **not** use `transform: scale` (research.md §5).
   - Icons themselves need no change, because they scale through the viewport transform. Confirm the 24px size isn't counter-scaled anywhere.
-- [ ] T020 [US3] Manually verify quickstart §5 in the dev server:
+- [X] T020 [US3] Manually verify quickstart §5 in the dev server:
   - The in-column canvas follows the +/−, scroll-zoom and fit-view controls.
   - `PopoutCanvasDialog` behaves the same.
   - Node heights grow correctly as icons wrap (measured-height path).
@@ -233,13 +233,13 @@ clears, the switch race, no auto-calculation for empty architectures, and delete
 
 ### Tests (write first, confirm they fail)
 
-- [ ] T021 [P] [US4] Add failing tests to `frontend/tests/unit/priceChange.test.ts` for `PricedContentsEntry` and `pricedContentsEqual(a, b)` in `frontend/src/lib/priceChange.ts`:
+- [X] T021 [P] [US4] Add failing tests to `frontend/tests/unit/priceChange.test.ts` for `PricedContentsEntry` and `pricedContentsEqual(a, b)` in `frontend/src/lib/priceChange.ts`:
   - Equal regardless of order.
   - Not equal when any one field differs: `usage_quantity`, `pricing_term`, `purchase_option`, `sku`, `service_code` or `region`.
   - Not equal when lengths differ.
   - Handles duplicate entries as a multiset: two identical entries vs one is not equal.
   - `decideBaselineUpdate`'s existing cases stay green.
-- [ ] T022 [P] [US4] Create `frontend/tests/unit/architecturePricingResults.test.ts` for `readPricingResult`, `writePricingResult` and `removePricingResult` in `frontend/src/lib/architecturePricingResults.ts`:
+- [X] T022 [P] [US4] Create `frontend/tests/unit/architecturePricingResults.test.ts` for `readPricingResult`, `writePricingResult` and `removePricingResult` in `frontend/src/lib/architecturePricingResults.ts`:
   - A write/read round-trip under key `cloud-pricing-result-<id>` returns the same entry.
   - Entries for two architectures are independent.
   - A missing key returns `null`.
@@ -247,9 +247,9 @@ clears, the switch race, no auto-calculation for empty architectures, and delete
   - A wrong shape (e.g. `version: 2`, or missing `result`/`duration`/`pricedContents`) returns `null`.
   - `remove` deletes only that key.
   - `localStorage.getItem`/`setItem` throwing (stubbed) never throws out of read or write.
-- [ ] T023 [P] [US4] Add failing tests for a pure helper `shouldAutoCalculate({ architectureId, hasSelections, hasStoredEntry, isInFlight })` exported from `frontend/src/lib/architecturePricingResults.ts`, in the same test file as T022. It returns `true` only when there is an id, it has selections, there is no stored entry and nothing is in flight.
+- [X] T023 [P] [US4] Add failing tests for a pure helper `shouldAutoCalculate({ architectureId, hasSelections, hasStoredEntry, isInFlight })` exported from `frontend/src/lib/architecturePricingResults.ts`, in the same test file as T022. It returns `true` only when there is an id, it has selections, there is no stored entry and nothing is in flight.
 
-- [ ] T024 [P] [US4] Add failing tests to `frontend/tests/unit/architecturePricingResults.test.ts` for a pure `applyCalculationSuccess({ entries, vars, result, decision, comparisonTotal, previousEntry, now })` → `{ entries, entry, newBaseline }` in `frontend/src/lib/architecturePricingResults.ts`. Here `vars = { architectureId, duration, pricedContents, priceChangeSelections, prior }` is the request context captured at call time. Cases:
+- [X] T024 [P] [US4] Add failing tests to `frontend/tests/unit/architecturePricingResults.test.ts` for a pure `applyCalculationSuccess({ entries, vars, result, decision, comparisonTotal, previousEntry, now })` → `{ entries, entry, newBaseline }` in `frontend/src/lib/architecturePricingResults.ts`. Here `vars = { architectureId, duration, pricedContents, priceChangeSelections, prior }` is the request context captured at call time. Cases:
   - **(a)** A result for A applied while `entries` holds B: only A's entry is added or replaced, and B's entry is unchanged (FR-020, FR-016).
   - **(b)** `decision: "establish"`: `entry.priceChange === null`, and `newBaseline` = {result total, `vars.duration`, `vars.priceChangeSelections`}.
   - **(c)** `"direct"` / `"duration_adjusted"` / `"duration_only"`: `entry.priceChange === String(total − comparisonTotal)`, and `newBaseline` is set.
@@ -258,19 +258,19 @@ clears, the switch race, no auto-calculation for empty architectures, and delete
 
 ### Implementation
 
-- [ ] T025 [US4] In `frontend/src/lib/priceChange.ts`:
+- [X] T025 [US4] In `frontend/src/lib/priceChange.ts`:
   - Add `export interface PricedContentsEntry extends PriceChangeSelection { region: string | null }`.
   - Generalize the existing private multiset comparison to take a key function.
   - Export `pricedContentsEqual(a: PricedContentsEntry[], b: PricedContentsEntry[]): boolean`, whose key includes `region`.
   - Keep `selectionsEqual`'s behavior identical.
   - Makes T021 pass.
-- [ ] T026 [US4] Create `frontend/src/lib/architecturePricingResults.ts`, mirroring `lib/priorCalculation.ts`'s `localStorage` + try/catch + type-guard pattern. Export:
+- [X] T026 [US4] Create `frontend/src/lib/architecturePricingResults.ts`, mirroring `lib/priorCalculation.ts`'s `localStorage` + try/catch + type-guard pattern. Export:
   - `PricingResultEntry` (data-model.md §5: `version: 1`, `result`, `duration`, `priceChange`, `pricedContents`, `calculatedAt`), with `result` typed as `Awaited<ReturnType<typeof api.calculate>>`.
   - `readPricingResult`, `writePricingResult`, `removePricingResult` and `shouldAutoCalculate`.
   - Also export `applyCalculationSuccess`. It is pure and does no I/O; persistence stays with the caller.
   - Makes T022, T023 and T024 pass.
-- [ ] T027 [US4] In `frontend/src/pages/WorkspacePage.tsx`, add a `currentPricedContents` memo next to `currentPriceChangeSelections`. It has the same fields plus `region`: the owning Collection's region for Collection selections, and the Connector's `from` Collection's region for Connector selections. Extend the existing `skuSelectionsById` construction if it doesn't already carry the owner.
-- [ ] T028 [US4] Refactor the calculate flow in `frontend/src/pages/WorkspacePage.tsx`:
+- [X] T027 [US4] In `frontend/src/pages/WorkspacePage.tsx`, add a `currentPricedContents` memo next to `currentPriceChangeSelections`. It has the same fields plus `region`: the owning Collection's region for Collection selections, and the Connector's `from` Collection's region for Connector selections. Extend the existing `skuSelectionsById` construction if it doesn't already carry the owner.
+- [X] T028 [US4] Refactor the calculate flow in `frontend/src/pages/WorkspacePage.tsx`:
   - **State**: replace the single `calculation` / `calculationError` / `priceChange` state with:
     - `resultEntries: Map<string, PricingResultEntry>`, lazily hydrated from `readPricingResult` for the active id;
     - `calculationErrors: Map<string, string>`, in memory;
@@ -284,17 +284,17 @@ clears, the switch race, no auto-calculation for empty architectures, and delete
     - Never read `architectureId`, `priorCalculation` or `currentPriceChangeSelections` from the closure.
   - **Errors**: in `onError`, set `calculationErrors[architectureId]`.
   - **Calculate / Retry**: the button and retry build the variables from the active architecture's current values.
-- [ ] T029 [US4] In `frontend/src/pages/WorkspacePage.tsx`, add architecture-switch behavior:
+- [X] T029 [US4] In `frontend/src/pages/WorkspacePage.tsx`, add architecture-switch behavior:
   - **Duration sync**: when `architectureId` changes, if a stored entry exists, `setCalculationDuration(entry.duration)` (FR-018b); otherwise leave the duration unchanged.
   - **Auto-calculation**: a `useEffect` keyed on `architectureId` and the architecture query's loaded data. It fires the calculate mutation once when `shouldAutoCalculate(...)` is true, using the current dropdown duration (FR-017). It never fires for an architecture with no SKU selections.
-- [ ] T030 [US4] In `frontend/src/pages/WorkspacePage.tsx`, pass `PricingPanel` only the active architecture's values:
+- [X] T030 [US4] In `frontend/src/pages/WorkspacePage.tsx`, pass `PricingPanel` only the active architecture's values:
   - `calculation={entry?.result ?? null}`, `priceChange={entry?.priceChange ?? null}` and `calculationError={calculationErrors.get(activeId) ?? null}`.
   - `isCalculating={inFlight.has(activeId)}`.
   - A new `isOutOfDate={entry != null && !pricedContentsEqual(entry.pricedContents, currentPricedContents)}` prop (FR-016, FR-018a).
   - Add `frontend/tests/unit/WorkspacePage.pricing.test.tsx`. It renders `WorkspacePage` with a mocked `api` and a pre-seeded `cloud-pricing-result-<id>` entry, then asserts that `api.calculate` is never called and the stored total is displayed (FR-018, SC-006).
-- [ ] T031 [US4] In `frontend/src/pages/WorkspacePage.tsx`, extend `deleteArchitecture`'s `onSuccess` to call `removePricingResult(id)` and drop `id` from `resultEntries` and `calculationErrors`.
-- [ ] T032 [US4] In `frontend/src/components/workspace/PricingPanel.tsx`, add the `isOutOfDate: boolean` prop. When true, render `<p role="status" className="flex items-center gap-1.5 text-2xs text-amber-700 dark:text-amber-500"><AlertTriangle className="size-4 shrink-0" /> Architecture has been updated since last pricing</p>` **directly below** the `Data Timestamp:` line (contracts/ui.md §C).
-- [ ] T033 [P] [US4] Create or extend `frontend/tests/unit/PricingPanel.test.tsx`:
+- [X] T031 [US4] In `frontend/src/pages/WorkspacePage.tsx`, extend `deleteArchitecture`'s `onSuccess` to call `removePricingResult(id)` and drop `id` from `resultEntries` and `calculationErrors`.
+- [X] T032 [US4] In `frontend/src/components/workspace/PricingPanel.tsx`, add the `isOutOfDate: boolean` prop. When true, render `<p role="status" className="flex items-center gap-1.5 text-2xs text-amber-700 dark:text-amber-500"><AlertTriangle className="size-4 shrink-0" /> Architecture has been updated since last pricing</p>` **directly below** the `Data Timestamp:` line (contracts/ui.md §C).
+- [X] T033 [P] [US4] Create or extend `frontend/tests/unit/PricingPanel.test.tsx`:
   - With `isOutOfDate` true, the notice text is present and is the next sibling after the Data Timestamp line.
   - With `isOutOfDate` false, it is absent.
 
@@ -313,11 +313,11 @@ list. At minimum column width the heading truncates rather than overlapping (qui
 
 ### Implementation
 
-- [ ] T034 [US5] In `frontend/src/components/workspace/PricingPanel.tsx`:
+- [X] T034 [US5] In `frontend/src/components/workspace/PricingPanel.tsx`:
   - Pass `onToggleWordWrap` into `PricePerSkuSection` (alongside the existing `wordWrap`).
   - Change its `<h4>Price per Sku</h4>` into a `flex items-center justify-between gap-2` row: `<h4 className="min-w-0 truncate text-2xs font-semibold">Price per Sku</h4>` followed by the existing word-wrap `Tooltip`/`Button`, moved as-is with the same `aria-label`, `aria-pressed`, tooltip text and `WrapText` icon, and `className="shrink-0"` replacing `self-start`.
   - Delete the old toggle block after the Data Timestamp line and update its explanatory comment.
-- [ ] T035 [P] [US5] Extend `frontend/tests/unit/PricingPanel.test.tsx`:
+- [X] T035 [P] [US5] Extend `frontend/tests/unit/PricingPanel.test.tsx`:
   - The button named "Enable word wrap for Price per Sku" is inside the same row element as the "Price per Sku" heading.
   - No toggle is rendered after the Data Timestamp line.
   - Clicking it flips `aria-pressed`.
@@ -328,15 +328,15 @@ list. At minimum column width the heading truncates rather than overlapping (qui
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T036 [P] Update the spec comment trail in the touched files, in the house style (`015-canvas-service-icons, FR-0xx:` comments explaining *why*):
+- [X] T036 [P] Update the spec comment trail in the touched files, in the house style (`015-canvas-service-icons, FR-0xx:` comments explaining *why*):
   - `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx`
   - `frontend/src/components/workspace/PricingPanel.tsx`
   - `frontend/src/pages/WorkspacePage.tsx`
-- [ ] T037 Run the full gates:
+- [X] T037 Run the full gates:
   - `cd backend && uv run pytest`
   - `cd frontend && npm run check-api-types && npm run lint && npm test && npm run build`
   - Fix any failures.
-- [ ] T038 Run the manual quickstart.md §3–§7 in the dev server, covering light and dark themes, and record any deviations as follow-up notes in `specs/015-canvas-service-icons/quickstart.md`.
+- [X] T038 Run the manual quickstart.md §3–§7 in the dev server, covering light and dark themes, and record any deviations as follow-up notes in `specs/015-canvas-service-icons/quickstart.md`.
 
 ---
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 
 import duckdb
 
@@ -235,16 +236,26 @@ def search_catalog(
     return results, snapshot_date, total
 
 
-def resolve_attributes(
+@dataclass(frozen=True)
+class ProductDetails:
+    """One SKU's descriptive catalog fields (015-canvas-service-icons, research.md §2):
+    its attribute map and its `product_family` (`None` when empty or the SKU has no row)."""
+
+    attributes: dict[str, str]
+    product_family: str | None
+
+
+def resolve_product_details(
     skus: Sequence[tuple[str, str]], *, region: str, snapshot_date: str | None = None
-) -> dict[tuple[str, str], dict[str, str]]:
-    """Batched `attributes` lookup for many (service_code, sku) pairs, all in `region`
-    (004, FR-014, research.md #5; 010-multi-region-support) — one DuckDB query for the whole
-    set, mirroring `resolve_units`'s (003) "resolve once per request" discipline rather than
-    one query per SKU Selection. As with `resolve_units`, every pair in one call must belong to
-    the same region — a caller spanning multiple regions calls this once per region and merges
-    the results. `{}` for any pair with no matching row, same as `parse_attributes`'s
-    missing-data behavior.
+) -> dict[tuple[str, str], ProductDetails]:
+    """Batched `attributes` + `product_family` lookup for many (service_code, sku) pairs, all in
+    `region` (004, FR-014, research.md #5; 010-multi-region-support; 015-canvas-service-icons,
+    research.md §2) — one DuckDB query for the whole set, mirroring `resolve_units`'s (003)
+    "resolve once per request" discipline rather than one query per SKU Selection. As with
+    `resolve_units`, every pair in one call must belong to the same region — a caller spanning
+    multiple regions calls this once per region and merges the results. Every requested pair is
+    present in the result; one with no matching row gets `{}` attributes and a `None` product
+    family, same as `parse_attributes`'s missing-data behavior.
 
     Explicitly filters region-scoping the same way `search_catalog` does (see its docstring):
     `region_code` for most rows, `fromRegionCode` for AWSDataTransfer (whose own `region_code`
@@ -260,7 +271,7 @@ def resolve_attributes(
     placeholders = ",".join("?" for _ in unique_skus)
 
     query = (
-        "SELECT service_code, sku, attributes_json "
+        "SELECT service_code, sku, attributes_json, product_family "
         "FROM read_parquet(?) WHERE "
         "CASE WHEN regexp_matches(service_code, 'AWSDataTransfer', 'i') "
         "THEN json_extract_string(attributes_json, '$.fromRegionCode') = ? "
@@ -275,10 +286,21 @@ def resolve_attributes(
     except duckdb.Error as exc:
         raise PricingDataUnavailableError(str(exc)) from exc
 
-    index: dict[tuple[str, str], dict[str, str]] = {
-        (service_code, sku): parse_attributes(raw) for service_code, sku, raw in rows
+    index: dict[tuple[str, str], ProductDetails] = {
+        (service_code, sku): ProductDetails(parse_attributes(raw), family or None)
+        for service_code, sku, raw, family in rows
     }
-    return {key: index.get(key, {}) for key in skus}
+    missing = ProductDetails(attributes={}, product_family=None)
+    return {key: index.get(key, missing) for key in skus}
+
+
+def resolve_attributes(
+    skus: Sequence[tuple[str, str]], *, region: str, snapshot_date: str | None = None
+) -> dict[tuple[str, str], dict[str, str]]:
+    """Batched `attributes`-only lookup (004, FR-014) — a thin view over
+    `resolve_product_details`, kept for callers that don't need `product_family`."""
+    details = resolve_product_details(skus, region=region, snapshot_date=snapshot_date)
+    return {key: value.attributes for key, value in details.items()}
 
 
 def find_existing_skus(

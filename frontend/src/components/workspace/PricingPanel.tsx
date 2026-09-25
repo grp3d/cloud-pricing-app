@@ -75,6 +75,9 @@ export interface PricingPanelProps {
    * response shape unchanged), so `WorkspacePage` re-shapes its own `skuSelectionsById` map
    * for the per-SKU breakdown below to derive the AWSDataTransfer label from. */
   skuAttributesById: Map<string, Record<string, string>>;
+  /** 015-canvas-service-icons, FR-018a: the displayed (stored) result was calculated from
+   * different services, inputs, or regions than the Architecture has now. */
+  isOutOfDate: boolean;
 }
 
 /**
@@ -94,6 +97,7 @@ export function PricingPanel({
   width,
   priceChange,
   skuAttributesById,
+  isOutOfDate,
 }: PricingPanelProps) {
   // 009-ui-fixes-next-iteration follow-up: word-wrap for the Price per Sku list, off by
   // default (unchanged from today's single-line-truncated behavior) — in-session only, not
@@ -163,6 +167,7 @@ export function PricingPanel({
             calculation={calculation}
             skuAttributesById={skuAttributesById}
             wordWrap={wordWrap}
+            onToggleWordWrap={() => setWordWrap((v) => !v)}
           />
 
           {/* 009-ui-fixes-next-iteration, US6, FR-015/016: replaces the removed
@@ -172,27 +177,19 @@ export function PricingPanel({
             Data Timestamp: {calculation.snapshot_date}
           </p>
 
-          {/* 009-ui-fixes-next-iteration follow-up: word-wrap toggle for the Price per Sku
-              list above — bottom-left of the column, under the Data Timestamp line. */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={wordWrap ? "secondary" : "ghost"}
-                size="icon-sm"
-                aria-label={
-                  wordWrap
-                    ? "Disable word wrap for Price per Sku"
-                    : "Enable word wrap for Price per Sku"
-                }
-                aria-pressed={wordWrap}
-                onClick={() => setWordWrap((v) => !v)}
-                className="self-start"
-              >
-                <WrapText />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{wordWrap ? "Disable word wrap" : "Enable word wrap"}</TooltipContent>
-          </Tooltip>
+          {/* 015-canvas-service-icons, FR-018a: a stored result is still the last calculated
+              price, but no longer matches the Architecture — say so, directly under Data
+              Timestamp, rather than recalculating behind the user's back. */}
+          {isOutOfDate && (
+            <p
+              role="status"
+              className="flex items-center gap-1.5 text-2xs text-amber-700 dark:text-amber-500"
+            >
+              <AlertTriangle className="size-4 shrink-0" /> Architecture has been updated since
+              last pricing
+            </p>
+          )}
+
         </section>
       )}
     </aside>
@@ -235,6 +232,7 @@ function PricePerSkuSection({
   calculation,
   skuAttributesById,
   wordWrap,
+  onToggleWordWrap,
 }: {
   calculation: CalculationResult;
   skuAttributesById: Map<string, Record<string, string>>;
@@ -243,6 +241,7 @@ function PricePerSkuSection({
    * keeps that same first-line shape but also shows whatever didn't fit, on a second,
    * indented line, instead of discarding it. */
   wordWrap: boolean;
+  onToggleWordWrap: () => void;
 }) {
   const priced = calculation.line_items.filter(
     (item): item is typeof item & { price: string } => item.priceable && item.price !== null,
@@ -255,7 +254,31 @@ function PricePerSkuSection({
     <>
       <Separator />
       <section aria-label="Price per Sku" className="flex flex-col gap-3">
-        <h4 className="text-2xs font-semibold">Price per Sku</h4>
+        {/* 015-canvas-service-icons, FR-023: the word-wrap toggle (009 follow-up) sits on this
+            heading row, right-aligned with the prices it wraps, instead of at the very bottom
+            of the column; the heading truncates rather than overlap it when narrow. */}
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="min-w-0 truncate text-2xs font-semibold">Price per Sku</h4>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={wordWrap ? "secondary" : "ghost"}
+                size="icon-sm"
+                aria-label={
+                  wordWrap
+                    ? "Disable word wrap for Price per Sku"
+                    : "Enable word wrap for Price per Sku"
+                }
+                aria-pressed={wordWrap}
+                onClick={onToggleWordWrap}
+                className="shrink-0"
+              >
+                <WrapText />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{wordWrap ? "Disable word wrap" : "Enable word wrap"}</TooltipContent>
+          </Tooltip>
+        </div>
         {groups.map((group) => (
           <div key={group.region} className="flex flex-col gap-1.5">
             <h5 className="text-2xs font-medium text-muted-foreground">Region {group.region}</h5>

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { decideBaselineUpdate, type PriceChangeSelection, type PriorCalculation } from "../../src/lib/priceChange";
+import {
+  decideBaselineUpdate,
+  pricedContentsEqual,
+  type PriceChangeSelection,
+  type PricedContentsEntry,
+  type PriorCalculation,
+} from "../../src/lib/priceChange";
 
 function selection(overrides: Partial<PriceChangeSelection> = {}): PriceChangeSelection {
   return {
@@ -107,5 +113,38 @@ describe("decideBaselineUpdate", () => {
       newDuration: "1_year",
     });
     expect(decision).toBe("duration_adjusted");
+  });
+});
+
+// 015-canvas-service-icons, FR-018a, research.md §7: "out of date" comparison.
+describe("pricedContentsEqual", () => {
+  function entry(overrides: Partial<PricedContentsEntry> = {}): PricedContentsEntry {
+    return { ...selection(), region: "us-east-1", ...overrides };
+  }
+
+  it("is order-independent", () => {
+    const a = entry({ sku: "A" });
+    const b = entry({ sku: "B" });
+    expect(pricedContentsEqual([a, b], [b, a])).toBe(true);
+  });
+
+  it.each([
+    ["usage_quantity", { usage_quantity: "2" }],
+    ["pricing_term", { pricing_term: "reserved_1yr" as const }],
+    ["purchase_option", { purchase_option: "all_upfront" as const }],
+    ["sku", { sku: "OTHER" }],
+    ["service_code", { service_code: "AmazonS3" }],
+    ["region", { region: "eu-west-1" }],
+  ])("detects a change in %s", (_field, overrides) => {
+    expect(pricedContentsEqual([entry()], [entry(overrides)])).toBe(false);
+  });
+
+  it("detects added or removed services", () => {
+    expect(pricedContentsEqual([entry()], [entry(), entry({ sku: "B" })])).toBe(false);
+  });
+
+  it("compares as a multiset (duplicates count)", () => {
+    expect(pricedContentsEqual([entry(), entry()], [entry(), entry({ sku: "B" })])).toBe(false);
+    expect(pricedContentsEqual([entry(), entry()], [entry(), entry()])).toBe(true);
   });
 });

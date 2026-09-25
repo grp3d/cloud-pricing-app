@@ -49,6 +49,7 @@ async def test_attach_sku_to_connector(client, auth_headers):
     assert resp.status_code == 201
     assert resp.json()["sku"] == KNOWN_SKU
     assert resp.json()["unit"] == "Gbps-hrs"
+    assert resp.json()["product_family"] == "NAT Gateway"  # 015, contracts/api.md
 
 
 @pytest.mark.asyncio
