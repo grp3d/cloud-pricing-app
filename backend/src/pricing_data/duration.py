@@ -63,6 +63,20 @@ _NO_PERIOD_UNITS: frozenset[str] = frozenset(
         "GB-Seconds",
         "vCPU-Seconds",
         "Lambda-GB-Second",
+        # 014-architecture-templates-import-export (research.md §6): units the standard
+        # architectures' SKUs bill in — each is a usage count or a per-hour/per-request rate by
+        # AWS's own definition, so the entered quantity is a steady daily rate like the above.
+        "LCU-Hrs",
+        "Queries",
+        "ShardHour",
+        "PutRequest",
+        "DPU-Hour",
+        "Terabytes",
+        "RPU-Hr",
+        "ReadRequestUnits",
+        "WriteRequestUnits",
+        "GB-Hours",
+        "Notifications",
     }
 )
 
@@ -77,6 +91,11 @@ _FIXED_PERIOD_UNITS: dict[str, int] = {
     "vCPU-Months": 31,
     "IOPS-Mo": 31,
     "MBPS-Mo": 31,
+    # 014 (research.md §6): per-month units — stored objects, monthly fees, monthly active users.
+    "Obj-Month": 31,
+    "Mo": 31,
+    "CognitoUserPoolsMAU": 31,
+    "GigaBytesMonth": 31,
 }
 
 

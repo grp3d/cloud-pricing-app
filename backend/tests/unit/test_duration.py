@@ -67,3 +67,37 @@ def test_unrecognized_units_never_guessed(unit):
     result = classify_unit(unit)
     assert result.category == "unrecognized"
     assert result.period_days is None
+
+
+# 014-architecture-templates-import-export (research.md §6): billing units the standard
+# architectures' SKUs use that weren't yet in the explicit tables — each is time-based by AWS's
+# own definition, not guessed.
+@pytest.mark.parametrize(
+    "unit",
+    [
+        "LCU-Hrs",
+        "Queries",
+        "ShardHour",
+        "PutRequest",
+        "DPU-Hour",
+        "Terabytes",
+        "RPU-Hr",
+        "ReadRequestUnits",
+        "WriteRequestUnits",
+        "GB-Hours",
+        "Notifications",
+    ],
+)
+def test_014_no_period_units(unit):
+    result = classify_unit(unit)
+    assert result.category == "no_period"
+    assert result.period_days is None
+
+
+@pytest.mark.parametrize(
+    "unit", ["Obj-Month", "Mo", "CognitoUserPoolsMAU", "GigaBytesMonth"]
+)
+def test_014_fixed_period_units(unit):
+    result = classify_unit(unit)
+    assert result.category == "fixed_period"
+    assert result.period_days == 31

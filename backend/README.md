@@ -62,6 +62,35 @@ Rebuild it after a test starts depending on a new SKU (add the SKU to `SEED_SKUS
 uv run python scripts/build_test_pricing_fixture.py --source /path/to/DATA/pricing_aws/parquet
 ```
 
+## Standard architectures
+
+Migration `0005_standard_architectures` seeds four public, Admin-owned architectures from
+`src/db/seed/standard_architectures.json`. An Alembic revision runs once per database, so each
+architecture is created once. If the Admin deletes or renames one, it isn't recreated. The
+migration needs no pricing data at run time, because the seed already holds resolved
+`service_code`/`sku` references.
+
+The seed and its report (`src/db/seed/standard_architectures_report.md`) are generated. Don't
+edit them by hand. To change what gets seeded, edit the rules in
+`scripts/standard_architectures/match_rules.py` (one rule per usage figure in
+`docs/common_aws_architectures.md`) and re-run the resolver against the real pricing data:
+
+```bash
+uv run python scripts/resolve_standard_architectures.py [--snapshot-date YYYY-MM-DD]
+```
+
+Check the report for figures left out and for SKUs flagged as tiered. Then rebuild the test
+fixture against the same snapshot, because it reads the seeded SKUs from the seed file:
+
+```bash
+uv run python scripts/build_test_pricing_fixture.py --source /path/to/DATA/pricing_aws/parquet \
+    --snapshot-date YYYY-MM-DD
+```
+
+A database that has already run `0005` doesn't pick up a regenerated seed. To bring back a
+standard architecture the Admin deleted, import `src/db/seed/standard_architectures.json` on the
+Admin row of the Admin tab. It uses the same file format as Export/Import.
+
 ## Lint
 
 ```bash

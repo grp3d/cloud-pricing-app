@@ -9,8 +9,9 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class ORMBase(BaseModel):
@@ -83,6 +84,9 @@ class AdminUserOut(BaseModel):
     password_hash_suffix: str | None
     is_admin: bool
     is_default_admin: bool
+    # Non-deleted architectures owned (014-architecture-templates-import-export, FR-012) —
+    # the Admin tab disables Export at 0.
+    architecture_count: int
 
 
 # --- Enums (mirror the DB check constraints in models/orm.py) ------------------------------
@@ -349,3 +353,101 @@ class CalculateSnapshotRequest(BaseModel):
     # raised explicitly in the endpoint (src/api/calculate.py), matching the
     # `EmptyCatalogFilterError` convention already used for catalog search.
     selections: list[SnapshotSelection]
+
+
+# --- Architecture export/import file (014-architecture-templates-import-export) --------------
+#
+# One versioned format serves the Admin tab's Export, its Import, and the checked-in standard-
+# architecture seed (contracts/export-format.md). Every definition model ignores unknown fields
+# so later non-breaking additions don't break older importers; a breaking change bumps
+# `format_version`. Never carries database ids, owners, visibility, or vendor prices (FR-016).
+
+EXPORT_FORMAT = "cloud-pricing-architectures"
+SUPPORTED_FORMAT_VERSIONS = frozenset({1})
+
+DefinitionName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+]
+
+
+class SKUSelectionDefinition(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    service_code: str = Field(min_length=1)
+    sku: str = Field(min_length=1)
+    pricing_term: PricingTerm
+    purchase_option: PurchaseOption
+    # Serialized as a decimal string (preserves `Numeric(18, 4)` exactly); a JSON number is
+    # also accepted on import.
+    usage_quantity: Decimal = Field(ge=0, decimal_places=4)
+
+
+class CollectionDefinition(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    # File-local key, unique within its architecture — never a database id.
+    ref: str = Field(min_length=1)
+    type: CollectionType
+    name: DefinitionName
+    region: str = Field(min_length=1)
+    parent_ref: str | None = None
+    sku_selections: list[SKUSelectionDefinition] = []
+
+
+class ConnectorDefinition(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    from_ref: str = Field(min_length=1)
+    to_ref: str = Field(min_length=1)
+    sku_selection: SKUSelectionDefinition | None = None
+
+
+class ArchitectureDefinition(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: DefinitionName
+    provider: Literal["aws", "gcp", "azure"]
+    collections: list[CollectionDefinition] = []
+    connectors: list[ConnectorDefinition] = []
+
+
+class ArchitectureExportFile(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    format: Literal["cloud-pricing-architectures"]
+    format_version: Literal[1]
+    exported_at: datetime
+    source_username: str
+    architectures: list[ArchitectureDefinition]
+
+
+class ArchitectureFileImportRequest(BaseModel):
+    """The Admin import's request envelope — deliberately loose (research.md §8). Every
+    whole-file problem (wrong `format`, unsupported `format_version`, missing or non-list
+    `architectures`) must produce this codebase's own `{"error": "invalid_import_file", ...}`
+    400 (contracts/api.md), not FastAPI's generic 422 — the same convention
+    `CalculateSnapshotRequest.selections` follows — so these are checked explicitly by
+    `services/architecture_transfer.validate_envelope`. Each `architectures[]` entry is then
+    validated individually against `ArchitectureDefinition`, so one bad entry never fails the
+    whole file (FR-020)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    format: Any = None
+    format_version: Any = None
+    exported_at: Any = None
+    source_username: Any = None
+    architectures: Any = None
+
+
+class ImportResult(BaseModel):
+    # `None` when the entry has no readable name — the UI shows "(unnamed #n)".
+    name: str | None
+    status: Literal["success", "failed"]
+    error: str | None
+
+
+class ArchitectureFileImportResponse(BaseModel):
+    imported_count: int
+    failed_count: int
+    results: list[ImportResult]

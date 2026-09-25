@@ -23,8 +23,16 @@ export type Region = components["schemas"]["RegionOut"];
 export type CurrentUser = components["schemas"]["CurrentUserOut"];
 export type AdminUser = components["schemas"]["AdminUserOut"];
 export type ImportableArchitectures = components["schemas"]["ImportableArchitecturesOut"];
+export type ArchitectureExportFile = components["schemas"]["ArchitectureExportFile"];
+export type ArchitectureFileImportResponse =
+  components["schemas"]["ArchitectureFileImportResponse"];
+export type ImportResult = components["schemas"]["ImportResult"];
 
 const BASE = "/api/v1";
+
+/** The Admin import file as a whole isn't an architecture export (014, FR-019) — the server's
+ * own 400 `invalid_import_file`; nothing was imported. */
+export class InvalidImportFileError extends Error {}
 
 /** The permanent per-browser guest identity (unchanged since 001) — the fallback every fresh
  * browser starts as (spec FR-015), and what "change user" → guest reverts to. Never
@@ -96,6 +104,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (body.error === "invalid_import_file") {
+      throw new InvalidImportFileError(body.message ?? "the file is not in the expected format");
+    }
     if (body.error === "invalid_regex_pattern") {
       throw new InvalidRegexPatternError(body.message ?? "Invalid pattern.", body.field);
     }
@@ -150,6 +161,15 @@ export const api = {
       body: JSON.stringify({ password }),
     }),
   deleteAdminUser: (id: string) => request<void>(`/admin/users/${id}`, { method: "DELETE" }),
+  /** All of one user's architectures in the export format (014, FR-015/FR-017). */
+  exportUserArchitectures: (userId: string) =>
+    request<ArchitectureExportFile>(`/admin/users/${userId}/architectures/export`),
+  /** Import a parsed export file into one user's account (014, FR-018-FR-023). */
+  importUserArchitectures: (userId: string, doc: unknown) =>
+    request<ArchitectureFileImportResponse>(`/admin/users/${userId}/architectures/import`, {
+      method: "POST",
+      body: JSON.stringify(doc),
+    }),
 
   listArchitectures: (provider = "aws") =>
     request<ArchitectureSummary[]>(`/architectures?provider=${provider}`),

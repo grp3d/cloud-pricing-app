@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from src.pricing_data.catalog import EmptyCatalogFilterError, InvalidRegexPatternError
 from src.pricing_data.errors import PricingDataUnavailableError
+from src.services.architecture_transfer import InvalidImportFileError
 from src.services.price_calculation import EmptySnapshotError
 
 logging.basicConfig(level=logging.INFO)
@@ -64,6 +65,17 @@ async def invalid_regex_pattern_handler(
 @app.exception_handler(EmptySnapshotError)
 async def empty_snapshot_handler(request: Request, exc: EmptySnapshotError) -> JSONResponse:
     return JSONResponse(status_code=400, content={"error": "empty_snapshot", "message": str(exc)})
+
+
+@app.exception_handler(InvalidImportFileError)
+async def invalid_import_file_handler(
+    request: Request, exc: InvalidImportFileError
+) -> JSONResponse:
+    # 014-architecture-templates-import-export, spec FR-019: the file as a whole isn't an
+    # architecture export — nothing was imported.
+    return JSONResponse(
+        status_code=400, content={"error": "invalid_import_file", "message": str(exc)}
+    )
 
 
 @app.middleware("http")

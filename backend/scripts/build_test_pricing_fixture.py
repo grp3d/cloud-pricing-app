@@ -16,12 +16,16 @@ Re-run whenever a test starts depending on a new SKU (add it to SEED_SKUS):
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 from pathlib import Path
 
 import duckdb
 
 DEFAULT_OUT = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "pricing_parquet"
+STANDARD_ARCHITECTURES_SEED = (
+    Path(__file__).resolve().parent.parent / "src" / "db" / "seed" / "standard_architectures.json"
+)
 TABLES = ("service_dim", "product_dim", "product_attribute", "region_dim", "price_fact")
 
 # Every SKU a test names directly.
@@ -34,6 +38,27 @@ SEED_SKUS = (
     "47NTBKB4KMUU98P8",  # t3.medium Linux on-demand, region_code eu-west-1
     "28EK9CZBYC9JU7KW",  # AWSDataTransfer us-east-1 -> us-west-2-pdx-1
 )
+
+
+def _standard_architecture_skus() -> tuple[str, ...]:
+    """Every SKU the checked-in standard-architecture seed references
+    (014-architecture-templates-import-export) — read from the seed itself so a re-resolved
+    seed can never drift from what the fixture covers. Rebuild the fixture after re-running
+    `scripts/resolve_standard_architectures.py`, against the same snapshot date."""
+    seed = json.loads(STANDARD_ARCHITECTURES_SEED.read_text())
+    return tuple(
+        sorted(
+            {
+                selection["sku"]
+                for architecture in seed["architectures"]
+                for collection in architecture["collections"]
+                for selection in collection["sku_selections"]
+            }
+        )
+    )
+
+
+SEED_SKUS = SEED_SKUS + _standard_architecture_skus()
 # Services whose broad filters (service_code/product_family/text) the tests exercise.
 SAMPLED_SERVICES = ("AmazonEC2", "AmazonS3", "AWSDataTransfer")
 SAMPLE_PER_SERVICE = 25

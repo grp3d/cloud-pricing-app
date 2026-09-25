@@ -35,7 +35,7 @@ The server doesn't set a filename. The client names the download `<safe-username
 
 ## New: `POST /admin/users/{user_id}/architectures/import`
 
-**Request body**: `ArchitectureImportRequest`, a lenient envelope:
+**Request body**: `ArchitectureFileImportRequest`, a lenient envelope (named to avoid clashing with feature 012's existing `ArchitectureImportRequest`):
 
 ```json
 {
@@ -47,15 +47,15 @@ The server doesn't set a filename. The client names the download `<safe-username
 }
 ```
 
-`architectures` is typed as `list[dict[str, Any]]`, so one malformed entry can't fail the whole request (research §8). `exported_at` and `source_username` are optional on import.
+`architectures` is typed loosely, as are `format` and `format_version`, so every whole-file problem is checked by the service and returns this API's own `400`, never FastAPI's `422`. Each entry is then validated individually (research §8). `exported_at` and `source_username` are optional on import.
 
 **Responses**:
 
 | Status | Body | When |
 |---|---|---|
-| `200` | `ArchitectureImportResponse` | The envelope is valid. Includes files where every entry failed, and an empty `architectures` list. |
+| `200` | `ArchitectureFileImportResponse` | The envelope is valid. Includes files where every entry failed, and an empty `architectures` list. |
 | `400` | `{"error": "invalid_import_file", "message": "<reason>"}` | Wrong `format`, unsupported `format_version`, or `architectures` missing or not a list (FR-019). Nothing is written. |
-| `422` | FastAPI validation error | The body isn't a JSON object. The client treats this the same as `400`, as "Import failed". |
+| `422` | FastAPI validation error | Only when the body isn't a JSON object at all. The client treats this the same as `400`, as "Import failed". |
 | `404` | — | `user_id` is unknown or is a guest. |
 
 ```json
@@ -85,7 +85,7 @@ The server doesn't set a filename. The client names the download `<safe-username
 exportUserArchitectures: (userId: string) =>
   request<ArchitectureExportFile>(`/admin/users/${userId}/architectures/export`),
 importUserArchitectures: (userId: string, doc: unknown) =>
-  request<ArchitectureImportResponse>(`/admin/users/${userId}/architectures/import`, {
+  request<ArchitectureFileImportResponse>(`/admin/users/${userId}/architectures/import`, {
     method: "POST", body: JSON.stringify(doc),
   }),
 ```

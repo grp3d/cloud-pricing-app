@@ -67,3 +67,48 @@ def test_resolve_attributes_batches_multiple_skus():
 
 def test_resolve_attributes_empty_input_returns_empty_map():
     assert resolve_attributes([], region="us-east-1") == {}
+
+
+# --- find_existing_skus (014-architecture-templates-import-export, research.md §9) ---
+
+import pytest  # noqa: E402
+
+from src.pricing_data.catalog import find_existing_skus  # noqa: E402
+from src.pricing_data.errors import PricingDataUnavailableError  # noqa: E402
+
+MISSING_SKU = "ZZZZZZZZZZZZZZZZ"
+
+
+def test_find_existing_skus_returns_only_present_pairs():
+    result = find_existing_skus(
+        [(KNOWN_SERVICE_CODE, KNOWN_SKU), (KNOWN_SERVICE_CODE, MISSING_SKU)], region="us-east-1"
+    )
+    assert result == {(KNOWN_SERVICE_CODE, KNOWN_SKU)}
+
+
+def test_find_existing_skus_is_region_scoped():
+    """AWS SKU codes are region-scoped — the us-east-1 SKU doesn't exist in eu-west-1."""
+    assert find_existing_skus([(KNOWN_SERVICE_CODE, KNOWN_SKU)], region="eu-west-1") == set()
+
+
+def test_find_existing_skus_requires_service_code_to_match():
+    assert find_existing_skus([("AmazonS3", KNOWN_SKU)], region="us-east-1") == set()
+
+
+def test_find_existing_skus_empty_input_returns_empty_set_without_querying(monkeypatch):
+    def _boom(*args, **kwargs):
+        raise AssertionError("must not query DuckDB for empty input")
+
+    monkeypatch.setattr("src.pricing_data.catalog.duckdb.connect", _boom)
+    assert find_existing_skus([], region="us-east-1") == set()
+
+
+def test_find_existing_skus_wraps_duckdb_errors(monkeypatch):
+    import duckdb
+
+    def _fail(*args, **kwargs):
+        raise duckdb.IOException("unreadable")
+
+    monkeypatch.setattr("src.pricing_data.catalog.duckdb.connect", _fail)
+    with pytest.raises(PricingDataUnavailableError):
+        find_existing_skus([(KNOWN_SERVICE_CODE, KNOWN_SKU)], region="us-east-1")

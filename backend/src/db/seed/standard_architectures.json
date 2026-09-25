@@ -1,0 +1,396 @@
+{
+  "format": "cloud-pricing-architectures",
+  "format_version": 1,
+  "exported_at": "2026-09-24T00:00:00Z",
+  "source_username": "Admin",
+  "architectures": [
+    {
+      "name": "Active-Standby Multi-Region Web Application",
+      "provider": "aws",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VPC (us-east-1)",
+          "region": "us-east-1",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "AmazonRoute53",
+              "sku": "UA2M4EHGFQSJQV5S",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "322580.6452"
+            },
+            {
+              "service_code": "AmazonEC2",
+              "sku": "BJMX7R52F3VNFNEH",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "AmazonEC2",
+              "sku": "U4ACUCANS9BM4R7H",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "48.0000"
+            },
+            {
+              "service_code": "AmazonEC2",
+              "sku": "D3A672YT5C38ZG9H",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "96.0000"
+            },
+            {
+              "service_code": "AmazonRDS",
+              "sku": "WXWNJ3NDMFYNB5RF",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "AmazonRDS",
+              "sku": "7GYUVAA992PFJPCB",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "250.0000"
+            },
+            {
+              "service_code": "AmazonS3",
+              "sku": "WP9ANXZGBYYSGJEA",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "2000.0000"
+            },
+            {
+              "service_code": "AmazonS3",
+              "sku": "E9YHNFENF4XQBZR6",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "1612.9032"
+            },
+            {
+              "service_code": "AmazonS3",
+              "sku": "ZWQ6Q48CRJXX4FXE",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "16129.0323"
+            },
+            {
+              "service_code": "AWSDataTransfer",
+              "sku": "XGXYRYWGNXSSEUVT",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "8.0645"
+            }
+          ]
+        },
+        {
+          "ref": "c2",
+          "type": "vpc",
+          "name": "VPC (us-west-2)",
+          "region": "us-west-2",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "AWSELB",
+              "sku": "7AKU6NT3G9ZEJTB5",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "AWSELB",
+              "sku": "2ETY8Y426S4237JU",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "48.0000"
+            },
+            {
+              "service_code": "AmazonEC2",
+              "sku": "ESC2FSP6M66X7UWH",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "96.0000"
+            },
+            {
+              "service_code": "AmazonRDS",
+              "sku": "S3432CTMVK4NKXJP",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "AmazonRDS",
+              "sku": "XN6AM4AHVSYQ6BFC",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "250.0000"
+            },
+            {
+              "service_code": "AmazonS3",
+              "sku": "Z3FQZG73HYSPVABR",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "2000.0000"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    },
+    {
+      "name": "Modern Data Lake & ETL Analytics Pipeline",
+      "provider": "aws",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VPC (us-east-1)",
+          "region": "us-east-1",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "AmazonKinesis",
+              "sku": "7RXVY4V5SG8NQC38",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "96.0000"
+            },
+            {
+              "service_code": "AmazonKinesis",
+              "sku": "MAFXKQJ2YAQM6UDY",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "660645.1613"
+            },
+            {
+              "service_code": "AWSGlue",
+              "sku": "CXGYW3G8GS2SN9UG",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "20.0000"
+            },
+            {
+              "service_code": "AWSGlue",
+              "sku": "QKD9TPUADWXWA4F5",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "10000.0000"
+            },
+            {
+              "service_code": "AWSGlue",
+              "sku": "XUYP7NN729GFEEB7",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "32258.0645"
+            },
+            {
+              "service_code": "AmazonS3",
+              "sku": "WP9ANXZGBYYSGJEA",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "10000.0000"
+            },
+            {
+              "service_code": "AmazonS3",
+              "sku": "WP9ANXZGBYYSGJEA",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "5000.0000"
+            },
+            {
+              "service_code": "AmazonS3",
+              "sku": "NMJQ7TNW84EMBGZM",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "50000.0000"
+            },
+            {
+              "service_code": "AmazonAthena",
+              "sku": "B6WHE3FUNCDQVVX4",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "1.9355"
+            },
+            {
+              "service_code": "AmazonRedshift",
+              "sku": "E5AB8HE46XNNWE2Z",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "7.7419"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    },
+    {
+      "name": "Serverless Microservices Back-End",
+      "provider": "aws",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VPC (eu-west-1)",
+          "region": "eu-west-1",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "AmazonCognito",
+              "sku": "5YCEBXG4JEW286ZP",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "10000.0000"
+            },
+            {
+              "service_code": "AmazonApiGateway",
+              "sku": "WPZ6JK7P27W4K4QK",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "645161.2903"
+            },
+            {
+              "service_code": "AWSLambda",
+              "sku": "DV2YFXRNHNJFTDP3",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "483870.9677"
+            },
+            {
+              "service_code": "AWSLambda",
+              "sku": "KXNSA7NBRHBHXXPS",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "120967.7419"
+            },
+            {
+              "service_code": "AmazonDynamoDB",
+              "sku": "E6MS5SS3AMMHBJC6",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "50.0000"
+            },
+            {
+              "service_code": "AmazonDynamoDB",
+              "sku": "3ERQSZWPAMX2JWHN",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "161290.3226"
+            },
+            {
+              "service_code": "AmazonDynamoDB",
+              "sku": "F4EZE5SAMS3D49NJ",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "64516.1290"
+            },
+            {
+              "service_code": "AWSQueueService",
+              "sku": "SSZJAF3K6XY544ES",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "322580.6452"
+            },
+            {
+              "service_code": "AmazonSNS",
+              "sku": "ZVCRD326SNFYPYWV",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "64516.1290"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    },
+    {
+      "name": "Containerized Microservices Platform (EKS)",
+      "provider": "aws",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VPC (us-west-2)",
+          "region": "us-west-2",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "AmazonEKS",
+              "sku": "DYQZA4NFAQKBU6H4",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "AmazonEC2",
+              "sku": "M2FWPJS5NYCRADSV",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "144.0000"
+            },
+            {
+              "service_code": "AmazonEKS",
+              "sku": "JRYUZKUX5CVYXGTE",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "240.0000"
+            },
+            {
+              "service_code": "AmazonEKS",
+              "sku": "GU5BE86QZK55S7P4",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "480.0000"
+            },
+            {
+              "service_code": "AmazonECR",
+              "sku": "2BSQ677HKG6WUUKA",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "100.0000"
+            },
+            {
+              "service_code": "AWSELB",
+              "sku": "SCYRS8C539B49TTY",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "AWSELB",
+              "sku": "95U72SGSJVUFNAXW",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "72.0000"
+            },
+            {
+              "service_code": "AmazonElastiCache",
+              "sku": "J45CWVASJRG3HVM4",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "48.0000"
+            },
+            {
+              "service_code": "AmazonRDS",
+              "sku": "USQUNE6TNEKQAJ9P",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "AmazonRDS",
+              "sku": "5NNQDGU8VM82PRVR",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "500.0000"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    }
+  ]
+}

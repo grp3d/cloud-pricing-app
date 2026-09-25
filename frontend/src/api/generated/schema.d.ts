@@ -389,6 +389,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/users/{user_id}/architectures/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export User Architectures
+         * @description All of one user's live architectures as a single export document (014, spec FR-015,
+         *     FR-017). The browser names and saves the file — nothing is written server-side (FR-014).
+         */
+        get: operations["export_user_architectures_api_v1_admin_users__user_id__architectures_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/architectures/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import User Architectures
+         * @description Import an export file's architectures into one user's account (014, spec FR-018-FR-023).
+         *
+         *     The envelope arrives loosely typed (`ArchitectureFileImportRequest`) so every whole-file
+         *     problem reaches `validate_envelope` and becomes `InvalidImportFileError` -> 400
+         *     (`main.py`), never FastAPI's generic 422.
+         */
+        post: operations["import_user_architectures_api_v1_admin_users__user_id__architectures_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/architectures/{architecture_id}/connectors": {
         parameters: {
             query?: never;
@@ -489,6 +534,8 @@ export interface components {
             is_admin: boolean;
             /** Is Default Admin */
             is_default_admin: boolean;
+            /** Architecture Count */
+            architecture_count: number;
         };
         /** ArchitectureCreate */
         ArchitectureCreate: {
@@ -499,6 +546,26 @@ export interface components {
              * @default aws
              */
             provider: string;
+        };
+        /** ArchitectureDefinition */
+        ArchitectureDefinition: {
+            /** Name */
+            name: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /**
+             * Collections
+             * @default []
+             */
+            collections: components["schemas"]["CollectionDefinition"][];
+            /**
+             * Connectors
+             * @default []
+             */
+            connectors: components["schemas"]["ConnectorDefinition"][];
         };
         /** ArchitectureDetailOut */
         ArchitectureDetailOut: {
@@ -528,6 +595,62 @@ export interface components {
              * @default []
              */
             connectors: components["schemas"]["DataConnectorOut"][];
+        };
+        /** ArchitectureExportFile */
+        ArchitectureExportFile: {
+            /**
+             * Format
+             * @constant
+             */
+            format: "cloud-pricing-architectures";
+            /**
+             * Format Version
+             * @constant
+             */
+            format_version: 1;
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /** Source Username */
+            source_username: string;
+            /** Architectures */
+            architectures: components["schemas"]["ArchitectureDefinition"][];
+        };
+        /**
+         * ArchitectureFileImportRequest
+         * @description The Admin import's request envelope — deliberately loose (research.md §8). Every
+         *     whole-file problem (wrong `format`, unsupported `format_version`, missing or non-list
+         *     `architectures`) must produce this codebase's own `{"error": "invalid_import_file", ...}`
+         *     400 (contracts/api.md), not FastAPI's generic 422 — the same convention
+         *     `CalculateSnapshotRequest.selections` follows — so these are checked explicitly by
+         *     `services/architecture_transfer.validate_envelope`. Each `architectures[]` entry is then
+         *     validated individually against `ArchitectureDefinition`, so one bad entry never fails the
+         *     whole file (FR-020).
+         */
+        ArchitectureFileImportRequest: {
+            /** Format */
+            format?: unknown;
+            /** Format Version */
+            format_version?: unknown;
+            /** Exported At */
+            exported_at?: unknown;
+            /** Source Username */
+            source_username?: unknown;
+            /** Architectures */
+            architectures?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ArchitectureFileImportResponse */
+        ArchitectureFileImportResponse: {
+            /** Imported Count */
+            imported_count: number;
+            /** Failed Count */
+            failed_count: number;
+            /** Results */
+            results: components["schemas"]["ImportResult"][];
         };
         /** ArchitectureImportRequest */
         ArchitectureImportRequest: {
@@ -655,6 +778,23 @@ export interface components {
             /** Parent Collection Id */
             parent_collection_id?: string | null;
         };
+        /** CollectionDefinition */
+        CollectionDefinition: {
+            /** Ref */
+            ref: string;
+            type: components["schemas"]["CollectionType"];
+            /** Name */
+            name: string;
+            /** Region */
+            region: string;
+            /** Parent Ref */
+            parent_ref?: string | null;
+            /**
+             * Sku Selections
+             * @default []
+             */
+            sku_selections: components["schemas"]["SKUSelectionDefinition"][];
+        };
         /** CollectionOut */
         CollectionOut: {
             /**
@@ -693,6 +833,14 @@ export interface components {
             parent_collection_id?: string | null;
             /** Region */
             region?: string | null;
+        };
+        /** ConnectorDefinition */
+        ConnectorDefinition: {
+            /** From Ref */
+            from_ref: string;
+            /** To Ref */
+            to_ref: string;
+            sku_selection?: components["schemas"]["SKUSelectionDefinition"] | null;
         };
         /** CurrentUserOut */
         CurrentUserOut: {
@@ -744,6 +892,18 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** ImportResult */
+        ImportResult: {
+            /** Name */
+            name: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "success" | "failed";
+            /** Error */
+            error: string | null;
         };
         /** ImportableArchitectureGroupOut */
         ImportableArchitectureGroupOut: {
@@ -831,6 +991,17 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: number | string;
+        };
+        /** SKUSelectionDefinition */
+        SKUSelectionDefinition: {
+            /** Service Code */
+            service_code: string;
+            /** Sku */
+            sku: string;
+            pricing_term: components["schemas"]["PricingTerm"];
+            purchase_option: components["schemas"]["PurchaseOption"];
+            /** Usage Quantity */
+            usage_quantity: string;
         };
         /** SKUSelectionOut */
         SKUSelectionOut: {
@@ -1793,6 +1964,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminUserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_user_architectures_api_v1_admin_users__user_id__architectures_export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchitectureExportFile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_user_architectures_api_v1_admin_users__user_id__architectures_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchitectureFileImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchitectureFileImportResponse"];
                 };
             };
             /** @description Validation Error */

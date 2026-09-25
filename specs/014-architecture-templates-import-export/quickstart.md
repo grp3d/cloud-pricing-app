@@ -87,3 +87,31 @@ cd frontend && npm test && npm run build && npm run check-api-types
 ```
 
 **Expected**: everything passes. CI runs the same commands against the Parquet fixture. The fixture is rebuilt to include the SKUs the new tests reference (`scripts/build_test_pricing_fixture.py` `SEED_SKUS`).
+
+## Validation notes (2026-09-25 browser walkthrough)
+
+These steps were run in Chrome against the dev database (`alembic` head `7c2e9d41b8a3`) and pricing snapshot `2026-09-24`.
+
+- **Step 3 ✅** demo1, a non-admin user, sees all four standard architectures under **Admin** in the Import list. The copy "My Serverless Microservices Back-End" has one `VPC (eu-west-1)`, keeps the seeded service order, and prices at $136.32/month with 0 unpriceable entries. DynamoDB storage and SNS show $0.00 because of the known tiered-pricing first-row behavior (research §7.3, report "tiered" column).
+- **Step 4 ✅**
+  - The columns read Users · Active · Password · Import Architectures from Disk · Export Architectures to Disk · Purge, with both new headers wrapped onto 2 lines.
+  - The table is 672px wide and the document has no horizontal scroll at a 1392px window.
+  - Export is disabled for users with 0 architectures (demo2, and qa1 before import).
+  - Export on Admin saved `Admin_20260925T141636.json`: format v1 with all 5 Admin architectures, and no `id`/`user_id`/`is_public`/`price`/`deleted_at` keys.
+  - Deviation: this Chrome profile asks where to save each file, so the download needed a manual Save.
+- **Step 5 ✅** Each file was imported into the new user `qa1`:
+
+  | File | Result |
+  |---|---|
+  | The export | 5 ✓ |
+  | The same export again | 5 ✗ "Architecture name already exists" |
+  | Mixed file | 1 ✓, 1 ✗ "Service not found in pricing data: AmazonRoute53 / ZZZZZZZZZZZZZZZZ (us-east-1)", 2 ✗ name exists |
+  | Non-JSON file | "Import failed: the file is not valid JSON." |
+  | Old baseline JSON | "Import failed: the file is not an architecture export." |
+  | JSON array | "Import failed: the file is not in the expected format." |
+
+  - `qa1` ends with 6 private architectures, and no rows remain from the failed entry.
+  - Re-exporting `qa1` gives architectures identical to the original export (SC-004).
+- **Step 5, cancelled picker (not exercised in the browser):** a native file picker can't be driven by the automation, so the code path (no file → no request, input reset) was reviewed but not clicked through.
+- **Step 6 ✅** demo1 has no Admin tab, and gets 403 on both `…/architectures/export` and `…/architectures/import`.
+- **Console:** one React dev-mode warning, "Function components cannot be given refs", from the pre-existing `components/ui/dialog.tsx` `DialogOverlay`. Every dialog raises it, not only the new one.

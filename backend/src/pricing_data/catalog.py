@@ -8,7 +8,7 @@ least one filter is required to avoid returning the full ~173k-row catalog per r
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 import duckdb
 
@@ -279,3 +279,42 @@ def resolve_attributes(
         (service_code, sku): parse_attributes(raw) for service_code, sku, raw in rows
     }
     return {key: index.get(key, {}) for key in skus}
+
+
+def find_existing_skus(
+    pairs: Iterable[tuple[str, str]], *, region: str, snapshot_date: str | None = None
+) -> set[tuple[str, str]]:
+    """Return the subset of `(service_code, sku)` pairs that exist in `region` at the latest
+    (or given) snapshot (014-architecture-templates-import-export, research.md §9).
+
+    One DuckDB query for the whole set — an Admin import validates every SKU of every
+    architecture in a file with one call per region, never one per SKU. Region-scoped exactly
+    like `resolve_attributes` (`region_code`, or `fromRegionCode` for AWSDataTransfer), so a
+    SKU that only appears in another region's rows is reported missing rather than accepted
+    and later priced against the wrong row.
+    """
+    wanted = set(pairs)
+    if not wanted:
+        return set()
+
+    snapshot_date = snapshot_date or resolve_latest_snapshot_date()
+    unique_skus = sorted({sku for _, sku in wanted})
+    placeholders = ",".join("?" for _ in unique_skus)
+
+    query = (
+        "SELECT DISTINCT service_code, sku "
+        "FROM read_parquet(?) WHERE "
+        "CASE WHEN regexp_matches(service_code, 'AWSDataTransfer', 'i') "
+        "THEN json_extract_string(attributes_json, '$.fromRegionCode') = ? "
+        "ELSE region_code = ? END "
+        f"AND sku IN ({placeholders})"
+    )
+    try:
+        con = duckdb.connect(":memory:", read_only=False)
+        rows = con.execute(
+            query, [_product_dim_path(snapshot_date, region), region, region, *unique_skus]
+        ).fetchall()
+    except duckdb.Error as exc:
+        raise PricingDataUnavailableError(str(exc)) from exc
+
+    return {(service_code, sku) for service_code, sku in rows} & wanted
