@@ -18,8 +18,8 @@ from dataclasses import dataclass
 import duckdb
 
 from src.config import settings
+from src.pricing_data.active_snapshot import get_active_snapshot_date
 from src.pricing_data.errors import PricingDataUnavailableError
-from src.pricing_data.snapshot import resolve_latest_snapshot_date
 
 # The raw AWS price_fact data is inconsistently formatted (e.g. `lease_contract_length` mixes
 # "1yr" and "1 yr"; `purchase_option` mixes "NoUpfront" and "No Upfront"), confirmed against
@@ -56,7 +56,7 @@ def lookup_price(
     """Return the unit price for one SKU/term/purchase_option in `region`, or None if not
     priceable (010-multi-region-support, spec FR-005 — every lookup is now scoped to the
     caller-supplied region rather than one global default)."""
-    snapshot_date = snapshot_date or resolve_latest_snapshot_date()
+    snapshot_date = snapshot_date or get_active_snapshot_date()
     term, lease_length = _TERM_MAP[pricing_term]
     purchase = _PURCHASE_OPTION_MAP[purchase_option]
 
@@ -119,7 +119,7 @@ def lookup_reserved_price(
     fix — see quickstart.md's Notes) resolves to whichever row is read first, the same
     determinism `lookup_price` already relies on elsewhere.
     """
-    snapshot_date = snapshot_date or resolve_latest_snapshot_date()
+    snapshot_date = snapshot_date or get_active_snapshot_date()
     term, lease_length = _TERM_MAP[pricing_term]
     if lease_length is None:
         raise ValueError(
@@ -178,7 +178,7 @@ def resolve_units(
     if not selections:
         return {}
 
-    snapshot_date = snapshot_date or resolve_latest_snapshot_date()
+    snapshot_date = snapshot_date or get_active_snapshot_date()
     skus = sorted({sku for sku, _, _ in selections})
     placeholders = ",".join("?" for _ in skus)
 

@@ -21,10 +21,12 @@
 - Q: Manual override? → A: Yes — a setting (overridable by environment variable) that pins the active snapshot date, e.g. to roll back from bad upstream data.
 - Q: Admin tab layout? → A: The existing content becomes a "User Management" section. Below it, a "System Information" section shows the active snapshot date, when the last check ran, and any snapshot waiting to become active (and why). Under System Information, the Issues table lists non-blocking problems (services with no icon, missing regions).
 - Q: Show a "newer pricing data is available" notice on stored results older than the active snapshot? → A: No — which pricing data is active is not the user's choice, so the pricing column does not flag it; the Data Timestamp line continues to show which snapshot a result used.
-- Q: When icons don't fit side by side at the new spacing, should boxes widen by default or stack icons in one column? → A: The default box width grows to fit up to 3 icons per row (about 400px); rows wrap after that. Boxes with fewer services are only as wide as needed (never narrower than today's defaults).
+- Q: When icons don't fit side by side at the new spacing, should boxes widen by default or stack icons in one column? → A: The default box width grows to fit up to 3 icons per row (about 400px, later 320px when the gap became 60px); rows wrap after that. Boxes with fewer services are only as wide as needed (never narrower than today's defaults).
 - Q: Where can icons be dragged — within their own box only, or into other boxes? → A: Into any other box in the same region (VPC or Application, nested or not); dropping moves the service to that box. Inside a VPC, the VPC's own icons stay in its own-services area above its nested boxes (that area grows to fit), unless dropped into one of the nested boxes. The same spacing rules apply in every box.
 - Q: Can the manual override pin a snapshot date that has no completion markers? → A: Yes — any date present in every pricing table can be pinned; if it lacks markers, the server still starts and the Issues table shows a warning. A date missing from any table still prevents startup.
 - Q: After a restart, what should the missing-regions check compare the active snapshot against? → A: Nothing — the check runs only when the active date switches while the server is running, against the date that was active before; it is skipped after a restart. (A persisted state table is planned for a future feature.)
+
+- Q (after implementation review): The 90px gaps spread boxes out too much — reduce the default spacing, or keep it and let users drag icons closer? → A: Reduce it: a 60px gap (one icon width) is both the default spacing and the minimum when dragging. This supersedes the 1.5-icon-width answer above.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -39,7 +41,7 @@ A user looking at the architecture canvas finds today's icons too small and pack
 **Acceptance Scenarios**:
 
 1. **Given** a box containing services, **When** the canvas renders at a given zoom, **Then** each icon is 2.5× the size it was before this change at that same zoom.
-2. **Given** a box containing several services, **When** the canvas renders with default placement, **Then** every icon is separated from its nearest neighbor on all sides by at least the minimum spacing: a gap of 1.5 icon widths (90px in canvas units at the new 60px icon size).
+2. **Given** a box containing several services, **When** the canvas renders with default placement, **Then** every icon is separated from its nearest neighbor on all sides by at least the minimum spacing: a gap of one icon width (60px in canvas units at the new 60px icon size).
 3. **Given** a box with more icons than fit on one row, **When** the canvas renders, **Then** the box grows to contain every icon with the required spacing, and nothing overlaps the box's name or region label.
 4. **Given** the icons at their new size, **When** the user zooms in or out, **Then** icons and spacing scale with the canvas as they do today.
 
@@ -196,7 +198,7 @@ An operator deploying the app needs to change values like the pricing data locat
 **Canvas icons**
 
 - **FR-001**: Service icons on the canvas MUST be 2.5× their current size at any given zoom level.
-- **FR-002**: By default, icons within a box MUST be placed so each is at least 1.5 icon widths (90px in canvas units) from its nearest neighbor on all sides, in the box's service order, up to 3 icons per row, wrapping after that. A box's default width MUST be just wide enough for its widest row (at most 3 icons, about 400px), and never narrower than today's defaults.
+- **FR-002**: By default, icons within a box MUST be placed so each is at least one icon width (60px in canvas units) from its nearest neighbor on all sides, in the box's service order, up to 3 icons per row, wrapping after that. The same 60px is the closest a drag may place two icons. A box's default width MUST be just wide enough for its widest row (at most 3 icons, 320px), and never narrower than today's defaults.
 - **FR-003**: A box MUST always be large enough to contain all its icons at their positions plus spacing, without overlapping the box's name or region label.
 - **FR-004**: Users MUST be able to drag an icon to a new position within its own box. Within a VPC, the VPC's own icons MUST stay in its own-services area above its nested boxes, which grows to fit them.
 - **FR-004a**: Dropping an icon inside another box in the same region (VPC or Application, nested or not) MUST move that service to that box, persisted like any other change to the architecture, with the icon placed at the drop point or the nearest spot satisfying the spacing rule.

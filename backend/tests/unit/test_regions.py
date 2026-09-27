@@ -9,12 +9,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.config import settings
+from src.pricing_data.active_snapshot import get_active_snapshot_date
 from src.pricing_data.regions import list_available_regions
-from src.pricing_data.snapshot import _TABLES, resolve_latest_snapshot_date
+from src.pricing_data.snapshot import _TABLES
 
 
 def test_returns_regions_common_to_every_table_at_the_latest_snapshot():
-    snapshot_date = resolve_latest_snapshot_date()
+    snapshot_date = get_active_snapshot_date()
     expected: set[str] | None = None
     for table in _TABLES:
         table_dir = (

@@ -7,7 +7,7 @@
 ## Summary
 
 **Canvas**
-- Service icons become 60px, placed 3 per row with 90px spacing.
+- Service icons become 60px, placed 3 per row with 60px spacing (reduced from 90px after review).
 - Icons are hand-placeable, with positions saved per browser.
 - Icons can be dragged into any same-region box, which moves the service via a new `collection_id`
   on `PATCH /sku-selections/{id}`.

@@ -434,6 +434,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/system-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get System Info */
+        get: operations["get_system_info_api_v1_admin_system_info_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/architectures/{architecture_id}/connectors": {
         parameters: {
             query?: never;
@@ -927,6 +944,26 @@ export interface components {
             /** Groups */
             groups: components["schemas"]["ImportableArchitectureGroupOut"][];
         };
+        /** IssueOut */
+        IssueOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "missing_icon" | "missing_regions" | "pinned_incomplete";
+            /** Snapshot Date */
+            snapshot_date: string;
+            /** Message */
+            message: string;
+            /** Service Code */
+            service_code?: string | null;
+            /** Service Name */
+            service_name?: string | null;
+            /** Is New */
+            is_new?: boolean | null;
+            /** Regions */
+            regions?: string[] | null;
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Username */
@@ -1036,6 +1073,8 @@ export interface components {
             purchase_option?: components["schemas"]["PurchaseOption"] | null;
             /** Usage Quantity */
             usage_quantity?: number | string | null;
+            /** Collection Id */
+            collection_id?: string | null;
         };
         /**
          * SnapshotSelection
@@ -1052,6 +1091,23 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: number | string;
+        };
+        /** SystemInfoOut */
+        SystemInfoOut: {
+            /** Active Snapshot Date */
+            active_snapshot_date: string | null;
+            /** Pinned */
+            pinned: boolean;
+            /** Last Check At */
+            last_check_at: string | null;
+            /** Last Check Error */
+            last_check_error: string | null;
+            /** Check Interval Seconds */
+            check_interval_seconds: number;
+            /** Waiting Snapshots */
+            waiting_snapshots: components["schemas"]["WaitingSnapshotOut"][];
+            /** Issues */
+            issues: components["schemas"]["IssueOut"][];
         };
         /** UnpriceableItem */
         UnpriceableItem: {
@@ -1084,6 +1140,13 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WaitingSnapshotOut */
+        WaitingSnapshotOut: {
+            /** Snapshot Date */
+            snapshot_date: string;
+            /** Reason */
+            reason: string;
         };
     };
     responses: never;
@@ -1165,7 +1228,7 @@ export interface operations {
                 q?: string | null;
                 from_region_code?: string | null;
                 to_region_code?: string | null;
-                limit?: number;
+                limit?: number | null;
                 offset?: number;
             };
             header?: never;
@@ -1630,6 +1693,20 @@ export interface operations {
                     "application/json": components["schemas"]["SKUSelectionOut"];
                 };
             };
+            /** @description not_movable */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description region_mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -2036,6 +2113,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArchitectureFileImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_system_info_api_v1_admin_system_info_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemInfoOut"];
                 };
             };
             /** @description Validation Error */

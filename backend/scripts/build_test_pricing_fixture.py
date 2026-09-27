@@ -154,6 +154,11 @@ def build(source: Path, out: Path, snapshot_date: str | None = None) -> None:
             )
         print(f"{region}: {n} product rows, {len(skus)} skus")
 
+    # 016-canvas-icon-layout (FR-015): the backend only activates a snapshot whose every table
+    # carries the upstream job's completion marker, so the fixture must carry one too.
+    for table in TABLES:
+        (out / table / f"snapshot_date={snapshot_date}" / "_SUCCESS").touch()
+
     print(f"wrote snapshot {snapshot_date} to {out}")
 
 

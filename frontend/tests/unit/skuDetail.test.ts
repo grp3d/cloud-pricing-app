@@ -5,9 +5,9 @@ import { summarizeAttributes } from "../../src/lib/skuDetail";
 describe("summarizeAttributes", () => {
   it("joins present candidate keys with a middle dot, in candidate-list order", () => {
     // DETAIL_CANDIDATE_KEYS orders memory before vcpu, regardless of input key order.
-    expect(
-      summarizeAttributes({ instanceType: "t3.medium", vcpu: "2", memory: "4 GiB" }),
-    ).toBe("t3.medium · 4 GiB · 2");
+    expect(summarizeAttributes({ instanceType: "t3.medium", vcpu: "2", memory: "4 GiB" })).toBe(
+      "t3.medium · 4 GiB · 2",
+    );
   });
 
   it("skips candidate keys that aren't present", () => {
@@ -20,5 +20,15 @@ describe("summarizeAttributes", () => {
 
   it("returns an empty string for an empty attributes map", () => {
     expect(summarizeAttributes({})).toBe("");
+  });
+
+  // 016-canvas-icon-layout, FR-011.
+  it("leaves out excluded keys", () => {
+    expect(
+      summarizeAttributes(
+        { instanceType: "t3.medium", vcpu: "2", memory: "4 GiB" },
+        { exclude: ["memory"] },
+      ),
+    ).toBe("t3.medium · 2");
   });
 });

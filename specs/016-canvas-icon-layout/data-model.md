@@ -125,22 +125,22 @@ type IconLayout = Record<string /* skuSelectionId */, { x: number; y: number }>;
   replaced by the first free default slot.
 - Moving a service to another box keeps its key; the position is then read relative to the new
   box (and re-validated there).
-- **Constraint**: two icons in the same box are always separated by at least `GAP` (90) on the x
-  axis or on the y axis. So their squares never overlap, and no two are closer than 1.5 icon
-  widths.
+- **Constraint**: two icons in the same box are always separated by at least `GAP` (60) on the x
+  axis or on the y axis. So their squares never overlap, and no two are closer than one icon
+  width.
 
 ## 6. Layout constants (frontend)
 
 | Name | Value | Source |
 |---|---|---|
 | `ICON` | 60 | FR-001 (2.5 × 24) |
-| `GAP` | 90 | Clarification (1.5 × ICON) |
-| `MAX_PER_ROW` | 3 | Clarification (boxes widen to about 400px) |
+| `GAP` | 60 | Clarification (one icon width; reduced from 90 after review) |
+| `MAX_PER_ROW` | 3 | Clarification (boxes widen to fit 3 icons: 320px) |
 | `PAD` | 8 | the box's existing `p-2` |
 | `LABEL_RESERVE` | 16 | room for the box's region label (015) |
 
 Default box width = max(today's default, `2*PAD + n*ICON + (n-1)*GAP + borders`), where
-n = min(icons, 3). For 3 icons that's 380 + borders.
+n = min(icons, 3). For 3 icons that's 316 + borders = 320.
 
 ## 7. Settings (backend configuration)
 

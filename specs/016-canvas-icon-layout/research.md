@@ -145,12 +145,11 @@ doesn't appear.
 **Decision**: a pure module, `frontend/src/lib/iconLayout.ts`, with:
 - **Constants**:
   - `ICON = 60` (2.5 × 24)
-  - `GAP = 90` (1.5 × ICON)
+  - `GAP = 60` (one icon width; initially 90, reduced after review because boxes spread too far)
   - `MAX_PER_ROW = 3`
   - `PAD = 8`, matching the box's `p-2`
 - `defaultBoxWidth(count, minWidth)`: the larger of today's default and
-  `PAD*2 + n*ICON + (n-1)*GAP + border`, where n = min(count, 3). For 3 icons that's 380px (inside
-  the spec's "about 400px").
+  `PAD*2 + n*ICON + (n-1)*GAP + border`, where n = min(count, 3). For 3 icons that's 320px.
 - `defaultPositions(ids, innerWidth)`: places icons row by row, with up to 3 per row that fit
   `innerWidth`, spaced `ICON + GAP` apart.
 - `isValidSpot(pos, others)`: true when `pos` is at least `GAP` from every other icon in both

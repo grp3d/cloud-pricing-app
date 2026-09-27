@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 
 import { api, InvalidImportFileError, type AdminUser, type ImportResult } from "../api/client";
 import { ImportResultsDialog } from "../components/ImportResultsDialog";
+import { SystemInformationSection } from "../components/admin/SystemInformationSection";
 import { Button } from "../components/ui/button";
 import {
   Dialog,
@@ -133,6 +134,9 @@ export function AdminPage() {
   return (
     <div className="flex flex-col gap-4 p-4">
       <h1 className="text-sm font-semibold">Admin</h1>
+      {/* 016-canvas-icon-layout, FR-020: today's content is the User Management section,
+          followed by System Information. */}
+      <h2 className="text-xs font-semibold">User Management</h2>
 
       <table className="w-full max-w-2xl border-collapse text-2xs">
         <thead>
@@ -262,6 +266,8 @@ export function AdminPage() {
       {createUser.isError && (
         <p className="text-2xs text-destructive">Could not create user — username may already exist.</p>
       )}
+
+      <SystemInformationSection />
 
       <Dialog
         open={passwordDialogUserId !== null}

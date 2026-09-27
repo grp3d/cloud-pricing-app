@@ -30,6 +30,7 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
 
 import { type Collection, type DataConnector } from "../../api/client";
@@ -40,10 +41,31 @@ import {
   type MeasuredLayoutNode,
   childYOffsets,
   computeMeasuredHeight,
+  estimateComponentHeight,
 } from "../../pages/nodeLayout";
 import { edgeOffsetIndex } from "../../lib/edgeOffset";
 import { awsDataTransferLabel } from "../../lib/awsDataTransfer";
 import { resolveAwsServiceIcon } from "../../lib/awsServiceIcons";
+import { findVisibleSlot, type Rect as PlacementRect } from "../../lib/newNodePlacement";
+import {
+  readIconLayout,
+  removeIconPosition,
+  writeIconPosition,
+  writeIconPositions,
+} from "../../lib/iconLayoutStorage";
+import {
+  ICON,
+  MIN_ICON_BOX_WIDTH,
+  PAD,
+  BORDER,
+  contentHeight,
+  nearestValidSpot,
+  defaultBoxWidth,
+  innerWidthOf,
+  resolvePositions,
+  type IconPosition,
+  type IconPositions,
+} from "../../lib/iconLayout";
 import { buildServicePopupLines, servicePopupAccessibleName } from "../../lib/servicePopup";
 import {
   readDiagramLayout,
@@ -77,8 +99,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 /** One service on the canvas as its AWS icon (015-canvas-service-icons, FR-001/FR-002/FR-006):
  * the resolved service icon (product-family override, then service code, then the generic
- * fallback — `awsServiceIcons.ts`) in a 24px button that selects the service exactly as the
- * old text row did. Theme-aware icons (the fallback and AWSDataTransfer's Data Stream icon) render
+ * fallback — `awsServiceIcons.ts`) in a button that selects the service exactly as the old
+ * text row did — 60px since 016-canvas-icon-layout (FR-001, 2.5× the original 24px), absolutely
+ * positioned in its box's icon area, and draggable to another spot or into another box. Theme-aware icons (the fallback and AWSDataTransfer's Data Stream icon) render
  * both variants, one hidden per theme. The pixel size is fixed in node space, so it scales with
  * the canvas zoom through React Flow's viewport transform like every other node label (FR-013).
  * Hovering or focusing it shows the service's details one labeled line each (FR-008-FR-011,
@@ -92,14 +115,28 @@ function ServiceIconButton({
   selection,
   isSelected,
   onSelectService,
+  position,
+  onDrop,
 }: {
   selection: Collection["sku_selections"][number];
   isSelected: boolean;
   onSelectService: (skuSelectionId: string) => void;
+  /** 016-canvas-icon-layout: the icon's top-left within its box's icon area (`iconLayout.ts`). */
+  position: IconPosition;
+  /** 016-canvas-icon-layout, FR-004–FR-005: called when a drag ends, with the pointer's screen
+   * position — the canvas decides where the icon (or service) goes. */
+  onDrop?: (selectionId: string, clientX: number, clientY: number) => void;
 }) {
   const icon = resolveAwsServiceIcon(selection.service_code, selection.product_family);
   const popupLines = buildServicePopupLines(selection);
   const zoom = useStore((state) => state.transform[2]);
+  // Pointer-driven drag (research.md §8). A press that moves no more than DRAG_THRESHOLD screen
+  // px is still a click (FR-007); beyond that, a floating copy follows the pointer (rendered
+  // over everything, so a box's own overflow never clips it) and the drop is reported up.
+  const dragRef = useRef<{ startX: number; startY: number; dragging: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
+  const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
+  const ghostSize = ICON * zoom;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -107,29 +144,82 @@ function ServiceIconButton({
           type="button"
           aria-label={servicePopupAccessibleName(popupLines)}
           aria-pressed={isSelected}
-          className={`size-6 shrink-0 rounded-sm p-0 hover:ring-2 hover:ring-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          onPointerDown={(e) => {
+            if (!onDrop || e.button !== 0) return;
+            e.stopPropagation();
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+            dragRef.current = { startX: e.clientX, startY: e.clientY, dragging: false };
+          }}
+          onPointerMove={(e) => {
+            const drag = dragRef.current;
+            if (!drag) return;
+            const moved = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+            if (!drag.dragging && moved <= DRAG_THRESHOLD) return;
+            drag.dragging = true;
+            setGhost({ x: e.clientX, y: e.clientY });
+          }}
+          onPointerUp={(e) => {
+            const drag = dragRef.current;
+            dragRef.current = null;
+            e.currentTarget.releasePointerCapture?.(e.pointerId);
+            if (!drag?.dragging) return;
+            setGhost(null);
+            suppressClickRef.current = true;
+            onDrop?.(selection.id, e.clientX, e.clientY);
+          }}
+          onPointerCancel={() => {
+            dragRef.current = null;
+            setGhost(null);
+          }}
+          className={`nodrag nopan absolute size-[60px] touch-none rounded-sm p-0 hover:ring-2 hover:ring-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
             isSelected ? "ring-2 ring-primary" : ""
-          }`}
+          } ${ghost ? "opacity-30" : ""}`}
+          style={{ left: position.x, top: position.y }}
           onClick={(e) => {
             e.stopPropagation();
+            if (suppressClickRef.current) {
+              suppressClickRef.current = false;
+              return;
+            }
             onSelectService(selection.id);
           }}
         >
           {icon.lightUrl === icon.darkUrl ? (
-            <img src={icon.lightUrl} alt="" draggable={false} className="size-6" />
+            <img src={icon.lightUrl} alt="" draggable={false} className="size-[60px]" />
           ) : (
             <>
-              <img src={icon.lightUrl} alt="" draggable={false} className="size-6 dark:hidden" />
+              <img
+                src={icon.lightUrl}
+                alt=""
+                draggable={false}
+                className="size-[60px] dark:hidden"
+              />
               <img
                 src={icon.darkUrl}
                 alt=""
                 draggable={false}
-                className="hidden size-6 dark:block"
+                className="hidden size-[60px] dark:block"
               />
             </>
           )}
         </button>
       </TooltipTrigger>
+      {ghost &&
+        createPortal(
+          <img
+            src={icon.lightUrl}
+            alt=""
+            aria-hidden
+            className="pointer-events-none fixed z-[1000] rounded-sm opacity-80 shadow-lg"
+            style={{
+              left: ghost.x - ghostSize / 2,
+              top: ghost.y - ghostSize / 2,
+              width: ghostSize,
+              height: ghostSize,
+            }}
+          />,
+          document.body,
+        )}
       <TooltipContent
         className="max-w-[40em] flex-col items-start gap-0 px-[0.8em] py-[0.5em]"
         style={{ fontSize: `calc(var(--text-xs) * ${zoom / DEFAULT_DIAGRAM_ZOOM})` }}
@@ -146,15 +236,20 @@ function ServiceIconButton({
  * independently clickable (007-ui-overhaul-shadcn, FR-014) — `stopPropagation` keeps that click
  * from also being interpreted as a click on the containing box (which selects the Collection as
  * a whole, unchanged from 002-006). 015-canvas-service-icons (FR-001, FR-005): each service is
- * now an icon rather than a `service_code / sku — detail` text row, wrapping onto as many rows
- * as the box needs (the node's measured height follows); the same service may repeat. The
- * currently-selected service is marked exclusively (`selectedServiceId` — see
- * `WorkspacePage.tsx`'s `diagramSelection`). */
+ * an icon rather than a `service_code / sku — detail` text row; the same service may repeat.
+ * 016-canvas-icon-layout (FR-001–FR-003, FR-008): icons are 60px and absolutely positioned in an
+ * icon area — up to 3 per row, 60px apart by default, or wherever they were hand-placed — whose
+ * height covers the lowest icon plus room for the region label, so the node's measured height
+ * (and a VPC's nested boxes below it) follows. The currently-selected service is marked
+ * exclusively (`selectedServiceId` — see `WorkspacePage.tsx`'s `diagramSelection`). */
 export function ServiceList({
   skuSelections,
   selectedServiceId,
   onSelectService,
   hideEmptyMessage,
+  innerWidth,
+  savedPositions,
+  onIconDrop,
 }: {
   skuSelections: Collection["sku_selections"];
   selectedServiceId?: string;
@@ -166,27 +261,60 @@ export function ServiceList({
    * genuinely empty box. `ApplicationComponentNode` (which can never have children) never
    * passes this, so its own "No services yet." is unaffected. */
   hideEmptyMessage?: boolean;
+  /** Width of the box's icon area (the box width minus padding and borders). */
+  innerWidth: number;
+  /** Hand-placed positions by SKU Selection id; anything missing or invalid falls back to the
+   * first free default slot (`resolvePositions`). */
+  savedPositions?: IconPositions;
+  /** 016-canvas-icon-layout, FR-004: reports an icon drag's drop point to the canvas. */
+  onIconDrop?: (selectionId: string, clientX: number, clientY: number) => void;
 }) {
+  const positions = useMemo(
+    () =>
+      resolvePositions(
+        skuSelections.map((s) => s.id),
+        savedPositions ?? {},
+        innerWidth,
+      ),
+    [skuSelections, savedPositions, innerWidth],
+  );
   if (skuSelections.length === 0) {
     return hideEmptyMessage ? null : (
       <p className="mt-1 text-2xs text-muted-foreground">No services yet.</p>
     );
   }
   return (
-    // `pb-3`: keeps a full last row of icons clear of the box's bottom-right region label
-    // (010, FR-019), which is absolutely positioned and so takes no space of its own.
-    <div className="mt-1 flex flex-wrap gap-1 pb-3">
+    <div className="relative mt-1" style={{ height: contentHeight(positions) }}>
       {skuSelections.map((s) => (
         <ServiceIconButton
           key={s.id}
           selection={s}
           isSelected={s.id === selectedServiceId}
           onSelectService={onSelectService}
+          position={positions[s.id]}
+          onDrop={onIconDrop}
         />
       ))}
     </div>
   );
 }
+
+/** Pointer movement (screen px) below which an icon press is a click, not a drag (FR-007). */
+const DRAG_THRESHOLD = 4;
+/** Height of a box's name line plus the icon area's top margin — the icon area's offset below
+ * the box's inner top edge, used to turn a drop point into an icon-area position. */
+const ICON_AREA_TOP = 20;
+
+/** Today's default box widths (002-015) — 016-canvas-icon-layout keeps them as minimums and
+ * widens a box only as far as its widest row of icons needs (FR-002, `defaultBoxWidth`). */
+const VPC_MIN_WIDTH = 220;
+const APPLICATION_MIN_WIDTH = 200;
+const NESTED_APPLICATION_MIN_WIDTH = 180;
+/** Gaps between default-placed top-level boxes — 009's 300/260 grid minus its 220/220 boxes. */
+const DEFAULT_GRID_COLUMN_GAP = 80;
+const DEFAULT_GRID_ROW_GAP = 40;
+/** A nested box's left offset inside its VPC (see `position: { x: 20, ... }` below). */
+const NESTED_CHILD_INSET = 20;
 
 /** The outer node box's own vertical chrome (unchanged from 005/006 — see nodeLayout.ts). */
 const NODE_CHROME_HEIGHT = 2 * 8 + 2 * 2;
@@ -405,6 +533,11 @@ interface ApplicationComponentNodeData {
    * `isNested` is false — once nested inside a VPC, the VPC's own label already conveys it. */
   region: string;
   isNested: boolean;
+  /** 016-canvas-icon-layout: the box's width, which the icon area's width derives from. */
+  boxWidth: number;
+  /** 016-canvas-icon-layout, FR-006: this Architecture's hand-placed icon positions. */
+  savedPositions: IconPositions;
+  onIconDrop: (selectionId: string, clientX: number, clientY: number) => void;
 }
 
 /** Custom node type for an Application Component (spec FR-007, 005, 006). See prior features'
@@ -434,6 +567,9 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
     onManualResize,
     region,
     isNested,
+    boxWidth,
+    savedPositions,
+    onIconDrop,
   } = data as unknown as ApplicationComponentNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
@@ -460,6 +596,9 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
             skuSelections={skuSelections}
             selectedServiceId={selectedServiceId}
             onSelectService={onSelectService}
+            innerWidth={innerWidthOf(boxWidth)}
+            savedPositions={savedPositions}
+            onIconDrop={onIconDrop}
           />
         </div>
       </div>
@@ -488,6 +627,11 @@ interface VpcNodeData {
   hasChildren: boolean;
   /** 010-multi-region-support, spec FR-018: shown in the bottom-right corner, always. */
   region: string;
+  /** 016-canvas-icon-layout: the box's width, which the icon area's width derives from. */
+  boxWidth: number;
+  /** 016-canvas-icon-layout, FR-006: this Architecture's hand-placed icon positions. */
+  savedPositions: IconPositions;
+  onIconDrop: (selectionId: string, clientX: number, clientY: number) => void;
 }
 
 /** Custom node type for a VPC (002-006). 007 adds the same per-service click targets; 008
@@ -505,6 +649,9 @@ function VpcNode({ data, selected }: NodeProps) {
     onManualResize,
     hasChildren,
     region,
+    boxWidth,
+    savedPositions,
+    onIconDrop,
   } = data as unknown as VpcNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
@@ -533,6 +680,9 @@ function VpcNode({ data, selected }: NodeProps) {
             selectedServiceId={selectedServiceId}
             onSelectService={onSelectService}
             hideEmptyMessage={hasChildren}
+            innerWidth={innerWidthOf(boxWidth)}
+            savedPositions={savedPositions}
+            onIconDrop={onIconDrop}
           />
         </div>
       </div>
@@ -1000,6 +1150,12 @@ export interface ArchitectureDiagramPanelProps {
    * made; the caller surfaces this as a visible message (research.md §8: no prior rejection
    * pattern existed in this flow). */
   onRejectedNesting: (applicationName: string, vpcName: string) => void;
+  /** 016-canvas-icon-layout, FR-004a: an icon was dropped into another box in the same region
+   * — move that service there. Rejects if the move fails (the icon then returns). */
+  onMoveService: (skuSelectionId: string, targetCollectionId: string) => Promise<void>;
+  /** 016-canvas-icon-layout, FR-004b: an icon was dropped into a box in another region; nothing
+   * moves, and this explains why (shown in column 2). */
+  onMoveRejected: (message: string) => void;
   /** 009-ui-fixes-next-iteration follow-up: a fresh Architecture refetch, for the new manual
    * refresh button (a temporary workaround for the still-not-root-caused "diagram goes
    * blank" issue — US3/research.md §3's investigation, and this session's own `diagramSelection`
@@ -1053,11 +1209,13 @@ export function ArchitectureDiagramPanel({
   onCreateConnector,
   onUpdateCollectionParent,
   onRejectedNesting,
+  onMoveService,
+  onMoveRejected,
   onRefresh,
   onOpenPopout,
   instanceId = "main",
 }: ArchitectureDiagramPanelProps) {
-  const { getIntersectingNodes } = useReactFlow();
+  const { getIntersectingNodes, getNodes, screenToFlowPosition } = useReactFlow();
 
   // 009-ui-fixes-next-iteration follow-up: bumped by the new refresh button to force
   // `<ReactFlow>` below to fully remount (its `key` includes this) even though
@@ -1088,7 +1246,8 @@ export function ArchitectureDiagramPanel({
   // is the reactive/subscribing counterpart to `useReactFlow()`'s one-shot `getViewport()`,
   // so this re-renders as the user zooms rather than only reflecting the value as of the last
   // unrelated render.
-  const { zoom: currentZoom } = useViewport();
+  const viewport = useViewport();
+  const currentZoom = viewport.zoom;
 
   // 009-ui-fixes-next-iteration follow-up: the outer panel's own height, now real React
   // state driving `DiagramResizeHandle` below — see that component's own comment for why a
@@ -1137,6 +1296,56 @@ export function ArchitectureDiagramPanel({
     lastArchitectureIdRef.current = architectureId;
     manualSizeRef.current = new Map(Object.entries(readDiagramLayout(architectureId)));
   }
+  // 016-canvas-icon-layout, FR-013: a top-level box created while this Architecture is open is
+  // placed inside the part of the canvas the user is looking at (clear of other boxes where
+  // there's room), rather than the next slot of the fixed grid — which could be off-screen.
+  // Boxes present when the Architecture opens keep today's placement. The chosen spot is saved
+  // like a manual move, so it survives a reload. Runs in the render body, like the reseed
+  // above, so the very first `initialNodes` for the new box already uses it.
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const seenTopLevelRef = useRef<{ architectureId: string; ids: Set<string> } | null>(null);
+  const topLevelCollections = collections.filter((c) => !c.parent_collection_id);
+  if (seenTopLevelRef.current?.architectureId !== architectureId) {
+    seenTopLevelRef.current = {
+      architectureId,
+      ids: new Set(topLevelCollections.map((c) => c.id)),
+    };
+  } else {
+    const seen = seenTopLevelRef.current.ids;
+    for (const c of topLevelCollections) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      const canvas = canvasRef.current;
+      if (manualSizeRef.current.has(c.id) || !canvas) continue;
+      const zoom = viewport.zoom || 1;
+      const visible: PlacementRect = {
+        x: -viewport.x / zoom,
+        y: -viewport.y / zoom,
+        width: canvas.clientWidth / zoom,
+        height: canvas.clientHeight / zoom,
+      };
+      const occupied: PlacementRect[] = getNodes()
+        .filter((n) => !n.parentId)
+        .map((n) => ({
+          x: n.position.x,
+          y: n.position.y,
+          width: n.measured?.width ?? n.width ?? 0,
+          height: n.measured?.height ?? n.height ?? 0,
+        }));
+      const size = {
+        width: defaultBoxWidth(
+          c.sku_selections.length,
+          c.type === "vpc" ? VPC_MIN_WIDTH : APPLICATION_MIN_WIDTH,
+        ),
+        height: estimateComponentHeight(c.sku_selections.length),
+      };
+      const slot = findVisibleSlot(visible, occupied, size);
+      const layout: CollectionLayoutOverride = slot;
+      manualSizeRef.current.set(c.id, layout);
+      writeCollectionLayout(architectureId, c.id, layout);
+    }
+  }
+
   // Shared by both the resize control (which reports width/height/x/y together) and
   // `onNodeDragStop` below (which reports a move — see there for how it fills in width/height
   // from the node's own current size rather than guessing).
@@ -1147,6 +1356,120 @@ export function ArchitectureDiagramPanel({
       writeCollectionLayout(architectureId, id, layout);
     },
     [architectureId],
+  );
+
+  // 016-canvas-icon-layout, FR-004–FR-006: this Architecture's hand-placed icon positions
+  // (per browser), re-read when the Architecture changes and updated after each drop.
+  const [iconLayout, setIconLayout] = useState<IconPositions>(() => readIconLayout(architectureId));
+  const iconLayoutArchitectureRef = useRef(architectureId);
+  if (iconLayoutArchitectureRef.current !== architectureId) {
+    iconLayoutArchitectureRef.current = architectureId;
+    setIconLayout(readIconLayout(architectureId));
+  }
+
+  /** Where an icon dropped at `clientX/clientY` lands inside box `node`'s icon area — the
+   * nearest spot that keeps its spacing from the box's other icons (FR-005). */
+  const iconSpotIn = useCallback(
+    (node: Node, absolute: { x: number; y: number }, point: { x: number; y: number }, selectionId: string) => {
+      const data = node.data as unknown as { boxWidth: number; skuSelections: Collection["sku_selections"] };
+      const innerWidth = innerWidthOf(data.boxWidth);
+      const others = Object.entries(
+        resolvePositions(
+          data.skuSelections.map((sel) => sel.id),
+          iconLayout,
+          innerWidth,
+        ),
+      )
+        .filter(([id]) => id !== selectionId)
+        .map(([, pos]) => pos);
+      const inset = PAD + BORDER / 2;
+      const drop = {
+        x: point.x - absolute.x - inset - ICON / 2,
+        y: point.y - absolute.y - inset - ICON_AREA_TOP - ICON / 2,
+      };
+      return nearestValidSpot(drop, others, { width: innerWidth });
+    },
+    [iconLayout],
+  );
+
+  const onIconDrop = useCallback(
+    async (selectionId: string, sourceCollectionId: string, clientX: number, clientY: number) => {
+      const point = screenToFlowPosition({ x: clientX, y: clientY });
+      const nodes = getNodes();
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const absoluteOf = (n: Node) => {
+        const parent = n.parentId ? byId.get(n.parentId) : undefined;
+        return parent
+          ? { x: parent.position.x + n.position.x, y: parent.position.y + n.position.y }
+          : n.position;
+      };
+      // Deepest box under the drop point first — a nested Application beats its VPC.
+      const hits = nodes
+        .filter((n) => n.type === "vpc" || n.type === "applicationComponent")
+        .filter((n) => {
+          const a = absoluteOf(n);
+          const w = n.measured?.width ?? n.width ?? 0;
+          const h = n.measured?.height ?? n.height ?? 0;
+          return point.x >= a.x && point.x <= a.x + w && point.y >= a.y && point.y <= a.y + h;
+        })
+        .sort((a, b) => Number(Boolean(b.parentId)) - Number(Boolean(a.parentId)));
+      const target = hits[0];
+      if (!target) return; // empty canvas: the icon simply stays where it was
+
+      const source = collections.find((c) => c.id === sourceCollectionId);
+      const targetCollection = collections.find((c) => c.id === target.id);
+      if (!source || !targetCollection) return;
+      const selection = source.sku_selections.find((sel) => sel.id === selectionId);
+
+      if (targetCollection.region !== source.region) {
+        onMoveRejected(
+          `"${selection?.service_code ?? "This service"}" can only move to a box in ${source.region}.`,
+        );
+        return;
+      }
+
+      const spot = iconSpotIn(target, absoluteOf(target), point, selectionId);
+      const previous = iconLayout[selectionId];
+      // Pin every other icon in the boxes involved where it is now, so moving one icon never
+      // re-flows the ones that were still in default placement (FR-008).
+      const pinned: IconPositions = {};
+      for (const boxId of new Set([sourceCollectionId, target.id])) {
+        const box = byId.get(boxId);
+        if (!box) continue;
+        const data = box.data as unknown as {
+          boxWidth: number;
+          skuSelections: Collection["sku_selections"];
+        };
+        const current = resolvePositions(
+          data.skuSelections.map((sel) => sel.id),
+          iconLayout,
+          innerWidthOf(data.boxWidth),
+        );
+        for (const [id, pos] of Object.entries(current)) if (id !== selectionId) pinned[id] = pos;
+      }
+      writeIconPositions(architectureId, { ...pinned, [selectionId]: spot });
+      setIconLayout((prev) => ({ ...prev, ...pinned, [selectionId]: spot }));
+      if (target.id === sourceCollectionId) return;
+
+      try {
+        await onMoveService(selectionId, target.id);
+      } catch {
+        // The move failed (the error shows in column 2) — put the icon back where it was.
+        if (previous) writeIconPosition(architectureId, selectionId, previous);
+        else removeIconPosition(architectureId, selectionId);
+        setIconLayout(readIconLayout(architectureId));
+      }
+    },
+    [
+      screenToFlowPosition,
+      getNodes,
+      collections,
+      onMoveRejected,
+      onMoveService,
+      iconSpotIn,
+      iconLayout,
+      architectureId,
+    ],
   );
 
   const selectedServiceId =
@@ -1172,9 +1495,25 @@ export function ArchitectureDiagramPanel({
     }
 
     const nodes: Node[] = [];
+    let gridX = 0;
+    let gridY = 0;
+    let gridRowHeight = 0;
     topLevel.forEach((c, i) => {
       const children = c.type === "vpc" ? (childrenByParent.get(c.id) ?? []) : [];
-      const width = c.type === "vpc" ? 220 : 200;
+      // 016-canvas-icon-layout, FR-002: wide enough for up to 3 icons per row, never narrower
+      // than today's default — and a VPC also fits its widest nested box plus that box's inset.
+      const childWidths = children.map(
+        (child) =>
+          manualSizeRef.current.get(child.id)?.width ??
+          defaultBoxWidth(child.sku_selections.length, NESTED_APPLICATION_MIN_WIDTH),
+      );
+      const width = Math.max(
+        defaultBoxWidth(
+          c.sku_selections.length,
+          c.type === "vpc" ? VPC_MIN_WIDTH : APPLICATION_MIN_WIDTH,
+        ),
+        ...childWidths.map((w) => w + 2 * NESTED_CHILD_INSET),
+      );
       const layoutNode = toLayoutNode(c);
       const height = computeMeasuredHeight(layoutNode, ownHeights);
       // A manual override's height is clamped to never go *below* the current auto-fit
@@ -1182,14 +1521,26 @@ export function ArchitectureDiagramPanel({
       // (FR-002 stays satisfied even for a box the user has resized, FR-001's own resize
       // still wins whenever the user has sized it *taller* than auto-fit would).
       const manualSize = manualSizeRef.current.get(c.id);
-      const finalWidth = manualSize?.width ?? width;
+      // A manual width is kept, but never below one icon's worth (spec Edge Cases).
+      const finalWidth = manualSize ? Math.max(manualSize.width, MIN_ICON_BOX_WIDTH) : width;
       const finalHeight = manualSize ? Math.max(manualSize.height, height) : height;
       // 009-ui-fixes-next-iteration, US7, FR-024: a stored position overrides the computed
       // grid slot — only meaningful for top-level Collections (nested children are always
       // auto-stacked within their parent via `childYOffsets` below, unrelated to this).
       // 009-ui-fixes-next-iteration, US7, FR-023: grid spacing increased from 008's 260/220.
-      const finalX = manualSize?.x ?? (i % 4) * 300;
-      const finalY = manualSize?.y ?? Math.floor(i / 4) * 260;
+      // 016-canvas-icon-layout: boxes are now as wide as their icons need (FR-002) and as tall
+      // as their rows of 60px icons, so a fixed 300×260 grid made default-placed boxes overlap.
+      // Default slots now flow left to right by each box's real width, 4 per row, each row
+      // starting below the tallest box of the one before — with the same 80/40 gaps as before.
+      if (i > 0 && i % 4 === 0) {
+        gridY += gridRowHeight + DEFAULT_GRID_ROW_GAP;
+        gridX = 0;
+        gridRowHeight = 0;
+      }
+      const finalX = manualSize?.x ?? gridX;
+      const finalY = manualSize?.y ?? gridY;
+      gridX += finalWidth + DEFAULT_GRID_COLUMN_GAP;
+      gridRowHeight = Math.max(gridRowHeight, finalHeight);
       nodes.push({
         id: c.id,
         type: c.type === "vpc" ? "vpc" : "applicationComponent",
@@ -1212,6 +1563,10 @@ export function ArchitectureDiagramPanel({
           hasChildren: children.length > 0,
           region: c.region,
           isNested: false,
+          boxWidth: finalWidth,
+          savedPositions: iconLayout,
+          onIconDrop: (selectionId: string, x: number, y: number) =>
+            void onIconDrop(selectionId, c.id, x, y),
         },
         style: { width: finalWidth, height: finalHeight },
       });
@@ -1220,7 +1575,9 @@ export function ArchitectureDiagramPanel({
         const childLayoutNode = toLayoutNode(child);
         const childHeight = computeMeasuredHeight(childLayoutNode, ownHeights);
         const childManualSize = manualSizeRef.current.get(child.id);
-        const childFinalWidth = childManualSize?.width ?? 180;
+        const childFinalWidth = childManualSize
+          ? Math.max(childManualSize.width, MIN_ICON_BOX_WIDTH)
+          : defaultBoxWidth(child.sku_selections.length, NESTED_APPLICATION_MIN_WIDTH);
         const childFinalHeight = childManualSize
           ? Math.max(childManualSize.height, childHeight)
           : childHeight;
@@ -1243,6 +1600,10 @@ export function ArchitectureDiagramPanel({
               onManualResize(child.id, w, h, x, y),
             region: child.region,
             isNested: true,
+            boxWidth: childFinalWidth,
+            savedPositions: iconLayout,
+            onIconDrop: (selectionId: string, x: number, y: number) =>
+              void onIconDrop(selectionId, child.id, x, y),
           },
           style: { width: childFinalWidth, height: childFinalHeight },
         });
@@ -1257,6 +1618,8 @@ export function ArchitectureDiagramPanel({
     onManualResize,
     diagramSelection,
     selectedServiceId,
+    iconLayout,
+    onIconDrop,
   ]);
 
   // 009-ui-fixes-next-iteration, US4, FR-010: multiple Connectors between the same pair of
@@ -1565,6 +1928,7 @@ export function ArchitectureDiagramPanel({
       // user-resizable, now via `DiagramResizeHandle` below rather than the native CSS
       // `resize-y` this replaced (see that component's own comment for why), with no
       // artificial max-height capping how much further the user can drag it.
+      ref={canvasRef}
       className="relative h-full overflow-auto rounded border border-border bg-muted/20"
       style={{ height: diagramHeight }}
     >

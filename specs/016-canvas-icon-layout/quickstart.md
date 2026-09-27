@@ -25,8 +25,8 @@ cd frontend && npm run check-api-types && npm run lint && npm test && npm run bu
 ## 2. Icons: size, spacing, dragging (US1, US2)
 
 1. Open "Containerized Microservices Platform (EKS)".
-   - **Expected**: icons are 60 canvas units across, 3 to a row, 90 apart. The VPC box is about
-     380 wide and contains every icon, and the region label doesn't overlap anything.
+   - **Expected**: icons are 60 canvas units across, 3 to a row, 60 apart. The VPC box is 320
+     wide and contains every icon, and the region label doesn't overlap anything.
 2. Drag an icon within its box and release it on top of another icon.
    - **Expected**: it lands at the nearest free spot, with no overlap.
    - Reload the page. **Expected**: the positions are unchanged.
@@ -99,3 +99,25 @@ Restart the backend.
    - **Expected**: startup fails, naming the setting.
 3. **Expected**: `docs/configuration.md` lists every setting, its default and its environment
    variable.
+
+## Validation notes (2026-09-26 run)
+
+Run against the dev frontend (:5173) and backend (:8000) as Admin. The snapshot and
+configuration steps (§5–§6) ran against a separate scratch backend on :8765+, using a scratch copy
+of the CI test data, so the real data and your running server were untouched. §2–§6 behaved as
+specified, with these findings:
+
+- **Fixed during validation: default box layout.** Boxes without a saved position used a fixed
+  300×260 grid built for 220px-wide boxes. With boxes now up to 380px wide and taller, default-placed
+  boxes overlapped (e.g. Active-Standby's two VPCs). Default slots now flow left to right by each
+  box's real width, 4 per row, with each row starting below the tallest box of the previous one.
+  The gaps are the same as before. Saved positions are unaffected.
+- **Fixed during validation: other icons re-flowing.** Dragging one icon made the other
+  default-placed icons re-flow to fill the gap. A drop now saves every icon in the boxes involved
+  at its current position, so only the dragged icon moves (FR-008).
+- **Test timing.** The ServiceIconList pop-up test takes ~5s in jsdom (opening the Radix tooltip),
+  as it did before this feature. It now has a 15s timeout instead of failing intermittently.
+- **Observed once: first drag after a page load did nothing.** A retry worked, and it didn't recur.
+- **Pre-existing, not addressed here: the Admin tab link doesn't navigate.** Clicking "Admin" in
+  the top bar leaves the path at `/`; opening `/admin` directly works. It reproduces on the last
+  commit before this feature (checked by setting 016's changes aside), so 016 didn't cause it.

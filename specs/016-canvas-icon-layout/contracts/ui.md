@@ -8,12 +8,12 @@ Observable behavior for component tests and manual QA. The geometry is defined i
 | Aspect | Contract |
 |---|---|
 | Size | Each icon button is 60 × 60 canvas units. It scales with zoom as before. |
-| Default placement | Up to 3 per row, 90 canvas units apart on both axes, in service order. |
+| Default placement | Up to 3 per row, 60 canvas units apart on both axes, in service order. |
 | Box width | Wide enough for its widest row of up to 3 icons, and never narrower than today's defaults (VPC 220, Application 200, nested Application 180). |
 | Box height | Grows to contain every icon, plus room for the region label. |
 | Hand placement | Saved per browser and restored on reload. Invalid saved positions fall back to the first free default slot. |
 | Click | Pointer movement of 4 screen px or less counts as a click: it selects the service (015 behavior). |
-| Drag in the same box | The icon follows the pointer. On release it goes to the nearest valid spot (≥ 90 apart from others, inside the box) and is saved. |
+| Drag in the same box | The icon follows the pointer. On release it goes to the nearest valid spot (≥ 60 apart from others, inside the box) and is saved. |
 | Drag in a VPC, not over a nested box | The icon stays in the VPC's own-services area, which grows and pushes the nested boxes down. |
 | Drag into another box, same region | The service moves (PATCH `collection_id`). The icon is shown in the target at the drop point or the nearest valid spot. On failure it returns, and the error shows in column 2. |
 | Drag into a box in another region | No request is sent. The icon returns, and column 2 shows `"<service>" can only move to a box in <region>.` |

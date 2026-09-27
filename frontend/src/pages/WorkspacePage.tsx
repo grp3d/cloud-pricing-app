@@ -187,18 +187,18 @@ function WorkspacePageInner() {
     mutationFn: (name: string) => api.createArchitecture(name, selectedProvider),
     onSuccess: (arch) => {
       setNewArchitectureName("");
-      setActionError(null);
+      setArchitectureActionError(null);
       queryClient.invalidateQueries({ queryKey: ["architectures"] });
       navigate(`/architectures/${arch.id}`);
     },
-    onError: (err) => setActionError(errorMessageOf(err)),
+    onError: (err) => setArchitectureActionError(errorMessageOf(err)),
   });
 
   const deleteArchitecture = useMutation({
     mutationFn: (id: string) => api.deleteArchitecture(id),
     onSuccess: (_data, id) => {
       setPendingDeleteArchitectureId(null);
-      setActionError(null);
+      setArchitectureActionError(null);
       // 015-canvas-service-icons, spec Edge Cases: a deleted Architecture's stored result goes too.
       removePricingResult(id);
       setResultEntries((prev) => {
@@ -216,7 +216,7 @@ function WorkspacePageInner() {
     },
     onError: (err) => {
       setPendingDeleteArchitectureId(null);
-      setActionError(errorMessageOf(err));
+      setArchitectureActionError(errorMessageOf(err));
     },
   });
 
@@ -225,7 +225,7 @@ function WorkspacePageInner() {
     mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
       api.setArchitecturePublic(id, isPublic),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["architectures"] }),
-    onError: (err) => setActionError(errorMessageOf(err)),
+    onError: (err) => setArchitectureActionError(errorMessageOf(err)),
   });
 
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -240,7 +240,7 @@ function WorkspacePageInner() {
       setImportDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ["architectures"] });
     },
-    onError: (err) => setActionError(errorMessageOf(err)),
+    onError: (err) => setArchitectureActionError(errorMessageOf(err)),
   });
 
   // --- The selected Architecture's data (columns 2-5) ---
@@ -336,7 +336,11 @@ function WorkspacePageInner() {
   // 010-multi-region-support, FR-001: shown before creating a new VPC or unattached
   // Application; skipped entirely when nesting an Application into a selected VPC (FR-001a).
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  // 016-canvas-icon-layout, FR-012: each column shows only its own errors — architecture
+  // actions (column 1) and collection/connector/nesting/move actions (column 2) used to share
+  // one message, so every error appeared in both columns.
+  const [architectureActionError, setArchitectureActionError] = useState<string | null>(null);
+  const [collectionActionError, setCollectionActionError] = useState<string | null>(null);
   const [skuActionError, setSkuActionError] = useState<string | null>(null);
 
   const [ownHeights, setOwnHeights] = useState<Record<string, number>>({});
@@ -392,11 +396,11 @@ function WorkspacePageInner() {
       ),
     onSuccess: () => {
       setNewCollectionName("");
-      setActionError(null);
+      setCollectionActionError(null);
       setRegionDialogOpen(false);
       invalidateArchitecture();
     },
-    onError: (err) => setActionError(errorMessageOf(err)),
+    onError: (err) => setCollectionActionError(errorMessageOf(err)),
   });
 
   /** 010-multi-region-support, FR-001/FR-001a: adding an Application while a VPC is selected
@@ -410,17 +414,35 @@ function WorkspacePageInner() {
     }
   }
 
+  // 016-canvas-icon-layout, FR-004a: dragging a service's icon into another box (same region)
+  // moves the service there; a failure shows in column 2 and the canvas puts the icon back.
+  const moveService = useMutation({
+    mutationFn: (vars: { id: string; collectionId: string }) =>
+      api.updateSkuSelection(vars.id, { collection_id: vars.collectionId }),
+    onSuccess: () => {
+      setCollectionActionError(null);
+      invalidateArchitecture();
+    },
+    onError: (err) => setCollectionActionError(errorMessageOf(err)),
+  });
+  const onMoveService = useCallback(
+    async (id: string, collectionId: string) => {
+      await moveService.mutateAsync({ id, collectionId });
+    },
+    [moveService],
+  );
+
   const deleteCollection = useMutation({
     mutationFn: (id: string) => api.deleteCollection(id),
     onSuccess: () => {
       setPendingDeleteCollectionId(null);
       if (selectedCollectionId === pendingDeleteCollectionId) deselectAll();
-      setActionError(null);
+      setCollectionActionError(null);
       invalidateArchitecture();
     },
     onError: (err) => {
       setPendingDeleteCollectionId(null);
-      setActionError(errorMessageOf(err));
+      setCollectionActionError(errorMessageOf(err));
     },
   });
 
@@ -428,11 +450,11 @@ function WorkspacePageInner() {
     mutationFn: ({ from, to }: { from: string; to: string }) =>
       api.createConnector(architectureId!, from, to),
     onSuccess: () => {
-      setActionError(null);
+      setCollectionActionError(null);
       invalidateArchitecture();
     },
     onError: (err) => {
-      setActionError(errorMessageOf(err));
+      setCollectionActionError(errorMessageOf(err));
       invalidateArchitecture();
     },
   });
@@ -442,12 +464,12 @@ function WorkspacePageInner() {
     onSuccess: () => {
       setPendingDeleteConnectorId(null);
       if (selectedConnectorId === pendingDeleteConnectorId) deselectAll();
-      setActionError(null);
+      setCollectionActionError(null);
       invalidateArchitecture();
     },
     onError: (err) => {
       setPendingDeleteConnectorId(null);
-      setActionError(errorMessageOf(err));
+      setCollectionActionError(errorMessageOf(err));
     },
   });
 
@@ -455,11 +477,11 @@ function WorkspacePageInner() {
     mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) =>
       api.updateCollectionParent(id, parentId),
     onSuccess: () => {
-      setActionError(null);
+      setCollectionActionError(null);
       invalidateArchitecture();
     },
     onError: (err) => {
-      setActionError(errorMessageOf(err));
+      setCollectionActionError(errorMessageOf(err));
       invalidateArchitecture();
     },
   });
@@ -468,10 +490,10 @@ function WorkspacePageInner() {
     mutationFn: ({ id, region }: { id: string; region: string }) =>
       api.updateCollectionRegion(id, region),
     onSuccess: () => {
-      setActionError(null);
+      setCollectionActionError(null);
       invalidateArchitecture();
     },
-    onError: (err) => setActionError(errorMessageOf(err)),
+    onError: (err) => setCollectionActionError(errorMessageOf(err)),
   });
 
   // --- SKU Selection mutations (column 3) ---
@@ -785,8 +807,8 @@ function WorkspacePageInner() {
         onCreateArchitecture={() => createArchitecture.mutate(newArchitectureName.trim())}
         isCreatingArchitecture={createArchitecture.isPending}
         onDeleteArchitecture={setPendingDeleteArchitectureId}
-        actionError={actionError}
-        onDismissActionError={() => setActionError(null)}
+        actionError={architectureActionError}
+        onDismissActionError={() => setArchitectureActionError(null)}
         width={columnWidths.provider}
         isGuest={isGuest}
         onToggleArchitecturePublic={(id, isPublic) =>
@@ -836,8 +858,8 @@ function WorkspacePageInner() {
             onRemoveConnector={() =>
               selectedConnectorId && setPendingDeleteConnectorId(selectedConnectorId)
             }
-            actionError={actionError}
-            onDismissActionError={() => setActionError(null)}
+            actionError={collectionActionError}
+            onDismissActionError={() => setCollectionActionError(null)}
             selection={collectionsPanelSelection}
             onDeleteCollection={setPendingDeleteCollectionId}
             onDeleteConnector={setPendingDeleteConnectorId}
@@ -890,13 +912,15 @@ function WorkspacePageInner() {
                 updateCollectionParent.mutate({ id, parentId })
               }
               onRejectedNesting={(applicationName, vpcName) =>
-                setActionError(
+                setCollectionActionError(
                   `"${applicationName}" is in a different region than "${vpcName}" — an ` +
                     "Application can only nest inside a VPC in the same region.",
                 )
               }
               onRefresh={invalidateArchitecture}
               onOpenPopout={() => setPopoutOpen(true)}
+              onMoveService={onMoveService}
+              onMoveRejected={setCollectionActionError}
             />
           </div>
 
@@ -966,12 +990,14 @@ function WorkspacePageInner() {
             updateCollectionParent.mutate({ id, parentId })
           }
           onRejectedNesting={(applicationName, vpcName) =>
-            setActionError(
+            setCollectionActionError(
               `"${applicationName}" is in a different region than "${vpcName}" — an ` +
                 "Application can only nest inside a VPC in the same region.",
             )
           }
           onRefresh={invalidateArchitecture}
+          onMoveService={onMoveService}
+          onMoveRejected={setCollectionActionError}
           diagramSelection={diagramSelection}
           onSelectedNodeIdsChange={setSelectedNodeIds}
           onSelectCollection={selectCollection}

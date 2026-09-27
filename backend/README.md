@@ -27,6 +27,12 @@ Environment variables (see `src/config.py`):
   produced by a separate upstream project. Read-only.
 - `AWS_PRICING_REGION` — defaults to `us-east-1`
 
+The full list of settings (including the pricing-snapshot check interval, the
+`ACTIVE_SNAPSHOT_DATE` override, CORS origins, catalog page sizes, password hashing, and log level),
+with defaults and environment variable names, is in
+[`docs/configuration.md`](../docs/configuration.md). A commented template is in
+[`.env.example`](.env.example).
+
 ## Run
 
 ```bash

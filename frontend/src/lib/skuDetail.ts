@@ -18,9 +18,15 @@ const DETAIL_CANDIDATE_KEYS = [
 ];
 
 /** A short " · "-joined summary from whichever candidate keys are present in `attributes`.
- * `""` when none match — callers render nothing rather than an empty separator. */
-export function summarizeAttributes(attributes: Record<string, string>): string {
-  const parts = DETAIL_CANDIDATE_KEYS.filter((key) => attributes[key]).map(
+ * `""` when none match — callers render nothing rather than an empty separator.
+ * `exclude` (016-canvas-icon-layout, FR-011) leaves out keys a caller shows elsewhere — the
+ * canvas pop-up gives some attributes their own labeled line, so they aren't repeated here. */
+export function summarizeAttributes(
+  attributes: Record<string, string>,
+  options: { exclude?: readonly string[] } = {},
+): string {
+  const excluded = new Set(options.exclude ?? []);
+  const parts = DETAIL_CANDIDATE_KEYS.filter((key) => attributes[key] && !excluded.has(key)).map(
     (key) => attributes[key],
   );
   return parts.join(" · ");

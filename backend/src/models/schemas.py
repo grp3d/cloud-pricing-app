@@ -134,6 +134,9 @@ class SKUSelectionUpdate(BaseModel):
     pricing_term: PricingTerm | None = None
     purchase_option: PurchaseOption | None = None
     usage_quantity: Decimal | None = Field(default=None, gt=0)
+    # 016-canvas-icon-layout, FR-004a/FR-004b (contracts/api.md §2): moves the service to another
+    # box — one in the same Architecture and the same region. Connector-owned services can't move.
+    collection_id: uuid.UUID | None = None
 
 
 class SKUSelectionOut(ORMBase):
@@ -456,3 +459,31 @@ class ArchitectureFileImportResponse(BaseModel):
     imported_count: int
     failed_count: int
     results: list[ImportResult]
+
+
+# --- System information (016-canvas-icon-layout, US5, contracts/api.md §1) --------------------
+
+
+class WaitingSnapshotOut(BaseModel):
+    snapshot_date: str
+    reason: str
+
+
+class IssueOut(BaseModel):
+    kind: Literal["missing_icon", "missing_regions", "pinned_incomplete"]
+    snapshot_date: str
+    message: str
+    service_code: str | None = None
+    service_name: str | None = None
+    is_new: bool | None = None
+    regions: list[str] | None = None
+
+
+class SystemInfoOut(BaseModel):
+    active_snapshot_date: str | None
+    pinned: bool
+    last_check_at: datetime | None
+    last_check_error: str | None
+    check_interval_seconds: int
+    waiting_snapshots: list[WaitingSnapshotOut]
+    issues: list[IssueOut]

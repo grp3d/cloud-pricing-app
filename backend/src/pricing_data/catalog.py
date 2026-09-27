@@ -14,9 +14,9 @@ from dataclasses import dataclass
 import duckdb
 
 from src.config import settings
+from src.pricing_data.active_snapshot import get_active_snapshot_date
 from src.pricing_data.errors import PricingDataUnavailableError
 from src.pricing_data.pricing import resolve_units
-from src.pricing_data.snapshot import resolve_latest_snapshot_date
 
 
 class EmptyCatalogFilterError(ValueError):
@@ -128,7 +128,7 @@ def search_catalog(
             "to_region_code is required"
         )
 
-    snapshot_date = resolve_latest_snapshot_date()
+    snapshot_date = get_active_snapshot_date()
 
     if from_region_code:
         where: list[str] = []
@@ -266,7 +266,7 @@ def resolve_product_details(
     if not skus:
         return {}
 
-    snapshot_date = snapshot_date or resolve_latest_snapshot_date()
+    snapshot_date = snapshot_date or get_active_snapshot_date()
     unique_skus = sorted({sku for _, sku in skus})
     placeholders = ",".join("?" for _ in unique_skus)
 
@@ -306,7 +306,7 @@ def resolve_attributes(
 def find_existing_skus(
     pairs: Iterable[tuple[str, str]], *, region: str, snapshot_date: str | None = None
 ) -> set[tuple[str, str]]:
-    """Return the subset of `(service_code, sku)` pairs that exist in `region` at the latest
+    """Return the subset of `(service_code, sku)` pairs that exist in `region` at the active
     (or given) snapshot (014-architecture-templates-import-export, research.md §9).
 
     One DuckDB query for the whole set — an Admin import validates every SKU of every
@@ -319,7 +319,7 @@ def find_existing_skus(
     if not wanted:
         return set()
 
-    snapshot_date = snapshot_date or resolve_latest_snapshot_date()
+    snapshot_date = snapshot_date or get_active_snapshot_date()
     unique_skus = sorted({sku for _, sku in wanted})
     placeholders = ",".join("?" for _ in unique_skus)
 

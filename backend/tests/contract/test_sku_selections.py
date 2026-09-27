@@ -2,6 +2,8 @@
 DELETE — not just POST (broadened during implementation per the /speckit-analyze E1 finding).
 """
 
+import uuid
+
 import pytest
 
 # A real, known SKU from the AWS pricing data (verified during implementation to exist and
@@ -173,3 +175,158 @@ async def test_updating_one_sku_selection_does_not_reorder_its_collections_list(
         c for c in arch_after.json()["collections"] if c["id"] == coll_id
     )
     assert [s["id"] for s in collection_after["sku_selections"]] == selection_ids
+
+
+# --- 016-canvas-icon-layout, FR-004a/FR-004b, contracts/api.md §2: move a service to another box --
+
+
+async def _architecture(client, headers) -> str:
+    resp = await client.post(
+        "/api/v1/architectures", json={"name": "Move", "provider": "aws"}, headers=headers
+    )
+    return resp.json()["id"]
+
+
+async def _box(client, headers, arch_id: str, name: str, region: str = "us-east-1") -> str:
+    resp = await client.post(
+        f"/api/v1/architectures/{arch_id}/collections",
+        json={"type": "application_component", "name": name, "region": region},
+        headers=headers,
+    )
+    return resp.json()["id"]
+
+
+async def _service(client, headers, collection_id: str) -> str:
+    resp = await client.post(
+        f"/api/v1/collections/{collection_id}/sku-selections",
+        json={
+            "service_code": KNOWN_SERVICE_CODE,
+            "sku": KNOWN_SKU,
+            "pricing_term": "on_demand",
+            "purchase_option": "not_applicable",
+            "usage_quantity": "1",
+        },
+        headers=headers,
+    )
+    return resp.json()["id"]
+
+
+def _box_of(detail: dict, selection_id: str) -> str | None:
+    for collection in detail["collections"]:
+        if any(s["id"] == selection_id for s in collection["sku_selections"]):
+            return collection["id"]
+    return None
+
+
+@pytest.mark.asyncio
+async def test_move_service_to_same_region_box(client, auth_headers):
+    arch_id = await _architecture(client, auth_headers)
+    source = await _box(client, auth_headers, arch_id, "Web")
+    target = await _box(client, auth_headers, arch_id, "App")
+    selection_id = await _service(client, auth_headers, source)
+
+    resp = await client.patch(
+        f"/api/v1/sku-selections/{selection_id}",
+        json={"collection_id": target},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    detail = (await client.get(f"/api/v1/architectures/{arch_id}", headers=auth_headers)).json()
+    assert _box_of(detail, selection_id) == target
+
+
+@pytest.mark.asyncio
+async def test_move_service_to_other_region_is_refused(client, auth_headers):
+    arch_id = await _architecture(client, auth_headers)
+    source = await _box(client, auth_headers, arch_id, "Web", "us-east-1")
+    target = await _box(client, auth_headers, arch_id, "App", "eu-west-1")
+    selection_id = await _service(client, auth_headers, source)
+
+    resp = await client.patch(
+        f"/api/v1/sku-selections/{selection_id}",
+        json={"collection_id": target},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"] == "region_mismatch"
+    detail = (await client.get(f"/api/v1/architectures/{arch_id}", headers=auth_headers)).json()
+    assert _box_of(detail, selection_id) == source
+
+
+@pytest.mark.asyncio
+async def test_move_service_to_other_architecture_is_not_found(client, auth_headers):
+    arch_id = await _architecture(client, auth_headers)
+    other_arch = await _architecture(client, auth_headers)
+    source = await _box(client, auth_headers, arch_id, "Web")
+    target = await _box(client, auth_headers, other_arch, "Elsewhere")
+    selection_id = await _service(client, auth_headers, source)
+
+    resp = await client.patch(
+        f"/api/v1/sku-selections/{selection_id}",
+        json={"collection_id": target},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_move_service_into_another_users_box_is_not_found(client, auth_headers):
+    other_headers = {"Authorization": f"Bearer {uuid.uuid4()}"}
+    arch_id = await _architecture(client, auth_headers)
+    source = await _box(client, auth_headers, arch_id, "Web")
+    foreign = await _box(client, other_headers, await _architecture(client, other_headers), "X")
+    selection_id = await _service(client, auth_headers, source)
+
+    resp = await client.patch(
+        f"/api/v1/sku-selections/{selection_id}",
+        json={"collection_id": foreign},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_connector_service_cannot_be_moved_to_a_box(client, auth_headers):
+    arch_id = await _architecture(client, auth_headers)
+    a = await _box(client, auth_headers, arch_id, "A")
+    b = await _box(client, auth_headers, arch_id, "B")
+    conn = await client.post(
+        f"/api/v1/architectures/{arch_id}/connectors",
+        json={"from_collection_id": a, "to_collection_id": b},
+        headers=auth_headers,
+    )
+    attached = await client.post(
+        f"/api/v1/connectors/{conn.json()['id']}/sku-selection",
+        json={
+            "service_code": KNOWN_SERVICE_CODE,
+            "sku": KNOWN_SKU,
+            "pricing_term": "on_demand",
+            "purchase_option": "not_applicable",
+            "usage_quantity": "1",
+        },
+        headers=auth_headers,
+    )
+
+    resp = await client.patch(
+        f"/api/v1/sku-selections/{attached.json()['id']}",
+        json={"collection_id": a},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "not_movable"
+
+
+@pytest.mark.asyncio
+async def test_move_service_to_its_own_box_changes_nothing(client, auth_headers):
+    arch_id = await _architecture(client, auth_headers)
+    source = await _box(client, auth_headers, arch_id, "Web")
+    selection_id = await _service(client, auth_headers, source)
+
+    resp = await client.patch(
+        f"/api/v1/sku-selections/{selection_id}",
+        json={"collection_id": source},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    detail = (await client.get(f"/api/v1/architectures/{arch_id}", headers=auth_headers)).json()
+    assert _box_of(detail, selection_id) == source

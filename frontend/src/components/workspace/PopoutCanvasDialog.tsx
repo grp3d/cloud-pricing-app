@@ -117,6 +117,9 @@ export interface PopoutCanvasDialogProps {
   onCreateConnector: (from: string, to: string) => void;
   onUpdateCollectionParent: (id: string, parentId: string | null) => void;
   onRejectedNesting: (applicationName: string, vpcName: string) => void;
+  /** 016-canvas-icon-layout, FR-004a/FR-004b — see `ArchitectureDiagramPanelProps`. */
+  onMoveService: (skuSelectionId: string, targetCollectionId: string) => Promise<void>;
+  onMoveRejected: (message: string) => void;
   onRefresh: () => void;
   /** 011-canvas-connector-popout follow-up: the same selection state/handlers
    * `WorkspacePage.tsx` passes to column 4's own `ArchitectureDiagramPanel` — selecting
@@ -163,6 +166,8 @@ export function PopoutCanvasDialog({
   onCreateConnector,
   onUpdateCollectionParent,
   onRejectedNesting,
+  onMoveService,
+  onMoveRejected,
   onRefresh,
   diagramSelection,
   onSelectedNodeIdsChange,
@@ -287,6 +292,8 @@ export function PopoutCanvasDialog({
               onCreateConnector={onCreateConnector}
               onUpdateCollectionParent={onUpdateCollectionParent}
               onRejectedNesting={onRejectedNesting}
+              onMoveService={onMoveService}
+              onMoveRejected={onMoveRejected}
               onRefresh={onRefresh}
               // `onOpenPopout` deliberately omitted — this is already the pop-out; see its
               // doc comment on `ArchitectureDiagramPanelProps`.

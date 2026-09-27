@@ -31,9 +31,9 @@ from src.models.schemas import (
     SnapshotSelection,
     UnpriceableItem,
 )
+from src.pricing_data.active_snapshot import get_active_snapshot_date
 from src.pricing_data.duration import classify_unit
 from src.pricing_data.pricing import lookup_price, lookup_reserved_price, resolve_units
-from src.pricing_data.snapshot import resolve_latest_snapshot_date
 
 
 class EmptySnapshotError(ValueError):
@@ -71,7 +71,7 @@ def calculate_architecture_price(
     architecture: Architecture,
     duration: CalculationDuration = CalculationDuration.one_month,
 ) -> CalculationResult:
-    snapshot_date = resolve_latest_snapshot_date()
+    snapshot_date = get_active_snapshot_date()
     duration_days = _DURATION_DAYS[duration]
 
     # Gather every SKU Selection: one per Collection SKU, plus one per Connector's attached SKU.

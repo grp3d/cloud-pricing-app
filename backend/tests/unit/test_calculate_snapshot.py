@@ -70,7 +70,7 @@ def test_reserved_term_total_at_two_durations_matches_authoritative_formula(monk
     006's own test suite already established for these inputs (`test_price_calculation.py`'s
     `test_reserved_partial_upfront_includes_amortized_upfront_share`/
     `test_reserved_3yr_amortizes_upfront_against_1095_days`)."""
-    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
     monkeypatch.setattr(
         price_calculation,
         "lookup_reserved_price",
@@ -104,7 +104,7 @@ def test_reserved_term_total_ignores_usage_quantity_not_estimated(monkeypatch):
     quantity (spec FR-001, Clarifications: it has no Reserved-term meaning at all). Confirms
     `build_transient_architecture` routes through the real, unmodified formula rather than
     any input-derived shortcut: an absurd `usage_quantity` must change nothing."""
-    monkeypatch.setattr(price_calculation, "resolve_latest_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
     monkeypatch.setattr(
         price_calculation,
         "lookup_reserved_price",

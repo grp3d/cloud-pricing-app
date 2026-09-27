@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import json
 import re
 import shutil
 import sys
@@ -40,6 +41,9 @@ from src.config import settings  # noqa: E402
 FRONTEND = BACKEND.parent / "frontend"
 OUT_TS = FRONTEND / "src" / "lib" / "awsServiceIcons.generated.ts"
 OUT_ICONS = FRONTEND / "src" / "assets" / "aws-icons"
+# 016-canvas-icon-layout (research.md §4): the backend's copy of the same maps, so its
+# icon-coverage analysis and the canvas always agree on which services fall back.
+OUT_JSON = BACKEND / "src" / "pricing_data" / "aws_service_icons.json"
 
 # Special icons (research.md §4) — outside the service-icon set, so copied under fixed stems.
 FALLBACK_ICON = {"light": "AWS-Cloud-logo", "dark": "AWS-Cloud-logo_Dark"}
@@ -324,6 +328,16 @@ def render_ts(
     return "\n".join(lines)
 
 
+def render_json(by_code: dict[str, str], by_family: dict[str, dict[str, str]]) -> str:
+    """The backend copy of the maps — sorted keys, trailing newline, byte-stable across runs."""
+    document = {
+        "by_code": by_code,
+        "by_code_and_family": by_family,
+        "special_codes": [DATA_TRANSFER_SERVICE_CODE],
+    }
+    return json.dumps(document, indent=2, sort_keys=True) + "\n"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--icons", required=True, type=Path, help="aws_architecture_icons dir")
@@ -338,6 +352,7 @@ def main() -> None:
 
     package = _single_dir(args.icons, "Architecture-Service-Icons_*").name
     OUT_TS.write_text(render_ts(by_code, by_family, package, snapshot), encoding="utf-8")
+    OUT_JSON.write_text(render_json(by_code, by_family), encoding="utf-8")
 
     if OUT_ICONS.exists():
         shutil.rmtree(OUT_ICONS)

@@ -27,6 +27,7 @@ export type ArchitectureExportFile = components["schemas"]["ArchitectureExportFi
 export type ArchitectureFileImportResponse =
   components["schemas"]["ArchitectureFileImportResponse"];
 export type ImportResult = components["schemas"]["ImportResult"];
+export type SystemInfo = components["schemas"]["SystemInfoOut"];
 
 const BASE = "/api/v1";
 
@@ -145,6 +146,9 @@ export const api = {
     setCurrentIdentityId(user.id);
     return user;
   },
+
+  // --- Admin system information (016-canvas-icon-layout, US5) ---
+  getSystemInfo: () => request<SystemInfo>("/admin/system-info"),
 
   // --- Admin user management (012-user-accounts-sharing) ---
   listAdminUsers: () => request<AdminUser[]>("/admin/users"),
@@ -271,6 +275,8 @@ export const api = {
       pricing_term: PricingTerm;
       purchase_option: PurchaseOption;
       usage_quantity: string;
+      /** 016-canvas-icon-layout, FR-004a: move the service to another box (same region). */
+      collection_id: string;
     }>,
   ) =>
     request<SKUSelection>(`/sku-selections/${id}`, {
