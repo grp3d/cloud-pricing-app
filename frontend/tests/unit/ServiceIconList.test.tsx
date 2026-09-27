@@ -124,8 +124,6 @@ describe("ServiceList (canvas service icons)", () => {
     ).toBeInTheDocument();
   });
 
-  // Opening the Radix tooltip in jsdom takes ~5s (it did before 016 too), right at Vitest's
-  // default 5s limit — this test gets a longer timeout rather than failing intermittently.
   it("shows the labeled pop-up lines, each on its own line, when the icon is focused", async () => {
     const { container } = render(
       wrap(
@@ -139,7 +137,7 @@ describe("ServiceList (canvas service icons)", () => {
     const usageLine = screen.getAllByText("UsageType: EU-ReadRequestUnits")[0];
     expect(skuLine).not.toBe(usageLine);
     expect(skuLine.parentElement).toBe(usageLine.parentElement);
-  }, 15_000);
+  });
 
   // 016-canvas-icon-layout, FR-001/FR-002: 60px icons, up to 3 per row, 120 apart.
   it("renders 60px icons at their default positions, 3 per row", () => {
