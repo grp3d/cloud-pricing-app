@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from src.api.deps import CurrentUser, DbSession
+from src.logging_config import get_logger
 from src.models.orm import SKUSelection
 from src.models.schemas import SKUSelectionCreate, SKUSelectionOut, SKUSelectionUpdate
 from src.services.architecture_service import (
@@ -17,6 +18,7 @@ from src.services.architecture_service import (
 )
 
 router = APIRouter(tags=["sku-selections"])
+logger = get_logger("cloud_pricing.sku_selections")
 
 
 @router.post(
@@ -74,7 +76,16 @@ async def _move_to_collection(
     Architecture and region (dragging its icon on the canvas). Returns an error response when
     the move isn't allowed; otherwise re-points the selection and returns None. Prices are
     unaffected — same SKU, same region, same inputs."""
+    # 017-structured-json-logging, FR-008 e.
+    fields = {
+        "sku_selection_id": str(selection.id),
+        "sku": selection.sku,
+        "service_code": selection.service_code,
+        "source_collection_id": str(selection.collection_id) if selection.collection_id else None,
+        "target_collection_id": str(target_id),
+    }
     if selection.collection_id is None:
+        logger.warning("service move refused", reason="not_movable", **fields)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
@@ -87,6 +98,7 @@ async def _move_to_collection(
     if target.architecture_id != source.architecture_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
     if target.region != source_region:
+        logger.warning("service move refused", reason="region_mismatch", **fields)
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={
@@ -98,6 +110,7 @@ async def _move_to_collection(
             },
         )
     selection.collection_id = target.id
+    logger.info("service moved", **fields)
     return None
 
 

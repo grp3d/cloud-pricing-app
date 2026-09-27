@@ -82,3 +82,23 @@ async def admin_headers() -> dict[str, str]:
             await session.execute(select(User.id).where(User.is_default_admin.is_(True)))
         ).scalar_one()
     return {"Authorization": f"Bearer {admin_id}"}
+
+
+@pytest.fixture
+def log_output():
+    """Captures the rendered JSON log records as a list of dicts (017-structured-json-logging,
+    FR-012). Call the returned function to read everything logged so far."""
+    import io
+    import json
+
+    import structlog
+
+    from src.config import settings
+    from src.logging_config import configure_logging
+
+    buf = io.StringIO()
+    configure_logging(level="DEBUG", fmt="json", stream=buf)
+    structlog.contextvars.clear_contextvars()
+    yield lambda: [json.loads(line) for line in buf.getvalue().splitlines()]
+    structlog.contextvars.clear_contextvars()
+    configure_logging(settings.log_level, settings.log_format)

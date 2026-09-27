@@ -19,7 +19,8 @@ refuses to start**, and the error names the setting.
 | `CATALOG_SEARCH_DEFAULT_LIMIT` | integer ≥ 1 | `50` | Catalog search page size when a request doesn't specify one. Must not exceed the maximum. |
 | `CATALOG_SEARCH_MAX_LIMIT` | integer ≥ 1 | `200` | The largest page size a catalog search may request. |
 | `PASSWORD_HASH_ITERATIONS` | integer ≥ 100000 | `260000` | PBKDF2 iterations for newly set passwords. Existing hashes keep their own count, so changing this doesn't lock anyone out. |
-| `LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` | `INFO` | Server log level. |
+| `LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` | `INFO` | Minimum level of log records written. |
+| `LOG_FORMAT` | `json` \| `console` | `json` | Log output format. `json` writes one JSON object per line with `timestamp`, `level` and `message`; `console` writes colored, readable lines for local development. Any other value stops startup. |
 
 ## Pricing snapshots and `_SUCCESS` markers
 

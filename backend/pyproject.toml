@@ -13,6 +13,7 @@ dependencies = [
     "duckdb>=1.1",
     "psycopg[binary]>=3.2",
     "greenlet>=3.1",
+    "structlog>=26.1",
 ]
 
 [project.optional-dependencies]

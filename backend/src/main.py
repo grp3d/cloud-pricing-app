@@ -8,23 +8,31 @@ response, and never surfaced as an unhandled 500.
 from __future__ import annotations
 
 import asyncio
-import logging
+import re
+import time
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import settings
+from src.logging_config import configure_logging, get_logger
 from src.pricing_data.active_snapshot import run_check
 from src.pricing_data.catalog import EmptyCatalogFilterError, InvalidRegexPatternError
 from src.pricing_data.errors import PricingDataUnavailableError
 from src.services.architecture_transfer import InvalidImportFileError
 from src.services.price_calculation import EmptySnapshotError
 
-logging.basicConfig(level=settings.log_level)
-logger = logging.getLogger("cloud_pricing")
+# 017-structured-json-logging: runs at import, after Uvicorn has applied its own logging config.
+configure_logging(settings.log_level, settings.log_format)
+logger = get_logger("cloud_pricing")
+
+# FR-006b: a caller's own X-Request-ID is recorded only if it's 1–128 printable ASCII characters.
+_CLIENT_REQUEST_ID = re.compile(r"[\x20-\x7E]{1,128}")
 
 async def _snapshot_monitor() -> None:
     """016-canvas-icon-layout, FR-015/FR-023: re-check the pricing data every
@@ -34,8 +42,8 @@ async def _snapshot_monitor() -> None:
         await asyncio.sleep(settings.snapshot_check_interval_seconds)
         try:
             await asyncio.to_thread(run_check)
-        except Exception:  # noqa: BLE001
-            logger.exception("pricing snapshot check failed")
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("pricing snapshot check failed", error=str(exc))
 
 
 @asynccontextmanager
@@ -63,6 +71,7 @@ app.add_middleware(
     allow_origins=settings.cors_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 
 
@@ -70,7 +79,7 @@ app.add_middleware(
 async def pricing_data_unavailable_handler(
     request: Request, exc: PricingDataUnavailableError
 ) -> JSONResponse:
-    logger.error("pricing data source unavailable: %s (%s)", exc, request.url)
+    logger.error("pricing data unavailable", path=request.url.path, error=str(exc))
     return JSONResponse(
         status_code=503,
         content={
@@ -115,8 +124,26 @@ async def invalid_import_file_handler(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    # 017-structured-json-logging, FR-006a/b: every record logged while handling this request
+    # carries its server-generated request_id (and a validated client_request_id).
+    structlog.contextvars.clear_contextvars()
+    request_id = uuid.uuid4().hex
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    client_request_id = request.headers.get("x-request-id")
+    if client_request_id is not None and _CLIENT_REQUEST_ID.fullmatch(client_request_id):
+        structlog.contextvars.bind_contextvars(client_request_id=client_request_id)
+
+    start = time.perf_counter()
     response = await call_next(request)
-    logger.info("%s %s -> %s", request.method, request.url.path, response.status_code)
+    response.headers["X-Request-ID"] = request_id  # never the caller's value
+    # 017-structured-json-logging, FR-006: the path only — never the query string or headers.
+    logger.info(
+        "request completed",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        duration_ms=round((time.perf_counter() - start) * 1000, 1),
+    )
     return response
 
 

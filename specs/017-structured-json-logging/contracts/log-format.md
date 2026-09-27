@@ -70,7 +70,7 @@ that library writes.
 ## 4. Icon-map generator: `--log-file`
 
 ```text
-uv run python scripts/generate_aws_service_icon_map.py [--log-file PATH]
+uv run python scripts/generate_aws_service_icon_map.py --icons <dir> [--log-file PATH]
 ```
 
 - **Without `--log-file`**: only the existing readable report is printed to standard output.

@@ -15,8 +15,12 @@ It also prints a review report (matched / overridden / fallback) — the reviewa
 spec FR-003. Neither output is ever hand-edited: change the overrides and re-run. Re-running
 against the same icon package and snapshot produces byte-identical output.
 
+With `--log-file PATH` (017-structured-json-logging, FR-009) it also writes one JSON log record
+per service, family override and copied icon to PATH; the printed report is unchanged.
+
     uv run python scripts/generate_aws_service_icon_map.py \\
-        --icons ../../images-web/aws_architecture_icons [--parquet /path/to/parquet]
+        --icons ../../images-web/aws_architecture_icons [--parquet /path/to/parquet] \\
+        [--log-file report.jsonl]
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from src.config import settings  # noqa: E402
+from src.logging_config import configure_logging, get_logger  # noqa: E402
 
 FRONTEND = BACKEND.parent / "frontend"
 OUT_TS = FRONTEND / "src" / "lib" / "awsServiceIcons.generated.ts"
@@ -236,27 +241,44 @@ def _auto_match(
 
 def build_mapping(
     names: dict[str, str | None], families: set[tuple[str, str]], icons: dict[str, Path]
-) -> tuple[dict[str, str], dict[str, dict[str, str]], list[str]]:
+) -> tuple[dict[str, str], dict[str, dict[str, str]], list[str], list[dict[str, str | None]]]:
+    """(code -> stem, code -> family -> stem, printed report lines, one structured row per
+    service and per family override — the `--log-file` records, 017 FR-009)."""
     by_normalized = {_normalize(stem): stem for stem in sorted(icons)}
     report: list[str] = []
     by_code: dict[str, str] = {}
     rows: dict[str, list[tuple[str, str]]] = {
         section: [] for section in ("matched", "fuzzy", "override", "fallback")
     }
+    log_rows: list[dict[str, str | None]] = []
+
+    def log_row(code: str, stem: str | None, match_type: str) -> None:
+        log_rows.append(
+            {
+                "service_code": code,
+                "service_name": names[code],
+                "icon_file": f"{stem}.svg" if stem else None,
+                "match_type": match_type,
+            }
+        )
 
     for code in sorted(names):
         if code == DATA_TRANSFER_SERVICE_CODE:
             rows["override"].append((code, "(data-transfer icon)"))
+            log_row(code, None, "data_transfer")
             continue
         auto, fuzzy = _auto_match(code, names[code], by_normalized)
         if code in OVERRIDES:
             by_code[code] = OVERRIDES[code]
             rows["override"].append((code, f"{OVERRIDES[code]}  (auto: {auto or '-'})"))
+            log_row(code, OVERRIDES[code], "override")
         elif auto:
             by_code[code] = auto
             rows["fuzzy" if fuzzy else "matched"].append((code, auto))
+            log_row(code, auto, "fuzzy" if fuzzy else "matched")
         else:
             rows["fallback"].append((code, names[code] or ""))
+            log_row(code, None, "fallback")
 
     by_family: dict[str, dict[str, str]] = {}
     for code, family_map in sorted(FAMILY_OVERRIDES.items()):
@@ -264,6 +286,14 @@ def build_mapping(
             if (code, family) not in families:
                 report.append(f"WARNING: family override ({code}, {family}) not in pricing data")
             by_family.setdefault(code, {})[family] = stem
+            log_rows.append(
+                {
+                    "service_code": code,
+                    "product_family": family,
+                    "icon_file": f"{stem}.svg",
+                    "match_type": "family_override",
+                }
+            )
 
     referenced = set(by_code.values()) | {s for m in by_family.values() for s in m.values()}
     unknown = sorted(s for s in referenced if s not in icons)
@@ -276,7 +306,20 @@ def build_mapping(
         report.append(f"\n## {section} ({len(entries)})")
         report.extend(f"  {code:40} {detail}" for code, detail in entries)
     report.append(f"\nnon-fallback: {mapped}/{total} = {mapped / total:.1%}")
-    return by_code, by_family, report
+    return by_code, by_family, report, log_rows
+
+
+def log_mapping(rows: list[dict[str, str | None]], copied_icons: list[str]) -> None:
+    """017-structured-json-logging, FR-009: one record per service, family override and copied
+    icon, through whatever `configure_logging` set up (the `--log-file` file)."""
+    logger = get_logger("cloud_pricing.icon_map")
+    for row in rows:
+        if row["match_type"] == "family_override":
+            logger.info("family icon override", **row)
+        else:
+            logger.info("service icon matched", **row)
+    for icon_file in copied_icons:
+        logger.info("icon copied", icon_file=icon_file)
 
 
 _FAMILY_DOC = (
@@ -342,13 +385,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--icons", required=True, type=Path, help="aws_architecture_icons dir")
     parser.add_argument("--parquet", type=Path, default=Path(settings.aws_pricing_parquet_dir))
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        help="also write one JSON log record per service and copied icon to this file",
+    )
     args = parser.parse_args()
 
     icons = _service_icons(args.icons)
     special = _special_icons(args.icons)
     snapshot = _latest_snapshot(args.parquet)
     names, families = _pricing_services(args.parquet, snapshot)
-    by_code, by_family, report = build_mapping(names, families, icons)
+    by_code, by_family, report, rows = build_mapping(names, families, icons)
 
     package = _single_dir(args.icons, "Architecture-Service-Icons_*").name
     OUT_TS.write_text(render_ts(by_code, by_family, package, snapshot), encoding="utf-8")
@@ -358,10 +406,19 @@ def main() -> None:
         shutil.rmtree(OUT_ICONS)
     OUT_ICONS.mkdir(parents=True)
     referenced = set(by_code.values()) | {s for m in by_family.values() for s in m.values()}
+    copied: list[str] = []
     for stem in sorted(referenced):
         shutil.copyfile(icons[stem], OUT_ICONS / f"{stem}.svg")
+        copied.append(f"{stem}.svg")
     for stem, source in special.items():
         shutil.copyfile(source, OUT_ICONS / f"{stem}.svg")
+        copied.append(f"{stem}.svg")
+
+    if args.log_file:
+        with args.log_file.open("w", encoding="utf-8") as log_stream:
+            configure_logging(level="INFO", fmt="json", stream=log_stream)
+            log_mapping(rows, copied)
+        configure_logging(settings.log_level, settings.log_format)  # don't keep the closed file
 
     print("\n".join(report))
     icon_count = len(referenced) + len(special)

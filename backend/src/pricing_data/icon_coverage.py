@@ -16,8 +16,11 @@ from pathlib import Path
 
 import duckdb
 
+from src.logging_config import get_logger
 from src.pricing_data.active_snapshot import ActiveSnapshotState, Issue
 from src.pricing_data.snapshot import TABLES
+
+logger = get_logger("cloud_pricing.icon_coverage")
 
 _ICON_MAP = Path(__file__).with_name("aws_service_icons.json")
 
@@ -93,3 +96,18 @@ def analyze(state: ActiveSnapshotState, parquet_dir: Path, _previous_active: str
         parquet_dir, state.active_date, previous_present_date(parquet_dir, state.active_date)
     )
     state.issues = [i for i in state.issues if i.kind != "missing_icon"] + unmatched
+    # 017-structured-json-logging, FR-008 d: one summary, plus one debug line per service.
+    for issue in unmatched:
+        logger.debug(
+            "service has no icon",
+            snapshot_date=state.active_date,
+            service_code=issue.service_code,
+            service_name=issue.service_name,
+            is_new=bool(issue.is_new),
+        )
+    logger.info(
+        "icon coverage analyzed",
+        snapshot_date=state.active_date,
+        missing_icon_count=len(unmatched),
+        new_service_codes=sorted(i.service_code for i in unmatched if i.is_new),
+    )

@@ -283,3 +283,104 @@ def test_architecture_detail_uses_one_snapshot_date_throughout(monkeypatch):
 
     assert len(seen) == 4  # units + details, per region
     assert set(seen) == {"2026-09-24"}
+
+
+# --- 017-structured-json-logging, FR-008 a–c: snapshot log events ---------------------------
+
+
+def _events(log_output, message: str) -> list[dict]:
+    return [r for r in log_output() if r["message"] == message]
+
+
+@pytest.fixture
+def no_analysis(monkeypatch):
+    monkeypatch.setattr(active_snapshot, "_analysis_hook", lambda *a: None)
+
+
+def test_startup_logs_the_selected_snapshot(fresh_state, no_analysis, log_output):
+    make_snapshot_tree(fresh_state, {D1: {}, D2: {}})
+    active_snapshot.run_check(at_startup=True)
+
+    [record] = _events(log_output, "active pricing snapshot selected")
+    assert record["level"] == "info"
+    assert record["snapshot_date"] == D2
+    assert record["pinned"] is False
+
+
+def test_startup_logs_a_pinned_snapshot(fresh_state, no_analysis, log_output, monkeypatch):
+    make_snapshot_tree(fresh_state, {D1: {}, D2: {}})
+    monkeypatch.setattr(active_snapshot.settings, "active_snapshot_date", date.fromisoformat(D1))
+    active_snapshot.run_check(at_startup=True)
+
+    [record] = _events(log_output, "active pricing snapshot selected")
+    assert record["snapshot_date"] == D1
+    assert record["pinned"] is True
+
+
+def test_switch_logs_the_changed_snapshot(fresh_state, no_analysis, log_output):
+    make_snapshot_tree(fresh_state, {D1: {}})
+    active_snapshot.run_check(at_startup=True)
+    active_snapshot.run_check()
+    assert _events(log_output, "active pricing snapshot changed") == []
+
+    make_snapshot_tree(fresh_state, {D2: {}})
+    active_snapshot.run_check()
+
+    [record] = _events(log_output, "active pricing snapshot changed")
+    assert record["snapshot_date"] == D2
+    assert record["previous_snapshot_date"] == D1
+    assert record["pinned"] is False
+
+
+def test_waiting_snapshot_is_logged_once_per_reason(fresh_state, no_analysis, log_output):
+    make_snapshot_tree(fresh_state, {D1: {}, D2: {"tables_missing": ["price_fact"]}})
+    active_snapshot.run_check(at_startup=True)
+    active_snapshot.run_check()
+
+    [record] = _events(log_output, "pricing snapshot waiting")
+    assert record["snapshot_date"] == D2
+    assert record["reason"] == "missing from price_fact"
+    assert record["reason"] == active_snapshot.STATE.waiting[0].reason
+
+    # price_fact now has the date but no marker: a new reason, logged again.
+    make_snapshot_tree(fresh_state, {D2: {"markers": False}})
+    active_snapshot.run_check()
+    reasons = [r["reason"] for r in _events(log_output, "pricing snapshot waiting")]
+    assert reasons == ["missing from price_fact", "no completion marker in price_fact"]
+
+
+def test_switch_that_loses_regions_logs_a_warning(fresh_state, no_analysis, log_output):
+    make_snapshot_tree(fresh_state, {D1: {"regions": ["eu-west-1", "us-east-1"]}})
+    active_snapshot.run_check(at_startup=True)
+    make_snapshot_tree(fresh_state, {D2: {"regions": ["us-east-1"]}})
+    active_snapshot.run_check()
+
+    [record] = _events(log_output, "pricing snapshot missing regions")
+    assert record["level"] == "warning"
+    assert record["snapshot_date"] == D2
+    assert record["previous_snapshot_date"] == D1
+    assert record["regions"] == ["eu-west-1"]
+
+
+def test_unreadable_data_folder_logs_check_failed(fresh_state, log_output, monkeypatch):
+    monkeypatch.setattr(
+        active_snapshot.settings, "aws_pricing_parquet_dir", str(fresh_state / "missing")
+    )
+    active_snapshot.run_check()
+
+    [record] = _events(log_output, "pricing snapshot check failed")
+    assert record["level"] == "error"
+    assert record["error"]
+
+
+def test_failed_analysis_is_logged_with_its_traceback(fresh_state, log_output, monkeypatch):
+    def boom(*_args):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(active_snapshot, "_analysis_hook", boom)
+    make_snapshot_tree(fresh_state, {D1: {}})
+    active_snapshot.run_check(at_startup=True)
+
+    [record] = _events(log_output, "icon coverage analysis failed")
+    assert record["level"] == "error"
+    assert "RuntimeError" in record["exception"]

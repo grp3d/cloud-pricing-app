@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     password_hash_iterations: int = Field(default=260_000, ge=100_000)
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    # 017-structured-json-logging, FR-001a: one JSON object per line, or readable local-dev lines.
+    log_format: Literal["json", "console"] = "json"
 
     @model_validator(mode="after")
     def _catalog_search_default_within_max(self) -> Settings:

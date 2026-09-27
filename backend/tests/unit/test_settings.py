@@ -79,6 +79,24 @@ def test_log_level_default_and_validation(monkeypatch):
         _settings()
 
 
+# --- 017-structured-json-logging, FR-001a: LOG_FORMAT ----------------------------------------
+
+
+def test_log_format_defaults_to_json():
+    assert _settings().log_format == "json"
+
+
+def test_log_format_reads_env(monkeypatch):
+    monkeypatch.setenv("LOG_FORMAT", "console")
+    assert _settings().log_format == "console"
+
+
+def test_log_format_rejects_invalid(monkeypatch):
+    monkeypatch.setenv("LOG_FORMAT", "xml")
+    with pytest.raises(ValidationError, match="log_format"):
+        _settings()
+
+
 def test_changing_iterations_keeps_existing_passwords_valid(monkeypatch):
     from src.services import auth_service
 

@@ -16,7 +16,6 @@ says something changed.
 
 from __future__ import annotations
 
-import logging
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -24,10 +23,11 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from src.config import settings
+from src.logging_config import get_logger
 from src.pricing_data.errors import PricingDataUnavailableError
 from src.pricing_data.snapshot import TABLES
 
-logger = logging.getLogger("cloud_pricing.active_snapshot")
+logger = get_logger("cloud_pricing.active_snapshot")
 
 MARKER = "_SUCCESS"
 _DATE_PREFIX = "snapshot_date="
@@ -68,6 +68,9 @@ class ActiveSnapshotState:
     marker_mtimes: dict[str, float] = field(default_factory=dict)
     issues: list[Issue] = field(default_factory=list)
     initialized: bool = False
+    # 017-structured-json-logging: waiting snapshot_date -> reason already logged, so
+    # `pricing snapshot waiting` is logged once per new entry or changed reason.
+    logged_waiting: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -164,7 +167,7 @@ def check_snapshots(
         listing = _scan(parquet_dir)
     except OSError as exc:
         state.last_check_error = str(exc)
-        logger.error("pricing snapshot check failed: %s", exc)
+        logger.error("pricing snapshot check failed", error=str(exc))
         return CheckResult(switched=False, previous_date=previous, analysis_needed=False)
 
     state.last_check_error = None
@@ -267,14 +270,51 @@ def _default_analysis(state: ActiveSnapshotState, parquet_dir: Path, previous: s
     analyze(state, parquet_dir, previous)
 
 
+def _log_transitions(result: CheckResult, *, first: bool) -> None:
+    """017-structured-json-logging, FR-008 a–b: log what this check changed, from the state
+    after it. `check_snapshots` itself stays free of logging (research.md §5)."""
+    if first:
+        logger.info(
+            "active pricing snapshot selected",
+            snapshot_date=STATE.active_date,
+            pinned=STATE.pinned,
+        )
+    elif result.switched:
+        logger.info(
+            "active pricing snapshot changed",
+            snapshot_date=STATE.active_date,
+            previous_snapshot_date=result.previous_date,
+            pinned=STATE.pinned,
+        )
+        for issue in STATE.issues:
+            if issue.kind == "missing_regions" and issue.snapshot_date == STATE.active_date:
+                logger.warning(
+                    "pricing snapshot missing regions",
+                    snapshot_date=STATE.active_date,
+                    previous_snapshot_date=result.previous_date,
+                    regions=issue.regions,
+                )
+    for waiting in STATE.waiting:
+        if STATE.logged_waiting.get(waiting.snapshot_date) != waiting.reason:
+            logger.info(
+                "pricing snapshot waiting",
+                snapshot_date=waiting.snapshot_date,
+                reason=waiting.reason,
+            )
+    STATE.logged_waiting = {w.snapshot_date: w.reason for w in STATE.waiting}
+
+
 def run_check(*, at_startup: bool = False) -> CheckResult:
     """One check against the configured data directory, then the icon analysis if needed.
     Serialized, so a slow check never overlaps the next (spec Edge Cases)."""
     with _lock:
         parquet_dir = Path(settings.aws_pricing_parquet_dir)
+        was_initialized = STATE.initialized
         result = check_snapshots(
             parquet_dir, STATE, settings.active_snapshot_date, at_startup=at_startup
         )
+        if STATE.last_check_error is None:
+            _log_transitions(result, first=at_startup or not was_initialized)
         if result.analysis_needed:
             try:
                 (_analysis_hook or _default_analysis)(STATE, parquet_dir, result.previous_date)

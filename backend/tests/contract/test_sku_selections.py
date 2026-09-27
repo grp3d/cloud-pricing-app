@@ -330,3 +330,91 @@ async def test_move_service_to_its_own_box_changes_nothing(client, auth_headers)
     assert resp.status_code == 200
     detail = (await client.get(f"/api/v1/architectures/{arch_id}", headers=auth_headers)).json()
     assert _box_of(detail, selection_id) == source
+
+
+# --- 017-structured-json-logging, FR-008 e: move log events ---------------------------------
+
+
+def _move_events(log_output, message: str) -> list[dict]:
+    return [r for r in log_output() if r["message"] == message]
+
+
+@pytest.mark.asyncio
+async def test_move_logs_service_moved(client, auth_headers, log_output):
+    arch_id = await _architecture(client, auth_headers)
+    source = await _box(client, auth_headers, arch_id, "Web", "us-east-1")
+    target = await _box(client, auth_headers, arch_id, "App", "us-east-1")
+    selection_id = await _service(client, auth_headers, source)
+
+    resp = await client.patch(
+        f"/api/v1/sku-selections/{selection_id}",
+        json={"collection_id": target},
+        headers=auth_headers,
+    )
+
+    [record] = _move_events(log_output, "service moved")
+    assert record["level"] == "info"
+    assert record["sku_selection_id"] == selection_id
+    assert record["sku"] == KNOWN_SKU
+    assert record["service_code"] == KNOWN_SERVICE_CODE
+    assert record["source_collection_id"] == source
+    assert record["target_collection_id"] == target
+    assert record["request_id"] == resp.headers["X-Request-ID"]
+
+
+@pytest.mark.asyncio
+async def test_region_mismatch_logs_service_move_refused(client, auth_headers, log_output):
+    arch_id = await _architecture(client, auth_headers)
+    source = await _box(client, auth_headers, arch_id, "Web", "us-east-1")
+    target = await _box(client, auth_headers, arch_id, "App", "eu-west-1")
+    selection_id = await _service(client, auth_headers, source)
+
+    await client.patch(
+        f"/api/v1/sku-selections/{selection_id}",
+        json={"collection_id": target},
+        headers=auth_headers,
+    )
+
+    [record] = _move_events(log_output, "service move refused")
+    assert record["level"] == "warning"
+    assert record["reason"] == "region_mismatch"
+    assert record["sku_selection_id"] == selection_id
+    assert record["sku"] == KNOWN_SKU
+    assert record["service_code"] == KNOWN_SERVICE_CODE
+    assert record["source_collection_id"] == source
+    assert record["target_collection_id"] == target
+    assert _move_events(log_output, "service moved") == []
+
+
+@pytest.mark.asyncio
+async def test_connector_service_logs_not_movable(client, auth_headers, log_output):
+    arch_id = await _architecture(client, auth_headers)
+    a = await _box(client, auth_headers, arch_id, "A")
+    b = await _box(client, auth_headers, arch_id, "B")
+    conn = await client.post(
+        f"/api/v1/architectures/{arch_id}/connectors",
+        json={"from_collection_id": a, "to_collection_id": b},
+        headers=auth_headers,
+    )
+    attached = await client.post(
+        f"/api/v1/connectors/{conn.json()['id']}/sku-selection",
+        json={
+            "service_code": KNOWN_SERVICE_CODE,
+            "sku": KNOWN_SKU,
+            "pricing_term": "on_demand",
+            "purchase_option": "not_applicable",
+            "usage_quantity": "1",
+        },
+        headers=auth_headers,
+    )
+
+    await client.patch(
+        f"/api/v1/sku-selections/{attached.json()['id']}",
+        json={"collection_id": a},
+        headers=auth_headers,
+    )
+
+    [record] = _move_events(log_output, "service move refused")
+    assert record["reason"] == "not_movable"
+    assert record["source_collection_id"] is None
+    assert record["target_collection_id"] == a

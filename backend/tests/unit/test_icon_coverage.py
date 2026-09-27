@@ -3,7 +3,9 @@ which services in the active snapshot have no icon, and which of those are new."
 
 from __future__ import annotations
 
+from src.pricing_data.active_snapshot import ActiveSnapshotState
 from src.pricing_data.icon_coverage import (
+    analyze,
     find_unmatched_services,
     previous_present_date,
 )
@@ -63,3 +65,37 @@ def test_previous_present_date_ignores_markers_and_requires_every_table(tmp_path
     )
     assert previous_present_date(tmp_path, NEW) == "2026-09-20"
     assert previous_present_date(tmp_path, "2026-09-20") is None
+
+
+# --- 017-structured-json-logging, FR-008 d: coverage log events -----------------------------
+
+
+def test_analysis_logs_a_summary_and_one_debug_line_per_service(tmp_path, log_output):
+    state = ActiveSnapshotState(active_date=NEW)
+    analyze(state, _tree(tmp_path), None)
+
+    missing = [i for i in state.issues if i.kind == "missing_icon"]
+    records = log_output()
+    [summary] = [r for r in records if r["message"] == "icon coverage analyzed"]
+    assert summary["level"] == "info"
+    assert summary["snapshot_date"] == NEW
+    assert summary["missing_icon_count"] == len(missing) == 2
+    assert summary["new_service_codes"] == sorted(i.service_code for i in missing if i.is_new)
+    assert summary["new_service_codes"] == ["ZZNewService"]
+
+    per_service = [r for r in records if r["message"] == "service has no icon"]
+    assert all(r["level"] == "debug" for r in per_service)
+    assert [
+        (r["snapshot_date"], r["service_code"], r["service_name"], r["is_new"]) for r in per_service
+    ] == [(NEW, i.service_code, i.service_name, i.is_new) for i in missing]
+
+
+def test_full_coverage_logs_zero_and_no_debug_lines(tmp_path, log_output):
+    make_snapshot_tree(tmp_path, {NEW: {"services": [("AmazonDynamoDB", "Amazon DynamoDB")]}})
+    analyze(ActiveSnapshotState(active_date=NEW), tmp_path, None)
+
+    records = log_output()
+    [summary] = [r for r in records if r["message"] == "icon coverage analyzed"]
+    assert summary["missing_icon_count"] == 0
+    assert summary["new_service_codes"] == []
+    assert not [r for r in records if r["message"] == "service has no icon"]

@@ -84,7 +84,7 @@ Both records carry the request's `request_id`.
 
 ```bash
 cd backend
-uv run python scripts/generate_aws_service_icon_map.py --log-file /tmp/icons.jsonl
+uv run python scripts/generate_aws_service_icon_map.py --icons <aws_architecture_icons dir> --log-file /tmp/icons.jsonl
 jq -r .match_type /tmp/icons.jsonl | sort | uniq -c
 ```
 
