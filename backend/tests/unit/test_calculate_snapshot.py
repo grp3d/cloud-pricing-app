@@ -138,3 +138,11 @@ def test_reserved_term_total_ignores_usage_quantity_not_estimated(monkeypatch):
     )
 
     assert result_normal.total_price == result_absurd.total_price == Decimal("775")
+
+
+def test_transient_collection_uses_the_configured_pricing_region(monkeypatch):
+    """016-canvas-icon-layout, FR-025: the snapshot collection's region comes from
+    `AWS_PRICING_REGION`, not a hard-coded value."""
+    monkeypatch.setattr(price_calculation.settings, "aws_pricing_region", "eu-west-1")
+    architecture = build_transient_architecture([_selection()])
+    assert architecture.collections[0].region == "eu-west-1"

@@ -236,6 +236,24 @@ since the architecture loaded. When a new one appears without a saved layout:
 
 Collections present on the first load keep today's behavior. Nested collections are unchanged.
 
+## 11a. Default placement of existing top-level boxes (added during validation)
+
+**Finding** (quickstart validation): top-level boxes without a saved position used 009's fixed
+grid, `x = (i % 4) × 300`, `y = floor(i / 4) × 260`. That grid assumed 220×220 boxes. With boxes
+now up to 320px wide (FR-002) and as tall as their rows of 60px icons, default-placed boxes
+overlapped. Active-Standby's two VPCs overlapped, for example.
+
+**Decision**: `flowGridPlacer` / `flowGridSlots` in `frontend/src/lib/newNodePlacement.ts`
+places default boxes left to right by their real width, 4 per row, with each row starting below
+the tallest box of the previous row. It keeps the same 80px column and 40px row gaps as the old
+grid's spacing between 220px boxes. Boxes with a saved position (a manual move or resize, or
+FR-013's in-view placement) keep it, but still advance the flow by their size. Covered by
+`tests/unit/newNodePlacement.test.ts`.
+
+**Alternatives considered**: widening the fixed grid step to the largest possible box (rejected:
+it spreads small boxes far apart); leaving overlaps for users to drag apart (rejected: it breaks
+FR-003's "nothing overlaps" intent on every architecture's first open).
+
 ## 12. Configuration (FR-025–FR-027)
 
 **Finding**: `src/config.py` already uses `pydantic-settings` (`BaseSettings`, `.env`), exposing

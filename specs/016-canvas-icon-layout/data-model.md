@@ -139,6 +139,10 @@ type IconLayout = Record<string /* skuSelectionId */, { x: number; y: number }>;
 | `PAD` | 8 | the box's existing `p-2` |
 | `LABEL_RESERVE` | 16 | room for the box's region label (015) |
 
+Default top-level box slots (research.md §11a): left to right by real width, 4 per row, with
+80px between boxes and 40px between rows (each row below the tallest box of the previous one).
+Saved positions override the slot.
+
 Default box width = max(today's default, `2*PAD + n*ICON + (n-1)*GAP + borders`), where
 n = min(icons, 3). For 3 icons that's 316 + borders = 320.
 

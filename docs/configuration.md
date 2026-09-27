@@ -12,7 +12,7 @@ refuses to start**, and the error names the setting.
 |---|---|---|---|
 | `DATABASE_URL` | string | `postgresql+psycopg://localhost/cloud_pricing_dev` | Postgres connection for user data (architectures, collections, users). |
 | `AWS_PRICING_PARQUET_DIR` | path | the local development data path | Root of the AWS pricing Parquet tables (`service_dim/`, `product_dim/`, `product_attribute/`, `region_dim/`, `price_fact/`), each partitioned by `snapshot_date=` and `region=`. Read-only. |
-| `AWS_PRICING_REGION` | string | `us-east-1` | Legacy single-region default. Pricing is per collection region. |
+| `AWS_PRICING_REGION` | string | `us-east-1` | Legacy single-region default. Pricing is per collection region, except for the Price Change comparison, which reprices earlier selections in this region. |
 | `SNAPSHOT_CHECK_INTERVAL_SECONDS` | integer ≥ 10 | `300` | How often the background check looks for a newer, fully written pricing snapshot. It also re-runs the icon-coverage analysis when the active snapshot changes. |
 | `ACTIVE_SNAPSHOT_DATE` | date (`YYYY-MM-DD`) or unset | unset | Pins the pricing snapshot every lookup uses, e.g. to roll back from bad upstream data. The date must exist in all five tables or the server won't start. If it has no `_SUCCESS` markers, the server starts and the Admin tab shows a warning. |
 | `CORS_ALLOWED_ORIGINS` | JSON list of strings | `["http://localhost:5173"]` | Browser origins allowed to call the API. |

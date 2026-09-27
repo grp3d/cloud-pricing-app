@@ -22,6 +22,7 @@ import uuid
 from collections.abc import Sequence
 from decimal import Decimal
 
+from src.config import settings
 from src.models.orm import Architecture, Collection, SKUSelection
 from src.models.schemas import (
     CalculationDuration,
@@ -294,9 +295,13 @@ def build_transient_architecture(selections: Sequence[SnapshotSelection]) -> Arc
     # than left unset, preserving this endpoint's exact prior behavior (spec Assumptions: the
     # Price Change mechanism is out of scope for this feature). Out of scope for this feature:
     # a genuinely multi-region-aware snapshot recalculation would need `SnapshotSelection` to
-    # carry its own region.
+    # carry its own region. 016-canvas-icon-layout, FR-025: that region is the
+    # `AWS_PRICING_REGION` setting (default `us-east-1`), no longer a literal here.
     collection = Collection(
-        id=uuid.uuid4(), type="application_component", name="snapshot", region="us-east-1"
+        id=uuid.uuid4(),
+        type="application_component",
+        name="snapshot",
+        region=settings.aws_pricing_region,
     )
     collection.sku_selections = [
         SKUSelection(

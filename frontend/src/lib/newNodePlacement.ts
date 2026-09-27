@@ -45,3 +45,45 @@ export function findVisibleSlot(
   }
   return { ...start, ...size };
 }
+
+/** Gaps between default-placed top-level boxes — 009's 300/260 grid minus its 220/220 boxes. */
+export const DEFAULT_GRID_COLUMN_GAP = 80;
+export const DEFAULT_GRID_ROW_GAP = 40;
+export const DEFAULT_GRID_PER_ROW = 4;
+
+/**
+ * Default slots for top-level boxes, in order (016-canvas-icon-layout, research.md §11a). Boxes
+ * flow left to right by their real width, `DEFAULT_GRID_PER_ROW` per row, and each row starts
+ * below the tallest box of the one before — so boxes that grew to fit 60px icons never overlap,
+ * which the fixed 300×260 grid (sized for 220px boxes) couldn't guarantee. Every box advances the
+ * flow by its own size, including one whose saved position the caller uses instead.
+ */
+export function flowGridSlots(
+  sizes: { width: number; height: number }[],
+): { x: number; y: number }[] {
+  const place = flowGridPlacer();
+  return sizes.map((size) => place(size));
+}
+
+/** The same flow, one box at a time — for callers that size each box as they go. */
+export function flowGridPlacer(): (size: { width: number; height: number }) => {
+  x: number;
+  y: number;
+} {
+  let x = 0;
+  let y = 0;
+  let rowHeight = 0;
+  let count = 0;
+  return (size) => {
+    if (count > 0 && count % DEFAULT_GRID_PER_ROW === 0) {
+      y += rowHeight + DEFAULT_GRID_ROW_GAP;
+      x = 0;
+      rowHeight = 0;
+    }
+    const slot = { x, y };
+    x += size.width + DEFAULT_GRID_COLUMN_GAP;
+    rowHeight = Math.max(rowHeight, size.height);
+    count++;
+    return slot;
+  };
+}

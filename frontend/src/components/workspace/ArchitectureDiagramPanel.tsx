@@ -46,7 +46,12 @@ import {
 import { edgeOffsetIndex } from "../../lib/edgeOffset";
 import { awsDataTransferLabel } from "../../lib/awsDataTransfer";
 import { resolveAwsServiceIcon } from "../../lib/awsServiceIcons";
-import { findVisibleSlot, type Rect as PlacementRect } from "../../lib/newNodePlacement";
+import {
+  findVisibleSlot,
+  flowGridPlacer,
+  type Rect as PlacementRect,
+} from "../../lib/newNodePlacement";
+import { decideIconDrop, type DropBox } from "../../lib/iconDrop";
 import {
   readIconLayout,
   removeIconPosition,
@@ -310,9 +315,6 @@ const ICON_AREA_TOP = 20;
 const VPC_MIN_WIDTH = 220;
 const APPLICATION_MIN_WIDTH = 200;
 const NESTED_APPLICATION_MIN_WIDTH = 180;
-/** Gaps between default-placed top-level boxes — 009's 300/260 grid minus its 220/220 boxes. */
-const DEFAULT_GRID_COLUMN_GAP = 80;
-const DEFAULT_GRID_ROW_GAP = 40;
 /** A nested box's left offset inside its VPC (see `position: { x: 20, ... }` below). */
 const NESTED_CHILD_INSET = 20;
 
@@ -1403,30 +1405,32 @@ export function ArchitectureDiagramPanel({
           ? { x: parent.position.x + n.position.x, y: parent.position.y + n.position.y }
           : n.position;
       };
-      // Deepest box under the drop point first — a nested Application beats its VPC.
-      const hits = nodes
-        .filter((n) => n.type === "vpc" || n.type === "applicationComponent")
-        .filter((n) => {
-          const a = absoluteOf(n);
-          const w = n.measured?.width ?? n.width ?? 0;
-          const h = n.measured?.height ?? n.height ?? 0;
-          return point.x >= a.x && point.x <= a.x + w && point.y >= a.y && point.y <= a.y + h;
-        })
-        .sort((a, b) => Number(Boolean(b.parentId)) - Number(Boolean(a.parentId)));
-      const target = hits[0];
-      if (!target) return; // empty canvas: the icon simply stays where it was
-
-      const source = collections.find((c) => c.id === sourceCollectionId);
-      const targetCollection = collections.find((c) => c.id === target.id);
-      if (!source || !targetCollection) return;
-      const selection = source.sku_selections.find((sel) => sel.id === selectionId);
-
-      if (targetCollection.region !== source.region) {
+      const regionById = new Map(collections.map((c) => [c.id, c.region]));
+      const boxes: DropBox[] = nodes
+        .filter((n) => regionById.has(n.id))
+        .map((n) => ({
+          id: n.id,
+          parentId: n.parentId,
+          region: regionById.get(n.id)!,
+          rect: {
+            ...absoluteOf(n),
+            width: n.measured?.width ?? n.width ?? 0,
+            height: n.measured?.height ?? n.height ?? 0,
+          },
+        }));
+      const decision = decideIconDrop({ point, boxes, sourceId: sourceCollectionId });
+      if (decision.kind === "none") return; // empty canvas: the icon stays where it was
+      if (decision.kind === "reject-region") {
+        const selection = collections
+          .find((c) => c.id === sourceCollectionId)
+          ?.sku_selections.find((sel) => sel.id === selectionId);
         onMoveRejected(
-          `"${selection?.service_code ?? "This service"}" can only move to a box in ${source.region}.`,
+          `"${selection?.service_code ?? "This service"}" can only move to a box in ${decision.sourceRegion}.`,
         );
         return;
       }
+      const target = byId.get(decision.targetId);
+      if (!target) return;
 
       const spot = iconSpotIn(target, absoluteOf(target), point, selectionId);
       const previous = iconLayout[selectionId];
@@ -1495,10 +1499,8 @@ export function ArchitectureDiagramPanel({
     }
 
     const nodes: Node[] = [];
-    let gridX = 0;
-    let gridY = 0;
-    let gridRowHeight = 0;
-    topLevel.forEach((c, i) => {
+    const placeInGrid = flowGridPlacer();
+    topLevel.forEach((c) => {
       const children = c.type === "vpc" ? (childrenByParent.get(c.id) ?? []) : [];
       // 016-canvas-icon-layout, FR-002: wide enough for up to 3 icons per row, never narrower
       // than today's default — and a VPC also fits its widest nested box plus that box's inset.
@@ -1531,16 +1533,11 @@ export function ArchitectureDiagramPanel({
       // 016-canvas-icon-layout: boxes are now as wide as their icons need (FR-002) and as tall
       // as their rows of 60px icons, so a fixed 300×260 grid made default-placed boxes overlap.
       // Default slots now flow left to right by each box's real width, 4 per row, each row
-      // starting below the tallest box of the one before — with the same 80/40 gaps as before.
-      if (i > 0 && i % 4 === 0) {
-        gridY += gridRowHeight + DEFAULT_GRID_ROW_GAP;
-        gridX = 0;
-        gridRowHeight = 0;
-      }
-      const finalX = manualSize?.x ?? gridX;
-      const finalY = manualSize?.y ?? gridY;
-      gridX += finalWidth + DEFAULT_GRID_COLUMN_GAP;
-      gridRowHeight = Math.max(gridRowHeight, finalHeight);
+      // starting below the tallest box of the one before — with the same 80/40 gaps as before
+      // (`flowGridPlacer`, newNodePlacement.ts).
+      const slot = placeInGrid({ width: finalWidth, height: finalHeight });
+      const finalX = manualSize?.x ?? slot.x;
+      const finalY = manualSize?.y ?? slot.y;
       nodes.push({
         id: c.id,
         type: c.type === "vpc" ? "vpc" : "applicationComponent",
