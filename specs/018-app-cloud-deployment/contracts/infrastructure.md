@@ -1,0 +1,78 @@
+# Contract: Infrastructure stacks and permissions
+
+OpenTofu `1.10.6`, AWS provider `~> 6.0` (the same as the pipeline repo), with lock files hashed for `linux_arm64`, `linux_amd64` and `darwin_arm64`. State lives in the shared bucket from the account setup, under `app/<env>/`.
+
+## Stacks
+
+| Stack | Applied by | When | State key | Contains |
+|---|---|---|---|---|
+| `infra/base` | owner, admin credentials, laptop | once per env, then rarely | `app/<env>/base.tfstate` | CI roles (`plan`, `release`, `deploy`), instance role and instance profile, ECR repositories `cloud-pricing-app-backend-<env>` and `cloud-pricing-app-web-<env>` (immutable tags, scan-on-push, keep the newest 5 tagged, untagged expire after 1 day, `force_delete = false`), backup bucket, log group, alert topic and subscription, allowlist parameter |
+| `infra/instance` | `deploy/app` (CI `deploy` role or the owner) | every up, down and allow | `app/<env>/instance.tfstate` | VPC, public subnet, IGW, route table, security group (443 from the allowlist only), EC2 instance with user-data |
+
+**Inputs that refer to account-wide items** (never created here, FR-056):
+
+- `state_bucket_name`
+- `github_oidc_provider_url` (`token.actions.githubusercontent.com`), looked up with `data "aws_iam_openid_connect_provider"`
+- `data_bucket_name` and `data_read_policy_name`, from the pipeline's data stack, looked up with data sources
+
+If any of these is missing, the data source lookup fails during the plan, before anything is created, and the provider's error names the item. Don't add `precondition` blocks for them: a precondition never runs when its lookup fails. The runbook's one-time setup lists a check command for each item that names it (FR-046, FR-056).
+
+**Tags on every resource**: `app = "cloud-pricing-app"` and `environment = <env>`. The instance stack also tags `release = <tag>`.
+
+## `deploy` role permissions (per env)
+
+| Statement | Actions | Scope |
+|---|---|---|
+| State | `s3:GetObject/PutObject/DeleteObject` | `<state-bucket>/app/<env>/*`, including `.tflock` |
+| State list | `s3:ListBucket` | the state bucket, `s3:prefix` `app/<env>/*` |
+| Network create | `ec2:Create*` (VPC, subnet, internet gateway, route table, security group) | `*`, with `aws:RequestTag/environment = <env>` and `aws:RequestTag/app = cloud-pricing-app` |
+| Tag on create | `ec2:CreateTags` | `ec2:CreateAction` in the create actions above, including `AuthorizeSecurityGroupIngress` and `RunInstances` |
+| Change and delete own | `ec2:*` (except create) | `aws:ResourceTag/environment = <env>` and `aws:ResourceTag/app = cloud-pricing-app` |
+| Security group rules | `ec2:AuthorizeSecurityGroupIngress/Egress`, `ec2:RevokeSecurityGroupIngress/Egress` | `security-group-rule/*` with the request tag, and the env's tagged security group |
+| Launch: created resources | `ec2:RunInstances` | `instance/*`, `volume/*`, `network-interface/*`, with `aws:RequestTag/environment` and `aws:RequestTag/app` (RunInstances creates all three, and AWS checks each) |
+| Launch: used resources | `ec2:RunInstances` | `arn:aws:ec2:<region>::image/<pinned ami>` (an AMI ARN has no account ID); the env's `subnet/*` and `security-group/*`, with `aws:ResourceTag/environment = <env>`. No key pair is used |
+| Pass role | `iam:PassRole` | the env's instance role only, `iam:PassedToService = ec2.amazonaws.com` |
+| SSM commands: document | `ssm:SendCommand` | `arn:aws:ssm:<region>::document/AWS-RunShellScript` only (an AWS-owned document ARN has no account ID) |
+| SSM commands: target | `ssm:SendCommand` | `arn:aws:ec2:<region>:<account>:instance/*`, with **`ssm:resourceTag/environment = <env>`** and `ssm:resourceTag/app = cloud-pricing-app`. Run Command uses the `ssm:resourceTag/…` key, not `aws:ResourceTag/…` |
+| SSM results | `ssm:GetCommandInvocation`, `ssm:ListCommandInvocations` | `*` (to be confirmed against the Service Authorization Reference while writing the policy) |
+| Parameters | `ssm:GetParameter(s)`, `ssm:PutParameter` | `parameter/cloud-pricing-app/<env>/*` (no `DeleteParameter`) |
+| Lock | `s3:GetObject/PutObject/DeleteObject` | `<backup-bucket>/locks/<env>.json` |
+| Backups listing (status) | `s3:ListBucket` | the backup bucket, prefix `<env>/db/` |
+| Notify | `sns:Publish` | the env's topic |
+| Resolve release | `ecr:DescribeImages` | the env's two repositories |
+| Read-only discovery | `ec2:Describe*`, `sts:GetCallerIdentity`, `ssm:GetParameter` on `/aws/service/canonical/*` | `*` |
+
+The `plan` role has the state read statements, `ec2:Describe*`, parameter read and the discovery statement only.
+
+## `release` role permissions (per env)
+
+| Statement | Actions | Scope |
+|---|---|---|
+| Registry login | `ecr:GetAuthorizationToken` | `*` (no resource ARN) |
+| Push and check | `ecr:BatchCheckLayerAvailability`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`, `ecr:PutImage`, `ecr:DescribeImages`, `ecr:BatchGetImage` | the env's two repositories |
+
+Trust: `…:ref:refs/tags/v*` only. No state access and no other services.
+
+## Instance role: registry pull
+
+`ecr:GetAuthorizationToken` (`*`), and `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` on the env's two repositories.
+
+**Checked against AWS documentation (2026-10-02)**:
+
+- **`CreateTags` on create**: tagging at create time needs `ec2:CreateTags` with the `ec2:CreateAction` condition ([EC2 tagging on creation](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/supported-iam-actions-tagging.html)).
+- **`RunInstances` resources**: RunInstances is authorized against the image, instance, subnet, network interface, volume, security group and key pair ([VPC policy examples](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-policy-examples.html)).
+- **Run Command tags**: Run Command is limited by `ssm:resourceTag/<key>` on the instance, plus a separate document statement ([Run Command setup](https://docs.aws.amazon.com/systems-manager/latest/userguide/run-command-setting-up.html)).
+
+**Still to confirm while writing the policy JSON** (a task, not a planning gap):
+
+- Which actions accept only `Resource: *`, from the Service Authorization Reference for EC2, SSM and ECR.
+- That `amazon-ecr-credential-helper` is in the Ubuntu 24.04 arm64 archive.
+
+## Tests that must exist (`tofu test`, mocked providers, run in CI)
+
+1. `instance`: there is no `aws_s3_bucket*`, `aws_ssm_parameter`, `aws_cloudwatch_log_group`, `aws_sns_*` or `aws_iam_*` resource (nothing long-lived, and no IAM writes).
+2. `instance`: the security group's ingress is exactly port 443 from each allowlist entry. There is no 22, no 80 and no `0.0.0.0/0` ingress.
+3. `instance`: `metadata_options.http_tokens = "required"`, the root volume is encrypted with `delete_on_termination = true`, and `associate_public_ip_address = true`. No Elastic IP.
+4. `base`: no `aws_instance` or `aws_vpc`. The backup bucket blocks public access and is encrypted. Both ECR repositories are `IMMUTABLE`, scan on push, have the lifecycle policy, and are not force-deletable.
+5. `base`: the trust subjects equal the expected strings for `plan`, `release` and `deploy` (output `gha_trust_subjects`). The `release` role's only non-`*` resources are the env's two repositories.
+6. `base`: every `deploy` statement with `resources = ["*"]` is in an approved list (discovery and SSM results) or carries a tag condition.
