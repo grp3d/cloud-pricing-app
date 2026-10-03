@@ -280,6 +280,8 @@ class CatalogSearchResult(BaseModel):
     results: list[CatalogSKUOut]
     next_cursor: str | None = None
     snapshot_date: str
+    # 018-app-cloud-deployment, FR-059: the revision of `snapshot_date` the rows came from.
+    snapshot_revision: int
     # 008-ui-updates-corrections, FR-024, data-model.md — the true count of every catalog
     # row matching the current filters, independent of how many are returned in `results`
     # (capped at 200, FR-023). Drives the "(n of m results displayed)" indicator.
@@ -322,6 +324,8 @@ class CalculationWarning(BaseModel):
 
 class CalculationResult(BaseModel):
     snapshot_date: str
+    # 018-app-cloud-deployment, FR-059: a corrected revision is never shown under the same label.
+    snapshot_revision: int
     # Echoes the CalculationDuration the total was computed for (004, FR-001) — every price
     # below reflects proration to this duration per FR-002/003/004.
     duration: CalculationDuration

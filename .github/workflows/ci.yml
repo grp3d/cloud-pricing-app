@@ -25,9 +25,9 @@ jobs:
       # user, so without it the runner's OS user ("runner") is used and doesn't exist.
       DATABASE_URL: postgresql+psycopg://postgres@localhost/cloud_pricing_test
       TEST_DATABASE_URL: postgresql+psycopg://postgres@localhost/cloud_pricing_test
-      # A small real subset of the upstream AWS pricing Parquet data, committed to the repo
-      # (rebuild with backend/scripts/build_test_pricing_fixture.py).
-      AWS_PRICING_PARQUET_DIR: ${{ github.workspace }}/backend/tests/fixtures/pricing_parquet
+      # A small real subset of the upstream AWS pricing data, committed to the repo in the
+      # pipeline's storage layout (rebuild with backend/scripts/build_test_pricing_fixture.py).
+      PRICING_DATA_URI: file://${{ github.workspace }}/backend/tests/fixtures/pricing_parquet
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
@@ -88,6 +88,8 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgresql+psycopg://postgres@localhost/postgres
+          # 018-app-cloud-deployment: the backend refuses to start without a data source.
+          PRICING_DATA_URI: file://${{ github.workspace }}/backend/tests/fixtures/pricing_parquet
         run: |
           uv run uvicorn src.main:app --port 8000 &
           for i in $(seq 1 30); do curl -sf http://localhost:8000/health && break; sleep 1; done

@@ -718,6 +718,8 @@ export interface components {
         CalculationResult: {
             /** Snapshot Date */
             snapshot_date: string;
+            /** Snapshot Revision */
+            snapshot_revision: number;
             duration: components["schemas"]["CalculationDuration"];
             /** Total Price */
             total_price: string;
@@ -770,6 +772,8 @@ export interface components {
             next_cursor?: string | null;
             /** Snapshot Date */
             snapshot_date: string;
+            /** Snapshot Revision */
+            snapshot_revision: number;
             /** Total */
             total: number;
         };

@@ -99,11 +99,16 @@ async def test_request_id_header_is_exposed_to_browsers(client):
 
 @pytest.mark.asyncio
 async def test_error_inside_a_request_carries_its_request_id(
-    client, auth_headers, log_output, monkeypatch, tmp_path
+    client, auth_headers, log_output, use_pricing_root, tmp_path
 ):
-    monkeypatch.setattr(
-        config_module.settings, "aws_pricing_parquet_dir", str(tmp_path / "missing")
-    )
+    import shutil
+    from pathlib import Path
+
+    # 018-app-cloud-deployment: an outage is the active snapshot's files going missing.
+    copy = tmp_path / "pipeline"
+    shutil.copytree(Path(config_module.settings.pricing_data_source.root), copy)
+    use_pricing_root(copy)
+    shutil.rmtree(copy / "aws" / "parquet")
     resp = await client.get(
         "/api/v1/catalog/skus",
         params={"service_code": "AmazonEC2", "region": "us-east-1"},

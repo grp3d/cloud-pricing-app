@@ -17,9 +17,10 @@ from dataclasses import dataclass
 
 import duckdb
 
-from src.config import settings
-from src.pricing_data.active_snapshot import get_active_snapshot_date
+from src.pricing_data.active_snapshot import get_active_snapshot
+from src.pricing_data.duckdb_conn import connect, table_files
 from src.pricing_data.errors import PricingDataUnavailableError
+from src.pricing_data.snapshot import ActiveSnapshot
 
 # The raw AWS price_fact data is inconsistently formatted (e.g. `lease_contract_length` mixes
 # "1yr" and "1 yr"; `purchase_option` mixes "NoUpfront" and "No Upfront"), confirmed against
@@ -38,30 +39,23 @@ _PURCHASE_OPTION_MAP = {
 }
 
 
-def _price_fact_path(snapshot_date: str, region: str) -> str:
-    return (
-        f"{settings.aws_pricing_parquet_dir}/price_fact/"
-        f"snapshot_date={snapshot_date}/region={region}/part-0.parquet"
-    )
-
-
 def lookup_price(
     *,
     sku: str,
     pricing_term: str,
     purchase_option: str,
     region: str,
-    snapshot_date: str | None = None,
+    snapshot: ActiveSnapshot | None = None,
 ) -> float | None:
     """Return the unit price for one SKU/term/purchase_option in `region`, or None if not
     priceable (010-multi-region-support, spec FR-005 — every lookup is now scoped to the
     caller-supplied region rather than one global default)."""
-    snapshot_date = snapshot_date or get_active_snapshot_date()
+    snapshot = snapshot or get_active_snapshot()
     term, lease_length = _TERM_MAP[pricing_term]
     purchase = _PURCHASE_OPTION_MAP[purchase_option]
 
     query = "SELECT price FROM read_parquet(?) WHERE sku = ? AND term = ?"
-    params: list[object] = [_price_fact_path(snapshot_date, region), sku, term]
+    params: list[object] = [table_files(snapshot, "price_fact", region), sku, term]
     if lease_length is not None:
         query += " AND REPLACE(lease_contract_length, ' ', '') = ?"
         params.append(lease_length)
@@ -71,7 +65,7 @@ def lookup_price(
     query += " LIMIT 1"
 
     try:
-        con = duckdb.connect(":memory:", read_only=False)
+        con = connect()
         row = con.execute(query, params).fetchone()
     except duckdb.Error as exc:
         raise PricingDataUnavailableError(str(exc)) from exc
@@ -101,7 +95,7 @@ def lookup_reserved_price(
     pricing_term: str,
     purchase_option: str,
     region: str,
-    snapshot_date: str | None = None,
+    snapshot: ActiveSnapshot | None = None,
 ) -> ReservedPrice | None:
     """Return the recurring hourly rate and, when applicable, the one-time upfront fee for one
     Reserved-term sku/purchase_option — distinguished from each other by `unit` ("Hrs" vs.
@@ -119,7 +113,7 @@ def lookup_reserved_price(
     fix — see quickstart.md's Notes) resolves to whichever row is read first, the same
     determinism `lookup_price` already relies on elsewhere.
     """
-    snapshot_date = snapshot_date or get_active_snapshot_date()
+    snapshot = snapshot or get_active_snapshot()
     term, lease_length = _TERM_MAP[pricing_term]
     if lease_length is None:
         raise ValueError(
@@ -131,13 +125,13 @@ def lookup_reserved_price(
         "SELECT unit, price FROM read_parquet(?) WHERE sku = ? AND term = ? "
         "AND REPLACE(lease_contract_length, ' ', '') = ?"
     )
-    params: list[object] = [_price_fact_path(snapshot_date, region), sku, term, lease_length]
+    params: list[object] = [table_files(snapshot, "price_fact", region), sku, term, lease_length]
     if purchase is not None:
         query += " AND REPLACE(purchase_option, ' ', '') = ?"
         params.append(purchase)
 
     try:
-        con = duckdb.connect(":memory:", read_only=False)
+        con = connect()
         rows = con.execute(query, params).fetchall()
     except duckdb.Error as exc:
         raise PricingDataUnavailableError(str(exc)) from exc
@@ -160,7 +154,7 @@ def resolve_units(
     selections: Sequence[tuple[str, str, str]],
     *,
     region: str,
-    snapshot_date: str | None = None,
+    snapshot: ActiveSnapshot | None = None,
 ) -> dict[tuple[str, str, str], str | None]:
     """Batched billing-unit lookup for many (sku, pricing_term, purchase_option) tuples, all in
     `region` (spec FR-004, FR-005; 010-multi-region-support).
@@ -178,7 +172,7 @@ def resolve_units(
     if not selections:
         return {}
 
-    snapshot_date = snapshot_date or get_active_snapshot_date()
+    snapshot = snapshot or get_active_snapshot()
     skus = sorted({sku for sku, _, _ in selections})
     placeholders = ",".join("?" for _ in skus)
 
@@ -187,8 +181,8 @@ def resolve_units(
         f"FROM read_parquet(?) WHERE sku IN ({placeholders})"
     )
     try:
-        con = duckdb.connect(":memory:", read_only=False)
-        rows = con.execute(query, [_price_fact_path(snapshot_date, region), *skus]).fetchall()
+        con = connect()
+        rows = con.execute(query, [table_files(snapshot, "price_fact", region), *skus]).fetchall()
     except duckdb.Error as exc:
         raise PricingDataUnavailableError(str(exc)) from exc
 

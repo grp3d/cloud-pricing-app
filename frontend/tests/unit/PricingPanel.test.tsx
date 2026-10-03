@@ -7,6 +7,7 @@ import { TooltipProvider } from "../../src/components/ui/tooltip";
 
 const calculation: CalculationResult = {
   snapshot_date: "2026-09-24",
+  snapshot_revision: 1,
   duration: "1_month",
   total_price: "12.00",
   currency: "USD",
@@ -48,10 +49,17 @@ function renderPanel(overrides: Partial<PricingPanelProps> = {}) {
 
 const NOTICE = "Architecture has been updated since last pricing";
 
+describe("PricingPanel snapshot label (018, FR-059)", () => {
+  it("shows the snapshot revision next to its date", () => {
+    renderPanel({ calculation: { ...calculation, snapshot_revision: 2 } });
+    expect(screen.getByText("Data Timestamp: 2026-09-24 r2")).toBeInTheDocument();
+  });
+});
+
 describe("PricingPanel out-of-date notice (015, FR-018a)", () => {
   it("shows the notice directly below the Data Timestamp line", () => {
     renderPanel({ isOutOfDate: true });
-    const timestamp = screen.getByText("Data Timestamp: 2026-09-24");
+    const timestamp = screen.getByText("Data Timestamp: 2026-09-24 r1");
     const notice = screen.getByRole("status");
     expect(notice).toHaveTextContent(NOTICE);
     expect(timestamp.nextElementSibling).toBe(notice);
@@ -70,7 +78,7 @@ describe("PricingPanel word-wrap toggle placement (015, FR-023)", () => {
     const heading = screen.getByRole("heading", { name: "Price per Sku" });
     expect(toggle.parentElement).toBe(heading.parentElement);
 
-    const timestamp = screen.getByText("Data Timestamp: 2026-09-24");
+    const timestamp = screen.getByText("Data Timestamp: 2026-09-24 r1");
     expect(timestamp.nextElementSibling).toBeNull();
   });
 

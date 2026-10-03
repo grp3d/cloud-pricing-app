@@ -218,14 +218,14 @@ description: "Task list for 018-app-cloud-deployment"
 
 ### Tests for User Story 1 (write first, see them fail)
 
-- [ ] T033 [P] [US1] Write `backend/tests/contract/test_manifest_schema_compat.py`. The Pydantic models in `src/pricing_data/manifest.py` must parse every `examples` entry in the vendored `latest.schema.json` and `manifest.schema.json`, and the generated fixture's manifest. Documents valid under the schema with unknown optional fields (minor version) must parse with `extra="ignore"`.
-- [ ] T034 [P] [US1] Write `backend/tests/unit/test_manifest.py` for the pure validation `validate_manifest(manifest, provider, *, pointer=None) -> Manifest | RejectedManifest` (data-model §3). Use every file in `tests/fixtures/manifests/`:
+- [X] T033 [P] [US1] Write `backend/tests/contract/test_manifest_schema_compat.py`. The Pydantic models in `src/pricing_data/manifest.py` must parse every `examples` entry in the vendored `latest.schema.json` and `manifest.schema.json`, and the generated fixture's manifest. Documents valid under the schema with unknown optional fields (minor version) must parse with `extra="ignore"`.
+- [X] T034 [P] [US1] Write `backend/tests/unit/test_manifest.py` for the pure validation `validate_manifest(manifest, provider, *, pointer=None) -> Manifest | RejectedManifest` (data-model §3). Use every file in `tests/fixtures/manifests/`:
   - `partial`, `failed` and `purged` are rejected with a reason
   - each bad path is rejected before any I/O, and a mock store confirms no `get` or `download` call
   - an unsupported major version or schema version is rejected
   - the pointer date mismatch and a revision below the pointer are rejected
   - the minor bump is accepted
-- [ ] T035 [P] [US1] Write `backend/tests/unit/test_snapshot_selection.py` for `select_snapshot(store, provider, pinned_date) -> Selection` using `make_pipeline_root`:
+- [X] T035 [P] [US1] Write `backend/tests/unit/test_snapshot_selection.py` for `select_snapshot(store, provider, pinned_date) -> Selection` using `make_pipeline_root`:
   - the newest is chosen from `latest.json`
   - the pin selects that date's manifest
   - a pin on a purged, partial or missing date gives `ActiveSnapshotConfigError` at startup
@@ -233,7 +233,7 @@ description: "Task list for 018-app-cloud-deployment"
   - a rejected manifest keeps the previous active snapshot and records `rejected`
   - an old-layout directory (table folders with `_SUCCESS` and no `aws/manifests`) gives the "unsupported layout, convert with upload-history" message
   - `previous_snapshot(store)` (used by T044) returns the newest `succeeded` manifest date before the active one, skips `partial`, `failed` and `purged` dates, and returns `None` when there is none
-- [ ] T036 [P] [US1] Write `backend/tests/unit/test_snapshot_cache.py` for `src/pricing_data/snapshot_cache.py` against the fake S3:
+- [X] T036 [P] [US1] Write `backend/tests/unit/test_snapshot_cache.py` for `src/pricing_data/snapshot_cache.py` against the fake S3:
   - a fetch writes to `.tmp-*` and appears as `<date>-r<rev>` only after all files verify
   - a sha256 mismatch, a size mismatch or a 404 leaves no entry and reports the reason
   - a second `ensure_cached` of a verified entry makes no S3 calls
@@ -241,29 +241,29 @@ description: "Task list for 018-app-cloud-deployment"
   - a snapshot larger than `PRICING_CACHE_MAX_BYTES` is refused without download
   - a snapshot larger than the cache filesystem's free space (from an injected `disk_free` function) is refused without download, the current snapshot stays active, and the reason names the free space (spec edge case)
   - a fetch running longer than the grace period re-reads the manifest and restarts if the revision changed (use an injected clock)
-- [ ] T037 [P] [US1] Write `backend/tests/integration/test_pricing_from_manifest.py`:
+- [X] T037 [P] [US1] Write `backend/tests/integration/test_pricing_from_manifest.py`:
   - `lookup_price`, catalog search and `list_available_regions` work against the new-layout fixture through `PRICING_DATA_URI=file://…`
   - a snapshot with **two** files per region (the second added through `extra_files` and listed in the manifest) counts rows from both
   - an unlisted extra file in the same folder is **not** read (no double counting, FR-004)
-- [ ] T097 [P] [US1] Write failing tests for snapshot revision traceability (FR-059, constitution I):
+- [X] T097 [P] [US1] Write failing tests for snapshot revision traceability (FR-059, constitution I):
   - in `backend/tests/contract/test_calculate.py` and `backend/tests/contract/test_catalog.py`: the responses carry `snapshot_revision` (int) next to `snapshot_date`, matching the active snapshot's manifest
   - in `backend/tests/integration/test_pricing_from_manifest.py`: after switching from revision 1 to revision 2 of the **same date** (built with `make_pipeline_root`), a calculation reports `snapshot_revision: 2`
   - in `frontend/tests/unit/` for `PricingPanel.tsx`: the panel shows the revision next to the snapshot date
-- [ ] T038 [US1] Update the existing tests that set `aws_pricing_parquet_dir` or `AWS_PRICING_PARQUET_DIR` to use `PRICING_DATA_URI` pointing at the fixture root: `backend/tests/conftest.py`, `tests/unit/test_regions.py`, `tests/contract/test_request_logging.py`, `tests/contract/test_catalog.py`, `tests/integration/test_standard_architecture_pricing.py` and `tests/integration/test_standard_architecture_seed.py`. Rewrite `tests/unit/test_active_snapshot.py` to the new selection model (the `_SUCCESS`, waiting and marker cases are removed and replaced by T035).
+- [X] T038 [US1] Update the existing tests that set `aws_pricing_parquet_dir` or `AWS_PRICING_PARQUET_DIR` to use `PRICING_DATA_URI` pointing at the fixture root: `backend/tests/conftest.py`, `tests/unit/test_regions.py`, `tests/contract/test_request_logging.py`, `tests/contract/test_catalog.py`, `tests/integration/test_standard_architecture_pricing.py` and `tests/integration/test_standard_architecture_seed.py`. Rewrite `tests/unit/test_active_snapshot.py` to the new selection model (the `_SUCCESS`, waiting and marker cases are removed and replaced by T035).
 
 ### Implementation for User Story 1
 
-- [ ] T039 [US1] Implement `backend/src/pricing_data/manifest.py`:
+- [X] T039 [US1] Implement `backend/src/pricing_data/manifest.py`:
   - strict Pydantic models `LatestPointer` and `Manifest` (nested `Regions`, `Run`, `Table`, `RegionFiles`, `DataFile`), with `extra="ignore"` and the required fields per the schema
   - `SUPPORTED_MANIFEST_MAJOR = 1` and `SUPPORTED_SCHEMA_VERSIONS = {t: {1} for t in TABLES}`
   - `validate_manifest(...)` and the path regex (data-model §3)
 
   Make T033 and T034 pass.
-- [ ] T040 [US1] Rewrite `backend/src/pricing_data/snapshot.py`:
+- [X] T040 [US1] Rewrite `backend/src/pricing_data/snapshot.py`:
   - keep `TABLES`
   - add the frozen dataclass `ActiveSnapshot(provider, snapshot_date, revision, manifest, base_dir, pinned)` with `files(table, region) -> list[str]` (absolute paths of the manifest's files under `base_dir`), `regions(table) -> set[str]` and `common_regions()`
-- [ ] T041 [US1] Implement `backend/src/pricing_data/snapshot_cache.py`: `ensure_cached(store, manifest, cache_dir, max_bytes, clock, disk_free=shutil.disk_usage) -> Path` (checks size limit and free space first, then verify-then-rename, writes `cache-entry.json`), `list_entries(cache_dir)` and `startup_cleanup(cache_dir)`. Make T036 pass. The clean-up policy is in T074.
-- [ ] T042 [US1] Rewrite `backend/src/pricing_data/active_snapshot.py`:
+- [X] T041 [US1] Implement `backend/src/pricing_data/snapshot_cache.py`: `ensure_cached(store, manifest, cache_dir, max_bytes, clock, disk_free=shutil.disk_usage) -> Path` (checks size limit and free space first, then verify-then-rename, writes `cache-entry.json`), `list_entries(cache_dir)` and `startup_cleanup(cache_dir)`. Make T036 pass. The clean-up policy is in T074.
+- [X] T042 [US1] Rewrite `backend/src/pricing_data/active_snapshot.py`:
   - `select_snapshot(...)` (pure plus store reads) builds the `ActiveSnapshot`: a local source uses the root in place, and an S3 source goes through `ensure_cached`.
   - The new `MonitorState` (data-model §5) replaces `ActiveSnapshotState`, with no `waiting`, markers or `pinned_incomplete`.
   - `run_check(at_startup)` stays serialized with the lock.
@@ -272,17 +272,17 @@ description: "Task list for 018-app-cloud-deployment"
   - Log transitions with the same event names as feature 017 where they still apply (`active pricing snapshot selected` and `changed`), plus `pricing snapshot rejected`.
 
   Make T035 pass.
-- [ ] T043 [US1] Change the query modules to take file lists from the active snapshot, with no path building:
+- [X] T043 [US1] Change the query modules to take file lists from the active snapshot, with no path building:
   - In `backend/src/pricing_data/pricing.py` and `catalog.py`, replace `_price_fact_path`, `_product_dim_path` and `_service_dim_path` with `snapshot.files(table, region)`, and pass the list to `read_parquet(?)`. DuckDB accepts a list parameter.
   - Each public function takes the `ActiveSnapshot` once at its start (or as an optional argument), so one request never mixes snapshots.
   - If a region has no files for a table, raise the same error the old missing-path case produced.
-- [ ] T098 [US1] Add `snapshot_revision: int` to `CalculationResult` and `CatalogSearchResult` in `backend/src/models/schemas.py`, filled from the same `ActiveSnapshot` the request used (T043), in `backend/src/api/calculate.py` and `backend/src/api/catalog.py`. Regenerate `frontend/src/api/generated/schema.d.ts` (`npm run generate-api-types`), and show the revision in `frontend/src/components/workspace/PricingPanel.tsx` next to the snapshot date (for example `2026-10-05 r2`). Make T097 pass.
-- [ ] T044 [US1] Change `backend/src/pricing_data/regions.py` to `snapshot.common_regions()`, and `backend/src/pricing_data/icon_coverage.py` to read `service_dim` files from `snapshot.files("service_dim", r)` for all regions. `previous_present_date` becomes `previous_snapshot(store)`, the newest `succeeded` manifest date before the active one, from `list_manifest_dates`.
-- [ ] T045 [US1] In `backend/src/main.py`, apply `DUCKDB_MEMORY_LIMIT` and `DUCKDB_THREADS` to every DuckDB connection the pricing modules create. Add a small `pricing_data/duckdb_conn.py` factory used by `pricing.py`, `catalog.py` and `icon_coverage.py`. Call `snapshot_cache.startup_cleanup` in the lifespan before the first `run_check`.
-- [ ] T046 [US1] Make the old-layout and old-setting failures user-facing. When `select_snapshot` sees an old-layout directory at startup, raise `ActiveSnapshotConfigError` with the conversion instructions (quickstart A1). Confirm the `AWS_PRICING_PARQUET_DIR` guard from T009 triggers when the server starts through `bin/start_back.sh`.
-- [ ] T047 [US1] Run the whole backend suite (`uv run pytest`) and `uv run ruff check src/`. Fix every failure caused by the new model. No test may need network access.
-- [ ] T048 [P] [US1] Update `backend/.env.example` (remove `AWS_PRICING_PARQUET_DIR`, add `PRICING_DATA_URI=file:///path/to/DATA/pipeline` and the cache and DuckDB settings, commented), `backend/README.md`, and the settings table in `docs/configuration.md` per [contracts/configuration.md](./contracts/configuration.md). Update `backend/scripts/generate_aws_service_icon_map.py` and `backend/scripts/resolve_standard_architectures.py` to take `--data-uri` and read through the manifest (`select_snapshot` plus `files()`) instead of the old directory.
-- [ ] T049 [US1] Update `.github/workflows/ci.yml`: replace `AWS_PRICING_PARQUET_DIR` with `PRICING_DATA_URI: file://${{ github.workspace }}/backend/tests/fixtures/pricing_parquet`.
+- [X] T098 [US1] Add `snapshot_revision: int` to `CalculationResult` and `CatalogSearchResult` in `backend/src/models/schemas.py`, filled from the same `ActiveSnapshot` the request used (T043), in `backend/src/api/calculate.py` and `backend/src/api/catalog.py`. Regenerate `frontend/src/api/generated/schema.d.ts` (`npm run generate-api-types`), and show the revision in `frontend/src/components/workspace/PricingPanel.tsx` next to the snapshot date (for example `2026-10-05 r2`). Make T097 pass.
+- [X] T044 [US1] Change `backend/src/pricing_data/regions.py` to `snapshot.common_regions()`, and `backend/src/pricing_data/icon_coverage.py` to read `service_dim` files from `snapshot.files("service_dim", r)` for all regions. `previous_present_date` becomes `previous_snapshot(store)`, the newest `succeeded` manifest date before the active one, from `list_manifest_dates`.
+- [X] T045 [US1] In `backend/src/main.py`, apply `DUCKDB_MEMORY_LIMIT` and `DUCKDB_THREADS` to every DuckDB connection the pricing modules create. Add a small `pricing_data/duckdb_conn.py` factory used by `pricing.py`, `catalog.py` and `icon_coverage.py`. Call `snapshot_cache.startup_cleanup` in the lifespan before the first `run_check`.
+- [X] T046 [US1] Make the old-layout and old-setting failures user-facing. When `select_snapshot` sees an old-layout directory at startup, raise `ActiveSnapshotConfigError` with the conversion instructions (quickstart A1). Confirm the `AWS_PRICING_PARQUET_DIR` guard from T009 triggers when the server starts through `bin/start_back.sh`.
+- [X] T047 [US1] Run the whole backend suite (`uv run pytest`) and `uv run ruff check src/`. Fix every failure caused by the new model. No test may need network access.
+- [X] T048 [P] [US1] Update `backend/.env.example` (remove `AWS_PRICING_PARQUET_DIR`, add `PRICING_DATA_URI=file:///path/to/DATA/pipeline` and the cache and DuckDB settings, commented), `backend/README.md`, and the settings table in `docs/configuration.md` per [contracts/configuration.md](./contracts/configuration.md). Update `backend/scripts/generate_aws_service_icon_map.py` and `backend/scripts/resolve_standard_architectures.py` to take `--data-uri` and read through the manifest (`select_snapshot` plus `files()`) instead of the old directory.
+- [X] T049 [US1] Update `.github/workflows/ci.yml`: replace `AWS_PRICING_PARQUET_DIR` with `PRICING_DATA_URI: file://${{ github.workspace }}/backend/tests/fixtures/pricing_parquet`.
 
 **Checkpoint**: US1 works on its own. The laptop runs against a local root offline, and an `s3://` source works through the cache (proven with the fake S3 in tests, and against real S3 in US2).
 
@@ -461,7 +461,7 @@ description: "Task list for 018-app-cloud-deployment"
 
 ### Tests for User Story 5
 
-- [ ] T070 [P] [US5] Write `backend/tests/unit/test_snapshot_monitor.py` with `make_pipeline_root` and an injected clock:
+- [X] T070 [P] [US5] Write `backend/tests/unit/test_snapshot_monitor.py` with `make_pipeline_root` and an injected clock:
   - a newer `succeeded` date switches, and `previous_date` is recorded
   - a newer revision of the same date switches
   - a `partial` newest run does not switch, and `latest_run` shows it with failed regions

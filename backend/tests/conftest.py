@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -21,6 +22,11 @@ TEST_DATABASE_URL = os.environ.get(
 # Point the app at the test database before importing it, so src.db.session's module-level
 # engine is created against the right database.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+
+# 018-app-cloud-deployment: the committed fixture is a pipeline storage root (new layout). CI sets
+# PRICING_DATA_URI explicitly; locally it defaults to the fixture so no network is ever needed.
+PRICING_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "pricing_parquet"
+os.environ.setdefault("PRICING_DATA_URI", f"file://{PRICING_FIXTURE_ROOT}")
 
 from src.db.session import get_session  # noqa: E402
 from src.main import app  # noqa: E402
@@ -102,3 +108,20 @@ def log_output():
     yield lambda: [json.loads(line) for line in buf.getvalue().splitlines()]
     structlog.contextvars.clear_contextvars()
     configure_logging(settings.log_level, settings.log_format)
+
+
+@pytest.fixture
+def use_pricing_root(monkeypatch):
+    """Point the app at another pipeline storage root for one test (018-app-cloud-deployment):
+    call the returned function with the root. The monitor is reset afterwards, so later tests
+    re-select from the default fixture."""
+    from src.config import settings
+    from src.pricing_data import active_snapshot
+
+    def use(root: Path) -> None:
+        monkeypatch.setattr(settings, "pricing_data_uri", f"file://{root}")
+        active_snapshot.reset()
+        active_snapshot.run_check(at_startup=True)
+
+    yield use
+    active_snapshot.reset()

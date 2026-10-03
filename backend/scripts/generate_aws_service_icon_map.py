@@ -19,8 +19,11 @@ With `--log-file PATH` (017-structured-json-logging, FR-009) it also writes one 
 per service, family override and copied icon to PATH; the printed report is unchanged.
 
     uv run python scripts/generate_aws_service_icon_map.py \\
-        --icons ../../images-web/aws_architecture_icons [--parquet /path/to/parquet] \\
+        --icons ../../images-web/aws_architecture_icons [--data-uri file:///…/DATA/pipeline] \\
         [--log-file report.jsonl]
+
+018-app-cloud-deployment: the pricing data is read through the pipeline's manifests, exactly as
+the app reads it (`--data-uri` defaults to `PRICING_DATA_URI`).
 """
 
 from __future__ import annotations
@@ -42,6 +45,10 @@ if str(BACKEND) not in sys.path:
 
 from src.config import settings  # noqa: E402
 from src.logging_config import configure_logging, get_logger  # noqa: E402
+from src.pricing_data.active_snapshot import PROVIDER, select_snapshot  # noqa: E402
+from src.pricing_data.snapshot import ActiveSnapshot  # noqa: E402
+from src.pricing_data.snapshot_cache import ensure_cached  # noqa: E402
+from src.pricing_data.storage import LocalStore, open_store  # noqa: E402
 
 FRONTEND = BACKEND.parent / "frontend"
 OUT_TS = FRONTEND / "src" / "lib" / "awsServiceIcons.generated.ts"
@@ -185,34 +192,38 @@ def _special_icons(icons_root: Path) -> dict[str, Path]:
     return sources
 
 
-def _latest_snapshot(parquet_dir: Path) -> str:
-    dates = None
-    for table in ("service_dim", "product_dim"):
-        found = {
-            p.name.removeprefix("snapshot_date=")
-            for p in (parquet_dir / table).iterdir()
-            if p.is_dir() and p.name.startswith("snapshot_date=")
-        }
-        dates = found if dates is None else dates & found
-    if not dates:
-        raise SystemExit(f"no snapshot common to service_dim and product_dim in {parquet_dir}")
-    return max(dates)
+def _latest_snapshot(data_uri: str) -> ActiveSnapshot:
+    """The snapshot `latest.json` names (or `ACTIVE_SNAPSHOT_DATE`'s), as the app would use it."""
+    settings.pricing_data_uri = data_uri
+    store = open_store(settings)
+    selection = select_snapshot(store, PROVIDER, settings.active_snapshot_date, at_startup=True)
+    if selection.manifest is None:
+        reason = selection.reason or (selection.rejected.reason if selection.rejected else "")
+        raise SystemExit(f"no usable pricing snapshot at {data_uri}: {reason}")
+    if isinstance(store, LocalStore):
+        return ActiveSnapshot.from_manifest(selection.manifest, base_dir=store.root, pinned=False)
+    cached = ensure_cached(store, selection.manifest, Path(settings.pricing_cache_dir),
+                           settings.pricing_cache_max_bytes)
+    return ActiveSnapshot.from_manifest(cached.manifest, base_dir=cached.path, pinned=False)
 
 
 def _pricing_services(
-    parquet_dir: Path, snapshot: str
+    snapshot: ActiveSnapshot,
 ) -> tuple[dict[str, str | None], set[tuple[str, str]]]:
     """(service code -> service name, {(service code, product family)}) for one snapshot."""
     con = duckdb.connect(":memory:")
-    partition = f"snapshot_date={snapshot}"
-    product_glob = str(parquet_dir / "product_dim" / partition / "**" / "*.parquet")
-    service_glob = str(parquet_dir / "service_dim" / partition / "**" / "*.parquet")
+
+    def files(table: str) -> list[str]:
+        return [f for region in sorted(snapshot.regions(table))
+                for f in snapshot.files(table, region)]
+
+    product_files, service_files = files("product_dim"), files("service_dim")
     families = {
         (code, family)
         for code, family in con.execute(
             "SELECT DISTINCT service_code, product_family FROM read_parquet(?) "
             "WHERE service_code IS NOT NULL AND coalesce(product_family, '') <> ''",
-            [product_glob],
+            [product_files],
         ).fetchall()
     }
     names = dict(
@@ -221,7 +232,7 @@ def _pricing_services(
             "(SELECT DISTINCT service_code FROM read_parquet(?)) p "
             "LEFT JOIN read_parquet(?) s USING (service_code) "
             "WHERE p.service_code IS NOT NULL GROUP BY 1",
-            [product_glob, service_glob],
+            [product_files, service_files],
         ).fetchall()
     )
     return names, families
@@ -384,7 +395,11 @@ def render_json(by_code: dict[str, str], by_family: dict[str, dict[str, str]]) -
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--icons", required=True, type=Path, help="aws_architecture_icons dir")
-    parser.add_argument("--parquet", type=Path, default=Path(settings.aws_pricing_parquet_dir))
+    parser.add_argument(
+        "--data-uri",
+        default=settings.pricing_data_uri,
+        help="pipeline storage root (default: PRICING_DATA_URI)",
+    )
     parser.add_argument(
         "--log-file",
         type=Path,
@@ -394,8 +409,11 @@ def main() -> None:
 
     icons = _service_icons(args.icons)
     special = _special_icons(args.icons)
-    snapshot = _latest_snapshot(args.parquet)
-    names, families = _pricing_services(args.parquet, snapshot)
+    if not args.data_uri:
+        raise SystemExit("set PRICING_DATA_URI or pass --data-uri")
+    active = _latest_snapshot(args.data_uri)
+    snapshot = active.snapshot_date
+    names, families = _pricing_services(active)
     by_code, by_family, report, rows = build_mapping(names, families, icons)
 
     package = _single_dir(args.icons, "Architecture-Service-Icons_*").name

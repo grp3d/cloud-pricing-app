@@ -13,6 +13,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
 from fastapi import FastAPI, Request
@@ -24,6 +25,7 @@ from src.logging_config import configure_logging, get_logger
 from src.pricing_data.active_snapshot import run_check
 from src.pricing_data.catalog import EmptyCatalogFilterError, InvalidRegexPatternError
 from src.pricing_data.errors import PricingDataUnavailableError
+from src.pricing_data.snapshot_cache import startup_cleanup
 from src.services.architecture_transfer import InvalidImportFileError
 from src.services.price_calculation import EmptySnapshotError
 
@@ -48,8 +50,11 @@ async def _snapshot_monitor() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    # FR-017: settle the active snapshot before serving any pricing request. A pinned
-    # ACTIVE_SNAPSHOT_DATE missing from a table raises here, so the server refuses to start.
+    # FR-017: settle the active snapshot before serving any pricing request. 018: an unset
+    # PRICING_DATA_URI, an old-layout directory or an unusable ACTIVE_SNAPSHOT_DATE raises
+    # here, so the server refuses to start; partial S3 copies from a restart are removed first.
+    _ = settings.pricing_data_source
+    startup_cleanup(Path(settings.pricing_cache_dir))
     await asyncio.to_thread(run_check, at_startup=True)
     monitor = asyncio.create_task(_snapshot_monitor())
     try:

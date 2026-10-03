@@ -42,6 +42,7 @@ const architecture = {
 function result(total: string): CalculationResult {
   return {
     snapshot_date: "2026-09-24",
+    snapshot_revision: 1,
     duration: "1_year",
     total_price: total,
     currency: "USD",

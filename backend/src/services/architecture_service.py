@@ -16,10 +16,11 @@ from sqlalchemy.orm import selectinload
 
 from src.models.orm import Architecture, Collection, DataConnector, SKUSelection, User
 from src.models.schemas import ArchitectureDetailOut, SKUSelectionOut
-from src.pricing_data.active_snapshot import get_active_snapshot_date
+from src.pricing_data.active_snapshot import get_active_snapshot
 from src.pricing_data.catalog import resolve_product_details
 from src.pricing_data.pricing import resolve_units
 from src.pricing_data.regions import list_available_regions
+from src.pricing_data.snapshot import ActiveSnapshot
 
 
 async def get_owned_architecture(
@@ -242,11 +243,11 @@ def sku_selection_out_with_unit(selection: SKUSelection, *, region: str) -> SKUS
     """
     out = SKUSelectionOut.model_validate(selection)
     # 016-canvas-icon-layout, FR-019: one snapshot date for the whole response.
-    snapshot_date = get_active_snapshot_date()
+    snapshot = get_active_snapshot()
     key = _unit_key(selection)
-    out.unit = resolve_units([key], region=region, snapshot_date=snapshot_date).get(key)
+    out.unit = resolve_units([key], region=region, snapshot=snapshot).get(key)
     key_pair = (selection.service_code, selection.sku)
-    details = resolve_product_details([key_pair], region=region, snapshot_date=snapshot_date)[
+    details = resolve_product_details([key_pair], region=region, snapshot=snapshot)[
         key_pair
     ]
     out.attributes = details.attributes
@@ -257,7 +258,7 @@ def sku_selection_out_with_unit(selection: SKUSelection, *, region: str) -> SKUS
 def _region_grouped_batch_resolve(
     selections: list[SKUSelection],
     selection_regions: dict[uuid.UUID, str | None],
-    snapshot_date: str,
+    snapshot: ActiveSnapshot,
 ) -> tuple[dict, dict]:
     """Groups `selections` by their resolved region and calls `resolve_units`/
     `resolve_product_details` once per distinct region, merging the results (010-multi-region-
@@ -281,14 +282,14 @@ def _region_grouped_batch_resolve(
             resolve_units(
                 [_unit_key(s) for s in region_selections],
                 region=region,
-                snapshot_date=snapshot_date,
+                snapshot=snapshot,
             )
         )
         details.update(
             resolve_product_details(
                 [(s.service_code, s.sku) for s in region_selections],
                 region=region,
-                snapshot_date=snapshot_date,
+                snapshot=snapshot,
             )
         )
     return units, details
@@ -331,7 +332,7 @@ def attach_units_to_architecture(detail: ArchitectureDetailOut, architecture: Ar
     # 016-canvas-icon-layout, FR-019: read the active snapshot once, so every region's lookups
     # in this response use the same date even if the background check switches it meanwhile.
     units, details = _region_grouped_batch_resolve(
-        orm_selections, selection_regions, get_active_snapshot_date()
+        orm_selections, selection_regions, get_active_snapshot()
     )
 
     def _attach(selection_out: SKUSelectionOut, selection: SKUSelection) -> None:

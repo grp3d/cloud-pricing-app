@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,6 +17,9 @@ from src.models.orm import Architecture, Collection, DataConnector, SKUSelection
 from src.models.schemas import CalculationDuration
 from src.pricing_data.pricing import ReservedPrice
 from src.services import price_calculation
+
+# 018-app-cloud-deployment: price calculation takes one snapshot (date and revision) per request.
+FAKE_SNAPSHOT = SimpleNamespace(snapshot_date="2026-01-01", revision=1)
 
 
 def _selection(**kwargs) -> SKUSelection:
@@ -41,7 +45,7 @@ def _mock_no_period_units(monkeypatch):
     see below) so `raw_cost` passes through unchanged, preserving their original expected
     totals exactly."""
 
-    def fake_resolve_units(selections, *, region=None, snapshot_date=None):
+    def fake_resolve_units(selections, *, region=None, snapshot=None):
         return {key: "Hrs" for key in selections}
 
     monkeypatch.setattr(price_calculation, "resolve_units", fake_resolve_units)
@@ -49,7 +53,7 @@ def _mock_no_period_units(monkeypatch):
 
 def test_sums_priceable_line_items(monkeypatch):
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 2.5)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_no_period_units(monkeypatch)
 
     collection = Collection(type="application_component", name="Web", region="us-east-1")
@@ -69,7 +73,7 @@ def test_sums_priceable_line_items(monkeypatch):
 
 def test_unpriceable_sku_excluded_from_total_not_estimated(monkeypatch):
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: None)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_no_period_units(monkeypatch)
 
     collection = Collection(type="application_component", name="Web", region="us-east-1")
@@ -90,7 +94,7 @@ def test_unpriceable_sku_excluded_from_total_not_estimated(monkeypatch):
 
 def test_connector_attached_sku_included_in_total(monkeypatch):
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 1.0)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_no_period_units(monkeypatch)
 
     coll_a = Collection(id=uuid.uuid4(), type="vpc", name="VPC A", region="us-east-1")
@@ -115,7 +119,7 @@ def test_connector_attached_sku_included_in_total(monkeypatch):
 )
 def test_unconnected_vpc_warning(monkeypatch, vpc_count, connected, expect_warning):
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 1.0)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_no_period_units(monkeypatch)
 
     architecture = Architecture(name="A")
@@ -150,7 +154,7 @@ def test_nesting_does_not_affect_total(monkeypatch):
     produce an identical result.
     """
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 2.5)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_no_period_units(monkeypatch)
 
     def build(nested: bool) -> Architecture:
@@ -181,7 +185,7 @@ def test_nesting_does_not_affect_total(monkeypatch):
 
 
 def _mock_units(monkeypatch, unit_by_sku: dict[str, str]):
-    def fake_resolve_units(selections, *, region=None, snapshot_date=None):
+    def fake_resolve_units(selections, *, region=None, snapshot=None):
         return {(sku, term, purchase): unit_by_sku.get(sku) for sku, term, purchase in selections}
 
     monkeypatch.setattr(price_calculation, "resolve_units", fake_resolve_units)
@@ -213,7 +217,7 @@ def test_reserved_no_upfront_recurring_cost_ignores_usage_quantity(monkeypatch):
     """FR-001: a Reserved/No-Upfront selection's cost is `recurring_rate * 24 *
     duration_days` — `usage_quantity` plays no role at all, however it's set (006,
     Clarifications)."""
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=1.0, upfront_fee=None))
 
     selection = _selection(
@@ -241,7 +245,7 @@ def test_reserved_no_upfront_recurring_cost_ignores_usage_quantity(monkeypatch):
 def test_reserved_missing_recurring_rate_is_unpriceable(monkeypatch):
     """FR-005: a row exists (so `lookup_reserved_price` doesn't return None outright) but with
     no `Hrs` row — excluded with a reason, never guessed."""
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=None, upfront_fee=None))
 
     selection = _selection(pricing_term="reserved_1yr", purchase_option="no_upfront")
@@ -260,7 +264,7 @@ def test_reserved_missing_recurring_rate_is_unpriceable(monkeypatch):
 def test_reserved_no_lookup_result_at_all_is_unpriceable(monkeypatch):
     """FR-005: `lookup_reserved_price` returning `None` outright (no matching row whatsoever)
     is unpriceable too, not a crash."""
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_reserved_price(monkeypatch, None)
 
     selection = _selection(pricing_term="reserved_1yr", purchase_option="no_upfront")
@@ -277,7 +281,7 @@ def test_reserved_no_lookup_result_at_all_is_unpriceable(monkeypatch):
 
 def test_reserved_partial_upfront_includes_amortized_upfront_share(monkeypatch):
     """FR-002: total = recurring contribution + `upfront_fee * duration_days / term_days`."""
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=1.0, upfront_fee=365.0))
 
     selection = _selection(pricing_term="reserved_1yr", purchase_option="partial_upfront")
@@ -294,7 +298,7 @@ def test_reserved_partial_upfront_includes_amortized_upfront_share(monkeypatch):
 def test_reserved_all_upfront_zero_recurring_never_zeroes_the_total(monkeypatch):
     """Edge Case: an All-Upfront selection's $0/hr recurring rate must not zero out the total
     — the upfront share still applies."""
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=0.0, upfront_fee=365.0))
 
     selection = _selection(pricing_term="reserved_1yr", purchase_option="all_upfront")
@@ -312,7 +316,7 @@ def test_reserved_no_upfront_gets_no_upfront_contribution(monkeypatch):
     """FR-003: even if `lookup_reserved_price` somehow returned an `upfront_fee` for a
     No-Upfront selection (shouldn't happen in real data, but the branch must not read it
     either way), the total stays exactly the recurring-only contribution."""
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=1.0, upfront_fee=999999.0))
 
     selection = _selection(pricing_term="reserved_1yr", purchase_option="no_upfront")
@@ -329,7 +333,7 @@ def test_reserved_partial_upfront_missing_upfront_fee_is_unpriceable(monkeypatch
     """FR-005: the recurring rate is present but the upfront row is missing for a
     Partial/All-Upfront selection — excluded with a reason distinct from the
     missing-recurring-rate case."""
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=1.0, upfront_fee=None))
 
     selection = _selection(pricing_term="reserved_1yr", purchase_option="partial_upfront")
@@ -348,7 +352,7 @@ def test_reserved_partial_upfront_missing_upfront_fee_is_unpriceable(monkeypatch
 def test_reserved_3yr_amortizes_upfront_against_1095_days(monkeypatch):
     """FR-002: a 3-Year Reserved selection's upfront share is prorated against 1095 days, not
     365."""
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_reserved_price(monkeypatch, ReservedPrice(recurring_rate=0.0, upfront_fee=1095.0))
 
     selection = _selection(pricing_term="reserved_3yr", purchase_option="all_upfront")
@@ -366,7 +370,7 @@ def test_on_demand_calculation_unchanged_by_reserved_fix(monkeypatch):
     same scenario/expected value as `test_on_demand_no_period_unit_scales_by_duration_days`,
     asserted again here explicitly as this fix's regression check."""
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 2.0)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_units(monkeypatch, {"SKU1": "Requests"})
 
     selection = _selection(usage_quantity=Decimal("10"))
@@ -383,7 +387,7 @@ def test_on_demand_no_period_unit_scales_by_duration_days(monkeypatch):
     """FR-003: an on-demand Hrs-family selection's quantity is a steady daily rate — scaled
     directly by the selected duration's day-count."""
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 2.0)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_units(monkeypatch, {"SKU1": "Requests"})
 
     selection = _selection(usage_quantity=Decimal("10"))
@@ -404,7 +408,7 @@ def test_on_demand_fixed_period_unit_scales_between_periods(monkeypatch):
     """FR-004: an on-demand GB-Mo-family selection's raw cost already covers one month — scaled
     between that period and the selected duration, not treated as a daily rate."""
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 3.1)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_units(monkeypatch, {"SKU1": "GB-Mo"})
 
     selection = _selection(usage_quantity=Decimal("10"))
@@ -427,7 +431,7 @@ def test_on_demand_unrecognized_unit_excluded_not_guessed(monkeypatch):
     """FR-005: a billing unit outside the recognized tables is excluded from the total and
     listed, never included unscaled or guessed."""
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 5.0)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_units(monkeypatch, {"SKU1": "Quantity"})
 
     selection = _selection(usage_quantity=Decimal("10"))
@@ -445,7 +449,7 @@ def test_on_demand_unrecognized_unit_excluded_not_guessed(monkeypatch):
 
 def test_calculation_result_echoes_duration(monkeypatch):
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 1.0)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_units(monkeypatch, {"SKU1": "Hrs"})
 
     architecture = _architecture_with(_selection())
@@ -459,7 +463,7 @@ def test_calculation_result_echoes_duration(monkeypatch):
 
 def test_default_duration_is_one_month(monkeypatch):
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 1.0)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_units(monkeypatch, {"SKU1": "Hrs"})
 
     architecture = _architecture_with(_selection())
@@ -475,7 +479,7 @@ def test_default_duration_is_one_month(monkeypatch):
 
 def test_unpriceable_collection_selection_names_its_collection(monkeypatch):
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: None)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_no_period_units(monkeypatch)
 
     collection = Collection(type="application_component", name="Web Tier", region="us-east-1")
@@ -493,7 +497,7 @@ def test_unpriceable_collection_selection_names_its_collection(monkeypatch):
 
 def test_unpriceable_connector_selection_names_its_two_collections(monkeypatch):
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: None)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_no_period_units(monkeypatch)
 
     coll_a = Collection(id=uuid.uuid4(), type="vpc", name="VPC A", region="us-east-1")
@@ -517,7 +521,7 @@ def test_duration_excluded_selection_also_names_its_component(monkeypatch):
     """FR-005's new exclusion case gets `components` populated the same way as the existing
     unpriceable case — both share one combined list (spec Clarifications)."""
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 5.0)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_units(monkeypatch, {"SKU1": "Quantity"})
 
     collection = Collection(type="application_component", name="Odd Billing", region="us-east-1")
@@ -538,7 +542,7 @@ def test_duration_excluded_selection_also_names_its_component(monkeypatch):
 
 def test_collection_owned_line_item_gets_its_collections_region(monkeypatch):
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 2.5)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_no_period_units(monkeypatch)
 
     collection = Collection(
@@ -560,7 +564,7 @@ def test_connector_owned_line_item_gets_its_from_collections_region(monkeypatch)
     """spec FR-006/data-model.md: a Connector's own line item is attributed to its "from"
     Collection's region, never its "to" Collection's."""
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 1.0)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_no_period_units(monkeypatch)
 
     coll_a = Collection(id=uuid.uuid4(), type="vpc", name="VPC A", region="us-west-2")
@@ -587,7 +591,7 @@ def test_line_item_region_defaults_to_none_when_ownership_unresolvable(monkeypat
     snapshot-calculation Collection — must still resolve to `region=None` rather than raising,
     so the frontend's "Global" fallback grouping (FR-015) has a defined contract to render."""
     monkeypatch.setattr(price_calculation, "lookup_price", lambda **kw: 2.5)
-    monkeypatch.setattr(price_calculation, "get_active_snapshot_date", lambda: "2026-01-01")
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
     _mock_no_period_units(monkeypatch)
 
     # Never given a `region=` kwarg, unlike every other test in this file — simulates

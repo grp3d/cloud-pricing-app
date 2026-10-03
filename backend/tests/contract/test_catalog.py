@@ -24,6 +24,8 @@ async def test_search_by_service_and_family(client, auth_headers):
     assert resp.status_code == 200
     body = resp.json()
     assert body["snapshot_date"]
+    # 018-app-cloud-deployment, FR-059.
+    assert isinstance(body["snapshot_revision"], int) and body["snapshot_revision"] >= 1
     assert len(body["results"]) > 0
     assert all(r["service_code"] == "AmazonEC2" for r in body["results"])
     assert all(r["product_family"] == "Compute Instance" for r in body["results"])
@@ -89,11 +91,16 @@ async def test_search_with_no_matches_returns_empty_not_error(client, auth_heade
 
 
 @pytest.mark.asyncio
-async def test_data_source_outage_returns_503(client, auth_headers, monkeypatch, tmp_path):
-    """A real outage (unreadable Parquet dir) is a distinct 503, never a 200/empty result."""
-    monkeypatch.setattr(
-        config_module.settings, "aws_pricing_parquet_dir", str(tmp_path / "missing")
-    )
+async def test_data_source_outage_returns_503(client, auth_headers, use_pricing_root, tmp_path):
+    """A real outage (the active snapshot's files are gone) is a distinct 503, never a
+    200/empty result."""
+    import shutil
+    from pathlib import Path
+
+    copy = tmp_path / "pipeline"
+    shutil.copytree(Path(config_module.settings.pricing_data_source.root), copy)
+    use_pricing_root(copy)
+    shutil.rmtree(copy / "aws" / "parquet")
     resp = await client.get(
         "/api/v1/catalog/skus",
         params={"service_code": "AmazonEC2", "region": "us-east-1"},

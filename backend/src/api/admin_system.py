@@ -13,8 +13,9 @@ from fastapi import APIRouter
 
 from src.api.deps import AdminUser
 from src.config import settings
-from src.models.schemas import IssueOut, SystemInfoOut, WaitingSnapshotOut
-from src.pricing_data.active_snapshot import STATE, Issue
+from src.models.schemas import IssueOut, SystemInfoOut
+from src.pricing_data import active_snapshot
+from src.pricing_data.active_snapshot import Issue
 
 router = APIRouter(tags=["admin"])
 
@@ -28,12 +29,14 @@ def _issue_order(issue: Issue) -> tuple:
 
 @router.get("/admin/system-info", response_model=SystemInfoOut)
 async def get_system_info(_admin: AdminUser) -> SystemInfoOut:
+    state = active_snapshot.STATE
+    active = state.active
     return SystemInfoOut(
-        active_snapshot_date=STATE.active_date,
-        pinned=STATE.pinned,
-        last_check_at=STATE.last_check_at,
-        last_check_error=STATE.last_check_error,
+        active_snapshot_date=active.snapshot_date if active else None,
+        pinned=bool(active and active.pinned),
+        last_check_at=state.last_check_at,
+        last_check_error=state.last_check_error,
         check_interval_seconds=settings.snapshot_check_interval_seconds,
-        waiting_snapshots=[WaitingSnapshotOut(**asdict(w)) for w in STATE.waiting],
-        issues=[IssueOut(**asdict(i)) for i in sorted(STATE.issues, key=_issue_order)],
+        waiting_snapshots=[],
+        issues=[IssueOut(**asdict(i)) for i in sorted(state.issues, key=_issue_order)],
     )

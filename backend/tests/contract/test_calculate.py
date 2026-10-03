@@ -35,6 +35,13 @@ async def test_calculate_sums_priceable_line_items(client, auth_headers):
     assert resp.status_code == 200
     body = resp.json()
     assert body["snapshot_date"]
+    # 018-app-cloud-deployment, FR-059: the revision travels with the date.
+    from src.pricing_data.active_snapshot import get_active_snapshot
+
+    active = get_active_snapshot()
+    assert (body["snapshot_date"], body["snapshot_revision"]) == (
+        active.snapshot_date, active.revision
+    )
     assert float(body["total_price"]) > 0
     assert len(body["line_items"]) == 1
     assert body["line_items"][0]["priceable"] is True

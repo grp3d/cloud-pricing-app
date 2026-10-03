@@ -32,7 +32,7 @@ from src.models.schemas import (
     SnapshotSelection,
     UnpriceableItem,
 )
-from src.pricing_data.active_snapshot import get_active_snapshot_date
+from src.pricing_data.active_snapshot import get_active_snapshot
 from src.pricing_data.duration import classify_unit
 from src.pricing_data.pricing import lookup_price, lookup_reserved_price, resolve_units
 
@@ -72,7 +72,8 @@ def calculate_architecture_price(
     architecture: Architecture,
     duration: CalculationDuration = CalculationDuration.one_month,
 ) -> CalculationResult:
-    snapshot_date = get_active_snapshot_date()
+    # 018-app-cloud-deployment, FR-059: one snapshot (date and revision) for the whole result.
+    snapshot = get_active_snapshot()
     duration_days = _DURATION_DAYS[duration]
 
     # Gather every SKU Selection: one per Collection SKU, plus one per Connector's attached SKU.
@@ -131,7 +132,7 @@ def calculate_architecture_price(
             resolve_units(
                 [(s.sku, s.pricing_term, s.purchase_option) for s in region_selections],
                 region=region,
-                snapshot_date=snapshot_date,
+                snapshot=snapshot,
             )
         )
 
@@ -178,7 +179,7 @@ def calculate_architecture_price(
                 pricing_term=selection.pricing_term,
                 purchase_option=selection.purchase_option,
                 region=region,
-                snapshot_date=snapshot_date,
+                snapshot=snapshot,
             )
             if reserved_price is None or reserved_price.recurring_rate is None:
                 _mark_unpriceable(
@@ -220,7 +221,7 @@ def calculate_architecture_price(
                 pricing_term=selection.pricing_term,
                 purchase_option=selection.purchase_option,
                 region=region,
-                snapshot_date=snapshot_date,
+                snapshot=snapshot,
             )
             if unit_price is None:
                 _mark_unpriceable(
@@ -264,7 +265,8 @@ def calculate_architecture_price(
     warnings = list(_unconnected_vpc_warnings(architecture))
 
     return CalculationResult(
-        snapshot_date=snapshot_date,
+        snapshot_date=snapshot.snapshot_date,
+        snapshot_revision=snapshot.revision,
         duration=duration,
         total_price=total,
         line_items=line_items,

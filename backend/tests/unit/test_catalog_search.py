@@ -11,13 +11,8 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from src.pricing_data.active_snapshot import get_active_snapshot_date
-from src.pricing_data.catalog import (
-    InvalidRegexPatternError,
-    _product_dim_path,
-    _service_dim_path,
-    search_catalog,
-)
+from src.pricing_data.active_snapshot import get_active_snapshot
+from src.pricing_data.catalog import InvalidRegexPatternError, search_catalog
 
 KNOWN_SERVICE_CODE = "AmazonEC2"
 KNOWN_PRODUCT_FAMILY = "Compute Instance"
@@ -116,15 +111,15 @@ def test_total_matches_independent_count_query():
     """Cross-checks `total` against a hand-written `COUNT(*)` over the same Parquet data and
     the same filter clause, computed independently of `search_catalog`'s own total query
     (Constitution Principle I: never estimate/guess — this proves it's a real count)."""
-    snapshot_date = get_active_snapshot_date()
+    snapshot = get_active_snapshot()
     con = duckdb.connect(":memory:", read_only=False)
     expected_total = con.execute(
         "SELECT COUNT(*) FROM read_parquet(?) p "
         "JOIN read_parquet(?) s USING (service_code) "
         "WHERE p.region_code = ? AND regexp_matches(p.service_code, ?, 'i')",
         [
-            _product_dim_path(snapshot_date, "us-east-1"),
-            _service_dim_path(snapshot_date, "us-east-1"),
+            snapshot.files("product_dim", "us-east-1"),
+            snapshot.files("service_dim", "us-east-1"),
             "us-east-1",
             "^AmazonEC2$",
         ],

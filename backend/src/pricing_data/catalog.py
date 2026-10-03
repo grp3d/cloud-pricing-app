@@ -13,10 +13,11 @@ from dataclasses import dataclass
 
 import duckdb
 
-from src.config import settings
-from src.pricing_data.active_snapshot import get_active_snapshot_date
+from src.pricing_data.active_snapshot import get_active_snapshot
+from src.pricing_data.duckdb_conn import connect, table_files
 from src.pricing_data.errors import PricingDataUnavailableError
 from src.pricing_data.pricing import resolve_units
+from src.pricing_data.snapshot import ActiveSnapshot
 
 
 class EmptyCatalogFilterError(ValueError):
@@ -51,20 +52,6 @@ def parse_attributes(raw: str | None) -> dict[str, str]:
     return {str(key): str(value) for key, value in parsed.items()}
 
 
-def _product_dim_path(snapshot_date: str, region: str) -> str:
-    return (
-        f"{settings.aws_pricing_parquet_dir}/product_dim/"
-        f"snapshot_date={snapshot_date}/region={region}/part-0.parquet"
-    )
-
-
-def _service_dim_path(snapshot_date: str, region: str) -> str:
-    return (
-        f"{settings.aws_pricing_parquet_dir}/service_dim/"
-        f"snapshot_date={snapshot_date}/region={region}/part-0.parquet"
-    )
-
-
 def _validate_regex_pattern(con: duckdb.DuckDBPyConnection, field: str, pattern: str) -> None:
     """Probes `pattern` against an empty string via the real DuckDB/RE2 engine
     (008-ui-updates-corrections, research.md §2) — the authoritative validity check, not an
@@ -87,9 +74,9 @@ def search_catalog(
     to_region_code: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> tuple[list[dict], str, int]:
-    """Search the AWS pricing catalog, scoped to `region`. Returns (rows, snapshot_date_used,
-    total).
+) -> tuple[list[dict], ActiveSnapshot, int]:
+    """Search the AWS pricing catalog, scoped to `region`. Returns (rows, snapshot_used, total);
+    the snapshot names the date and revision every row came from (018, FR-059).
 
     Each row: service_code, service_name, product_family, sku, summary, attributes, unit.
     Each filter is a case-insensitive RE2 regex pattern (research.md §2) — an ordinary literal
@@ -128,7 +115,7 @@ def search_catalog(
             "to_region_code is required"
         )
 
-    snapshot_date = get_active_snapshot_date()
+    snapshot = get_active_snapshot()
 
     if from_region_code:
         where: list[str] = []
@@ -195,7 +182,7 @@ def search_catalog(
     """
 
     try:
-        con = duckdb.connect(":memory:", read_only=False)
+        con = connect()
 
         if service_code:
             _validate_regex_pattern(con, "service_code", service_code)
@@ -208,8 +195,8 @@ def search_catalog(
         if to_region_code:
             _validate_regex_pattern(con, "to_region_code", to_region_code)
 
-        product_path = _product_dim_path(snapshot_date, region)
-        service_path = _service_dim_path(snapshot_date, region)
+        product_path = table_files(snapshot, "product_dim", region)
+        service_path = table_files(snapshot, "service_dim", region)
 
         total = con.execute(count_query, [product_path, service_path, *params]).fetchone()[0]
         rows = con.execute(query, [product_path, service_path, *params, limit, offset]).fetchall()
@@ -226,14 +213,14 @@ def search_catalog(
     units = resolve_units(
         [(r["sku"], "on_demand", "not_applicable") for r in results],
         region=region,
-        snapshot_date=snapshot_date,
+        snapshot=snapshot,
     )
     for result in results:
         raw_attributes = result.pop("attributes_json")
         result["attributes"] = parse_attributes(raw_attributes)
         result["unit"] = units.get((result["sku"], "on_demand", "not_applicable"))
 
-    return results, snapshot_date, total
+    return results, snapshot, total
 
 
 @dataclass(frozen=True)
@@ -246,7 +233,7 @@ class ProductDetails:
 
 
 def resolve_product_details(
-    skus: Sequence[tuple[str, str]], *, region: str, snapshot_date: str | None = None
+    skus: Sequence[tuple[str, str]], *, region: str, snapshot: ActiveSnapshot | None = None
 ) -> dict[tuple[str, str], ProductDetails]:
     """Batched `attributes` + `product_family` lookup for many (service_code, sku) pairs, all in
     `region` (004, FR-014, research.md #5; 010-multi-region-support; 015-canvas-service-icons,
@@ -266,7 +253,7 @@ def resolve_product_details(
     if not skus:
         return {}
 
-    snapshot_date = snapshot_date or get_active_snapshot_date()
+    snapshot = snapshot or get_active_snapshot()
     unique_skus = sorted({sku for _, sku in skus})
     placeholders = ",".join("?" for _ in unique_skus)
 
@@ -279,9 +266,9 @@ def resolve_product_details(
         f"AND sku IN ({placeholders})"
     )
     try:
-        con = duckdb.connect(":memory:", read_only=False)
+        con = connect()
         rows = con.execute(
-            query, [_product_dim_path(snapshot_date, region), region, region, *unique_skus]
+            query, [table_files(snapshot, "product_dim", region), region, region, *unique_skus]
         ).fetchall()
     except duckdb.Error as exc:
         raise PricingDataUnavailableError(str(exc)) from exc
@@ -295,16 +282,16 @@ def resolve_product_details(
 
 
 def resolve_attributes(
-    skus: Sequence[tuple[str, str]], *, region: str, snapshot_date: str | None = None
+    skus: Sequence[tuple[str, str]], *, region: str, snapshot: ActiveSnapshot | None = None
 ) -> dict[tuple[str, str], dict[str, str]]:
     """Batched `attributes`-only lookup (004, FR-014) — a thin view over
     `resolve_product_details`, kept for callers that don't need `product_family`."""
-    details = resolve_product_details(skus, region=region, snapshot_date=snapshot_date)
+    details = resolve_product_details(skus, region=region, snapshot=snapshot)
     return {key: value.attributes for key, value in details.items()}
 
 
 def find_existing_skus(
-    pairs: Iterable[tuple[str, str]], *, region: str, snapshot_date: str | None = None
+    pairs: Iterable[tuple[str, str]], *, region: str, snapshot: ActiveSnapshot | None = None
 ) -> set[tuple[str, str]]:
     """Return the subset of `(service_code, sku)` pairs that exist in `region` at the active
     (or given) snapshot (014-architecture-templates-import-export, research.md §9).
@@ -319,7 +306,7 @@ def find_existing_skus(
     if not wanted:
         return set()
 
-    snapshot_date = snapshot_date or get_active_snapshot_date()
+    snapshot = snapshot or get_active_snapshot()
     unique_skus = sorted({sku for _, sku in wanted})
     placeholders = ",".join("?" for _ in unique_skus)
 
@@ -332,9 +319,9 @@ def find_existing_skus(
         f"AND sku IN ({placeholders})"
     )
     try:
-        con = duckdb.connect(":memory:", read_only=False)
+        con = connect()
         rows = con.execute(
-            query, [_product_dim_path(snapshot_date, region), region, region, *unique_skus]
+            query, [table_files(snapshot, "product_dim", region), region, region, *unique_skus]
         ).fetchall()
     except duckdb.Error as exc:
         raise PricingDataUnavailableError(str(exc)) from exc

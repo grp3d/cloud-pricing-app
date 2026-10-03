@@ -163,7 +163,11 @@ def _rule(**overrides) -> MatchRule:
 
 
 def _resolve(dataset: Path, rules):
-    return resolve(rules, parquet_dir=dataset, snapshot_date=SNAPSHOT)
+    def files(table: str, region: str) -> list[str]:
+        path = dataset / table / f"snapshot_date={SNAPSHOT}" / f"region={region}" / "part-0.parquet"
+        return [str(path)]
+
+    return resolve(rules, files=files, snapshot_date=SNAPSHOT)
 
 
 def test_first_match_is_lowest_sku(dataset):
