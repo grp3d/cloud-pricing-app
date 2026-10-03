@@ -469,28 +469,28 @@ description: "Task list for 018-app-cloud-deployment"
   - a checksum failure keeps the active snapshot, records `rejected`, and is retried at the next check
   - `missing_regions` is computed from `regions.failed`
   - the icon analysis runs on a switch only
-- [ ] T071 [P] [US5] Write `backend/tests/unit/test_cache_cleanup.py` for `plan_cleanup(entries, active, keep, max_bytes, superseded_this_check) -> list[Path]`:
+- [X] T071 [P] [US5] Write `backend/tests/unit/test_cache_cleanup.py` for `plan_cleanup(entries, active, keep, max_bytes, superseded_this_check) -> list[Path]`:
   - the active entry is never deleted
   - a superseded entry is never deleted by the check that superseded it; at the next check it is deleted if it is excess, and kept if it is within `keep`, within the size limit and not purged (FR-011)
   - entries beyond `keep` are deleted oldest first
   - the size limit is enforced
   - entries whose manifest is now `purged` are deleted
-- [ ] T072 [P] [US5] Update `backend/tests/contract/test_admin_system_info.py` to the new response shape in [contracts/admin-api.md](./contracts/admin-api.md): `source` never contains credentials, the cache section is `null` for a local source, and there is no `waiting_snapshots`. Add `backend/tests/contract/test_admin_snapshot_check.py`: the endpoint is admin-only (403 otherwise), returns 202 `{"started": true}`, and returns 409 while a check runs (hold the monitor lock in the test).
-- [ ] T073 [P] [US5] Write a no-failed-requests test in `backend/tests/integration/test_snapshot_switch_concurrency.py`. A thread loops `lookup_price` on a fixture SKU while the main thread switches between two snapshots 20 times; every call returns a price from one consistent snapshot, with no exception (SC-007).
+- [X] T072 [P] [US5] Update `backend/tests/contract/test_admin_system_info.py` to the new response shape in [contracts/admin-api.md](./contracts/admin-api.md): `source` never contains credentials, the cache section is `null` for a local source, and there is no `waiting_snapshots`. Add `backend/tests/contract/test_admin_snapshot_check.py`: the endpoint is admin-only (403 otherwise), returns 202 `{"started": true}`, and returns 409 while a check runs (hold the monitor lock in the test).
+- [X] T073 [P] [US5] Write a no-failed-requests test in `backend/tests/integration/test_snapshot_switch_concurrency.py`. A thread loops `lookup_price` on a fixture SKU while the main thread switches between two snapshots 20 times; every call returns a price from one consistent snapshot, with no exception (SC-007).
 
 ### Implementation for User Story 5
 
-- [ ] T074 [US5] Implement `plan_cleanup` and `apply_cleanup` in `backend/src/pricing_data/snapshot_cache.py`, call them at the end of each `run_check`, passing the entry that this check superseded (if any) so it is spared until the next check. No per-entry timestamps are needed. Make T071 pass.
-- [ ] T075 [US5] Complete the monitor in `backend/src/pricing_data/active_snapshot.py`:
+- [X] T074 [US5] Implement `plan_cleanup` and `apply_cleanup` in `backend/src/pricing_data/snapshot_cache.py`, call them at the end of each `run_check`, passing the entry that this check superseded (if any) so it is spared until the next check. No per-entry timestamps are needed. Make T071 pass.
+- [X] T075 [US5] Complete the monitor in `backend/src/pricing_data/active_snapshot.py`:
   - revision changes and `latest_run` (newest dated manifest, any status, through `list_manifest_dates`)
   - `rejected`, `missing_regions` from the manifest
   - the icon analysis on a switch
   - the grace re-read for long fetches
 
   Make T070 and T073 pass.
-- [ ] T076 [US5] Update `backend/src/models/schemas.py` (new `SystemInfoOut`, `ActiveSnapshotOut`, `LatestRunOut`, `CacheOut`, `CacheEntryOut`, `DeploymentOut`, `SourceOut`; `IssueOut.kind` becomes `missing_icon | missing_regions`; `WaitingSnapshotOut` is removed) and `backend/src/api/admin_system.py` (the new `system-info`, plus `POST /admin/pricing-snapshot/check`, which runs `run_check` in a thread and returns 202 or 409). Make T072 pass.
-- [ ] T077 [US5] Regenerate the frontend types: start the backend, run `npm run generate-api-types` in `frontend/`, and commit `frontend/src/api/generated/schema.d.ts`.
-- [ ] T078 [US5] Update `frontend/src/components/admin/SystemInformationSection.tsx` to show:
+- [X] T076 [US5] Update `backend/src/models/schemas.py` (new `SystemInfoOut`, `ActiveSnapshotOut`, `LatestRunOut`, `CacheOut`, `CacheEntryOut`, `DeploymentOut`, `SourceOut`; `IssueOut.kind` becomes `missing_icon | missing_regions`; `WaitingSnapshotOut` is removed) and `backend/src/api/admin_system.py` (the new `system-info`, plus `POST /admin/pricing-snapshot/check`, which runs `run_check` in a thread and returns 202 or 409). Make T072 pass.
+- [X] T077 [US5] Regenerate the frontend types: start the backend, run `npm run generate-api-types` in `frontend/`, and commit `frontend/src/api/generated/schema.d.ts`.
+- [X] T078 [US5] Update `frontend/src/components/admin/SystemInformationSection.tsx` to show:
   - deployment (environment, release)
   - source (kind, location)
   - the active snapshot (date, revision, run id, pipeline version, created at, pinned badge, regions, failed regions)
@@ -501,7 +501,7 @@ description: "Task list for 018-app-cloud-deployment"
   - a **Check now** button that calls the new endpoint, disables itself while a check runs, and re-fetches `system-info` until `last_check_at` changes (poll every 2 s, up to 60 s)
 
   Remove the waiting-snapshots table. Follow the existing shadcn/ui components and styles in that file.
-- [ ] T079 [US5] Update `frontend/tests/unit/SystemInformationSection.test.tsx` for the new shape: a local source hides the cache; a partial latest run shows its failed regions; Check now calls the endpoint, then refreshes, and shows the 409 message. Run `npm run lint`, `npm run build` and `npm test` in `frontend/`.
+- [X] T079 [US5] Update `frontend/tests/unit/SystemInformationSection.test.tsx` for the new shape: a local source hides the cache; a partial latest run shows its failed regions; Check now calls the endpoint, then refreshes, and shows the 409 message. Run `npm run lint`, `npm run build` and `npm test` in `frontend/`.
 
 **Checkpoint**: snapshot updates are visible and safe, and the Admin tab reflects every state in data-model §5.
 

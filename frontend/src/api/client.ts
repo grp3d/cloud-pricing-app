@@ -149,6 +149,16 @@ export const api = {
 
   // --- Admin system information (016-canvas-icon-layout, US5) ---
   getSystemInfo: () => request<SystemInfo>("/admin/system-info"),
+  /** 018-app-cloud-deployment, FR-012: run one pricing-snapshot check now. */
+  startSnapshotCheck: async () => {
+    const res = await fetch(`${BASE}/admin/pricing-snapshot/check`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getCurrentIdentityId()}` },
+    });
+    if (res.status === 409) throw new Error("A check is already running.");
+    if (!res.ok) throw new Error(`Could not start a check: ${res.status}`);
+    return (await res.json()) as components["schemas"]["SnapshotCheckStartedOut"];
+  },
 
   // --- Admin user management (012-user-accounts-sharing) ---
   listAdminUsers: () => request<AdminUser[]>("/admin/users"),

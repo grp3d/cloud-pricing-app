@@ -11,7 +11,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health */
+        /**
+         * Health
+         * @description Public liveness plus the pricing state (018-app-cloud-deployment, FR-028), read by
+         *     `ops health` so the bring-up check needs no login. The reason is a fixed phrase only.
+         */
         get: operations["health_health_get"];
         put?: never;
         post?: never;
@@ -451,6 +455,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/pricing-snapshot/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Snapshot Check
+         * @description Run one check now (FR-012), serialized with the background check. The result appears in
+         *     `system-info` once it finishes.
+         */
+        post: operations["start_snapshot_check_api_v1_admin_pricing_snapshot_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/architectures/{architecture_id}/connectors": {
         parameters: {
             query?: never;
@@ -517,6 +542,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActiveSnapshotOut */
+        ActiveSnapshotOut: {
+            /** Snapshot Date */
+            snapshot_date: string;
+            /** Revision */
+            revision: number;
+            /** Run Id */
+            run_id: string;
+            /** Pipeline Version */
+            pipeline_version: string;
+            /** Created At */
+            created_at: string;
+            /** Pinned */
+            pinned: boolean;
+            /** Regions */
+            regions: string[];
+            /** Failed Regions */
+            failed_regions: components["schemas"]["FailedRegionOut"][];
+        };
         /** AdminPasswordUpdate */
         AdminPasswordUpdate: {
             /** Password */
@@ -700,6 +744,29 @@ export interface components {
         ArchitectureUpdate: {
             /** Is Public */
             is_public: boolean;
+        };
+        /** CacheEntryOut */
+        CacheEntryOut: {
+            /** Snapshot Date */
+            snapshot_date: string;
+            /** Revision */
+            revision: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "cached";
+            /** Bytes */
+            bytes: number;
+        };
+        /** CacheOut */
+        CacheOut: {
+            /** Total Bytes */
+            total_bytes: number;
+            /** Max Bytes */
+            max_bytes: number;
+            /** Entries */
+            entries: components["schemas"]["CacheEntryOut"][];
         };
         /** CalculateSnapshotRequest */
         CalculateSnapshotRequest: {
@@ -909,10 +976,41 @@ export interface components {
             to_collection_id: string;
             sku_selection?: components["schemas"]["SKUSelectionOut"] | null;
         };
+        /** DeploymentOut */
+        DeploymentOut: {
+            /** Environment */
+            environment: string;
+            /** Release */
+            release: string;
+        };
+        /** FailedRegionOut */
+        FailedRegionOut: {
+            /** Region */
+            region: string;
+            /** Reason */
+            reason: string;
+            /** Attempts */
+            attempts: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HealthOut */
+        HealthOut: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "ok";
+            /**
+             * Pricing
+             * @enum {string}
+             */
+            pricing: "ok" | "unavailable";
+            /** Pricing Reason */
+            pricing_reason?: string | null;
         };
         /** ImportResult */
         ImportResult: {
@@ -954,7 +1052,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "missing_icon" | "missing_regions" | "pinned_incomplete";
+            kind: "missing_icon" | "missing_regions";
             /** Snapshot Date */
             snapshot_date: string;
             /** Message */
@@ -967,6 +1065,20 @@ export interface components {
             is_new?: boolean | null;
             /** Regions */
             regions?: string[] | null;
+        };
+        /** LatestRunOut */
+        LatestRunOut: {
+            /** Snapshot Date */
+            snapshot_date: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "succeeded" | "partial" | "failed" | "purged";
+            /** Failed Regions */
+            failed_regions: components["schemas"]["FailedRegionOut"][];
         };
         /** LoginRequest */
         LoginRequest: {
@@ -1021,6 +1133,15 @@ export interface components {
         RegionsOut: {
             /** Regions */
             regions: components["schemas"]["RegionOut"][];
+        };
+        /** RejectedOut */
+        RejectedOut: {
+            /** Snapshot Date */
+            snapshot_date: string | null;
+            /** Revision */
+            revision: number | null;
+            /** Reason */
+            reason: string;
         };
         /** SKUSelectionCreate */
         SKUSelectionCreate: {
@@ -1080,6 +1201,11 @@ export interface components {
             /** Collection Id */
             collection_id?: string | null;
         };
+        /** SnapshotCheckStartedOut */
+        SnapshotCheckStartedOut: {
+            /** Started */
+            started: boolean;
+        };
         /**
          * SnapshotSelection
          * @description One prior SKU selection's pricing inputs — a plain value, not a reference to a live
@@ -1096,20 +1222,32 @@ export interface components {
             /** Usage Quantity */
             usage_quantity: number | string;
         };
+        /** SourceOut */
+        SourceOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "local" | "s3";
+            /** Location */
+            location: string;
+            /** Provider */
+            provider: string;
+        };
         /** SystemInfoOut */
         SystemInfoOut: {
-            /** Active Snapshot Date */
-            active_snapshot_date: string | null;
-            /** Pinned */
-            pinned: boolean;
+            deployment: components["schemas"]["DeploymentOut"];
+            source: components["schemas"]["SourceOut"];
+            active: components["schemas"]["ActiveSnapshotOut"] | null;
+            latest_run: components["schemas"]["LatestRunOut"] | null;
+            rejected: components["schemas"]["RejectedOut"] | null;
+            cache: components["schemas"]["CacheOut"] | null;
             /** Last Check At */
             last_check_at: string | null;
             /** Last Check Error */
             last_check_error: string | null;
             /** Check Interval Seconds */
             check_interval_seconds: number;
-            /** Waiting Snapshots */
-            waiting_snapshots: components["schemas"]["WaitingSnapshotOut"][];
             /** Issues */
             issues: components["schemas"]["IssueOut"][];
         };
@@ -1145,13 +1283,6 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
-        /** WaitingSnapshotOut */
-        WaitingSnapshotOut: {
-            /** Snapshot Date */
-            snapshot_date: string;
-            /** Reason */
-            reason: string;
-        };
     };
     responses: never;
     parameters: never;
@@ -1176,9 +1307,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["HealthOut"];
                 };
             };
         };
@@ -2149,6 +2278,44 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SystemInfoOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_snapshot_check_api_v1_admin_pricing_snapshot_check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotCheckStartedOut"];
+                };
+            };
+            /** @description A check is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

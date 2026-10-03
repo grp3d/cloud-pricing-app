@@ -86,6 +86,8 @@ class MonitorState:
     rejected: RejectedManifest | None = None
     issues: list[Issue] = field(default_factory=list)
     initialized: bool = False
+    # Verified S3 cache entries after the last clean-up; None for a local source.
+    cache: list | None = None
 
 
 @dataclass(frozen=True)
@@ -362,6 +364,38 @@ def _log_transitions(result: CheckResult, *, first: bool) -> None:
                 )
 
 
+def _cleanup_cache(store: S3Store, result: CheckResult) -> None:
+    """Delete what the clean-up policy says, then record the cache for the Admin tab."""
+    from src.pricing_data.snapshot_cache import apply_cleanup, list_entries, plan_cleanup
+
+    cache_dir = Path(settings.pricing_cache_dir)
+    entries = list_entries(cache_dir, PROVIDER)
+
+    def entry_for(snapshot: ActiveSnapshot | None):
+        if snapshot is None:
+            return None
+        return next((e for e in entries if e.path == snapshot.base_dir), None)
+
+    purged: set[str] = set()
+    for date_ in {e.snapshot_date for e in entries} - {STATE.active.snapshot_date
+                                                        if STATE.active else ""}:
+        found = _read_manifest(store, PROVIDER, date_)
+        if isinstance(found, Manifest) and found.status == "purged":
+            purged.add(date_)
+    deletions = plan_cleanup(
+        entries,
+        active=entry_for(STATE.active),
+        keep=settings.pricing_cache_keep,
+        max_bytes=settings.pricing_cache_max_bytes,
+        superseded_this_check=entry_for(result.previous) if result.switched else None,
+        purged_dates=purged,
+    )
+    if deletions:
+        apply_cleanup(deletions)
+        logger.info("pricing cache cleaned", deleted=[p.name for p in deletions])
+    STATE.cache = list_entries(cache_dir, PROVIDER)
+
+
 def _post_check(store: Store, result: CheckResult) -> None:
     """Work after a check: the icon analysis on a switch, then cache clean-up (S3 only)."""
     if result.analysis_needed:
@@ -369,6 +403,13 @@ def _post_check(store: Store, result: CheckResult) -> None:
             (_analysis_hook or _default_analysis)(STATE, store, result.previous)
         except Exception:  # noqa: BLE001 — a failed analysis never stops pricing
             logger.exception("icon coverage analysis failed")
+    if isinstance(store, S3Store):
+        try:
+            _cleanup_cache(store, result)
+        except Exception:  # noqa: BLE001 — clean-up is retried at the next check
+            logger.exception("pricing cache clean-up failed")
+    else:
+        STATE.cache = None
 
 
 def run_check(*, at_startup: bool = False) -> CheckResult:

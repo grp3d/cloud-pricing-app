@@ -186,3 +186,57 @@ def startup_cleanup(cache_dir: Path) -> None:
         return
     for tmp in cache_dir.glob("*/*.tmp-*"):
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+# --- Clean-up (FR-011, SC-006) ------------------------------------------------------------------
+
+
+def plan_cleanup(
+    entries: list[CacheEntry],
+    *,
+    active: CacheEntry | None,
+    keep: int,
+    max_bytes: int,
+    superseded_this_check: CacheEntry | None,
+    purged_dates: set[str],
+) -> list[Path]:
+    """Paths of the entries to delete, oldest first. Pure: decides, deletes nothing.
+
+    The active entry is never deleted, and neither is the one this check just superseded — a
+    request may still be reading it; it becomes eligible at the next check. After that, purged
+    snapshots go, then anything beyond `keep` others, then the oldest until the cache fits in
+    `max_bytes`.
+    """
+    protected = {e.path for e in (active, superseded_this_check) if e is not None}
+    oldest_first = sorted(entries, key=lambda e: (e.snapshot_date, e.revision))
+    deletions: list[Path] = []
+
+    for entry in oldest_first:
+        if entry.path not in protected and entry.snapshot_date in purged_dates:
+            deletions.append(entry.path)
+
+    others = [e for e in oldest_first if active is None or e.path != active.path]
+    others = [e for e in others if e.path not in deletions]
+    excess = len(others) - keep
+    for entry in others:
+        if excess <= 0:
+            break
+        if entry.path not in protected:
+            deletions.append(entry.path)
+            excess -= 1
+
+    remaining = [e for e in oldest_first if e.path not in deletions]
+    total = sum(e.bytes for e in remaining)
+    for entry in remaining:
+        if total <= max_bytes:
+            break
+        if entry.path not in protected:
+            deletions.append(entry.path)
+            total -= entry.bytes
+
+    return sorted(set(deletions), key=lambda p: p.name)
+
+
+def apply_cleanup(paths: list[Path]) -> None:
+    for path in paths:
+        shutil.rmtree(path, ignore_errors=True)
