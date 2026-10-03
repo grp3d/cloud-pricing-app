@@ -68,6 +68,37 @@ Trust: `…:ref:refs/tags/v*` only. No state access and no other services.
 - Which actions accept only `Resource: *`, from the Service Authorization Reference for EC2, SSM and ECR.
 - That `amazon-ecr-credential-helper` is in the Ubuntu 24.04 arm64 archive.
 
+## Verified action list (T026, 2026-10-02)
+
+Checked against the machine-readable Service Authorization Reference (`https://servicereference.us-east-1.amazonaws.com/v1/<service>/<service>.json`, the same data as the published reference pages). "`*` only" means the action has no resource type, so a statement for it must use `Resource: "*"`.
+
+| Action | Resource types AWS checks | `*` only | Condition keys this repo uses |
+|---|---|---|---|
+| `ssm:SendCommand` | `document`, `instance` (also `managed-instance`, `bucket` — not used) | no | `ssm:resourceTag/environment`, `ssm:resourceTag/app` on `instance/*`. The document statement names `document/AWS-RunShellScript` |
+| `ssm:GetCommandInvocation` | — | **yes** | none |
+| `ssm:ListCommandInvocations` | — | **yes** | none |
+| `ssm:DescribeInstanceInformation` | — | **yes** | none (used to wait for the agent to come online) |
+| `ssm:GetParameter(s)`, `ssm:PutParameter` | `parameter` | no | parameter path `/cloud-pricing-app/<env>/*`; public `/aws/service/canonical/*` for `ami-latest` |
+| `ec2:Describe*` (incl. `DescribeImages`, `DescribeInstances`) | — | **yes** | none |
+| `ec2:RunInstances` | `image`, `instance`, `network-interface`, `security-group`, `subnet`, `volume` (plus types not used: key pair, launch template, snapshot, …) | no | `aws:RequestTag/*` on `instance/*`; `aws:ResourceTag/*` on `subnet/*` and `security-group/*`; the pinned `image/<ami>`. `network-interface/*` and `volume/*` are allowed without a tag condition: they are created only alongside an instance that must carry the tags, in a subnet that must carry them |
+| `ec2:CreateTags` | every EC2 type | no | `ec2:CreateAction` in `CreateVpc`, `CreateSubnet`, `CreateInternetGateway`, `CreateRouteTable`, `CreateSecurityGroup`, `AuthorizeSecurityGroupIngress`, `AuthorizeSecurityGroupEgress`, `RunInstances` |
+| `ec2:CreateVpc`, `CreateInternetGateway` | `vpc` / `internet-gateway` | no | `aws:RequestTag/environment`, `aws:RequestTag/app` |
+| `ec2:CreateSubnet`, `CreateRouteTable`, `CreateSecurityGroup` | the new resource **and** the `vpc` | no | `aws:RequestTag/*` (request-wide, so it covers the VPC check too) |
+| `ec2:AuthorizeSecurityGroupIngress/Egress` | `security-group`, `security-group-rule` | no | `aws:RequestTag/*` for the new rule; `aws:ResourceTag/*` for the group |
+| `ec2:RevokeSecurityGroupIngress/Egress` | `security-group` only | no | `aws:ResourceTag/*` |
+| `ec2:CreateRoute`, `AttachInternetGateway`, `AssociateRouteTable`, `Modify*Attribute`, `Delete*`, `TerminateInstances` | the existing (tagged) resources | no | `aws:ResourceTag/*` |
+| `ecr:DescribeImages`, `BatchGetImage`, `GetDownloadUrlForLayer`, push actions | `repository` | no | repository ARN |
+| `ecr:GetAuthorizationToken` | — | **yes** | none |
+| `sns:Publish` | `topic` | no | topic ARN |
+| `logs:CreateLogStream`, `PutLogEvents` | `log-stream` | no | `log-group:/cloud-pricing-app/<env>:log-stream:*` |
+| `iam:PassRole` | `role` | no | `iam:PassedToService = ec2.amazonaws.com` |
+
+**Approved `Resource: "*"` statements** (base-stack test 6 checks this list): the `*`-only actions above (`ec2:Describe*`, `ssm:GetCommandInvocation`, `ssm:ListCommandInvocations`, `ssm:DescribeInstanceInformation`, `ecr:GetAuthorizationToken`, `sts:GetCallerIdentity`), and EC2 statements that carry an `aws:RequestTag`, `aws:ResourceTag` or `ec2:CreateAction` condition.
+
+**State bucket listing**: `s3:ListBucket` on the state bucket is granted without a prefix condition, as in the pipeline's `apply` role. The S3 backend lists keys outside `app/<env>/` (workspaces, under `env:/`) during `init`, and a listing reveals key names only. Objects stay limited to `app/<env>/*`.
+
+**Not needed**: KMS permissions for the `aws/ssm` key on the `deploy` role. AWS-managed key policies already allow any principal in the account that is authorized to call SSM (`kms:ViaService`, `kms:CallerAccount`). The instance role keeps an explicit `kms:Decrypt` with `kms:ViaService` as task T027 asks, which is harmless.
+
 ## Tests that must exist (`tofu test`, mocked providers, run in CI)
 
 1. `instance`: there is no `aws_s3_bucket*`, `aws_ssm_parameter`, `aws_cloudwatch_log_group`, `aws_sns_*` or `aws_iam_*` resource (nothing long-lived, and no IAM writes).

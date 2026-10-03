@@ -24,8 +24,11 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Use the application's own settings rather than a static alembic.ini URL, so one
-# DATABASE_URL env var controls both the app and its migrations.
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# DATABASE_URL env var controls both the app and its migrations. 018-app-cloud-deployment:
+# `src.ops.db.alembic_upgrade` (db-init) passes an explicit target in `config.attributes`.
+config.set_main_option(
+    "sqlalchemy.url", config.attributes.get("database_url") or settings.database_url
+)
 
 target_metadata = Base.metadata
 

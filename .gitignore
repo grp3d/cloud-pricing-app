@@ -21,3 +21,10 @@ Thumbs.db
 *.swp
 *.log
 .vite/
+!.env.local.example
+
+# Deployment (018-app-cloud-deployment)
+infra/**/.terraform/
+*.tfstate*
+.local-backups/
+.local-tls/

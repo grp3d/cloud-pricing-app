@@ -30,19 +30,19 @@ description: "Task list for 018-app-cloud-deployment"
 
 **Purpose**: dependencies, folders, pinned tool versions and test fixtures that every later phase uses.
 
-- [ ] T001 Add `boto3` to `[project].dependencies` and `jsonschema` to the `dev` extra in `backend/pyproject.toml`, then run `uv lock` to update `backend/uv.lock`. Add `boto3-stubs` only if `ruff` or tests need it (they shouldn't).
-- [ ] T002 [P] Create the empty deployment folder layout with a one-line `README.md` in each: `infra/base/`, `infra/instance/`, `infra/envs/`, `deploy/`, `deploy/host/`. Add `infra/**/.terraform/`, `*.tfstate*`, `.local-backups/` and `.local-tls/` to `.gitignore`.
-- [ ] T003 [P] Vendor the pipeline's contracts into `backend/tests/fixtures/contracts/`: copy `latest.schema.json`, `manifest.schema.json` and `storage-layout.md` from `../cloud-pricing-data-retrieval/specs/003-pipeline-cloud-deployment/contracts/`. Add `backend/tests/fixtures/contracts/SOURCE.md` recording the source repo, path and commit (`git -C ../cloud-pricing-data-retrieval rev-parse HEAD`), and saying the files must be re-copied, not edited, when the contract changes.
-- [ ] T004 Rewrite `backend/scripts/build_test_pricing_fixture.py` to write the **new layout** to `backend/tests/fixtures/pricing_parquet/` (the default output stays the same folder):
+- [X] T001 Add `boto3` to `[project].dependencies` and `jsonschema` to the `dev` extra in `backend/pyproject.toml`, then run `uv lock` to update `backend/uv.lock`. Add `boto3-stubs` only if `ruff` or tests need it (they shouldn't).
+- [X] T002 [P] Create the empty deployment folder layout with a one-line `README.md` in each: `infra/base/`, `infra/instance/`, `infra/envs/`, `deploy/`, `deploy/host/`. Add `infra/**/.terraform/`, `*.tfstate*`, `.local-backups/` and `.local-tls/` to `.gitignore`.
+- [X] T003 [P] Vendor the pipeline's contracts into `backend/tests/fixtures/contracts/`: copy `latest.schema.json`, `manifest.schema.json` and `storage-layout.md` from `../cloud-pricing-data-retrieval/specs/003-pipeline-cloud-deployment/contracts/`. Add `backend/tests/fixtures/contracts/SOURCE.md` recording the source repo, path and commit (`git -C ../cloud-pricing-data-retrieval rev-parse HEAD`), and saying the files must be re-copied, not edited, when the contract changes.
+- [X] T004 Rewrite `backend/scripts/build_test_pricing_fixture.py` to write the **new layout** to `backend/tests/fixtures/pricing_parquet/` (the default output stays the same folder):
   - **Data files**: `aws/parquet/<table>/snapshot_date=<D>/region=<R>/part-<run_id>.parquet`, using a fixed `run_id` such as `20260924T000000Z-f1x7ur`.
   - **Manifest**: `aws/manifests/<D>/manifest.json`, valid against the vendored `manifest.schema.json`, with `status: "succeeded"`, `revision: 1`, `origin: "backfill"`, real `bytes`/`sha256`/`row_count` per file and per table, and every table `schema_version: 1`.
   - **Pointer**: `aws/manifests/latest.json`.
   - **Source**: either a legacy tree (`--source …/DATA/pricing_aws/parquet`, as today) or a new-layout root (`--source-uri file:///…/DATA/pipeline`).
   - **Keep**: the existing SKU selection rules (SEED_SKUS plus standard-architecture SKUs, verbatim rows, source order).
   - Update the module docstring.
-- [ ] T005 Regenerate the fixture with the rewritten script. Delete the old `backend/tests/fixtures/pricing_parquet/<table>/` folders, commit the new `aws/` tree, and confirm `latest.json` and the manifest validate against the vendored schemas with a one-off `jsonschema` check.
-- [ ] T006 [P] Rewrite `backend/tests/helpers/parquet_tree.py` as `make_pipeline_root(root, snapshots)`. It builds a new-layout root (data files, `manifests/<D>/manifest.json`, optional `latest.json`) from a compact spec per snapshot: `date`, `revision`, `status`, `regions`, `failed_regions`, `services` (written to `service_dim`), `schema_versions`, `extra_files` (to simulate leftover superseded files), `bad_paths`, and `point_latest` (bool). It computes real sha256 and byte sizes. Keep `make_snapshot_tree` only until T096 removes it.
-- [ ] T007 [P] Create hand-written edge-case manifests in `backend/tests/fixtures/manifests/`, each a full valid-shape JSON document:
+- [X] T005 Regenerate the fixture with the rewritten script. Delete the old `backend/tests/fixtures/pricing_parquet/<table>/` folders, commit the new `aws/` tree, and confirm `latest.json` and the manifest validate against the vendored schemas with a one-off `jsonschema` check.
+- [X] T006 [P] Rewrite `backend/tests/helpers/parquet_tree.py` as `make_pipeline_root(root, snapshots)`. It builds a new-layout root (data files, `manifests/<D>/manifest.json`, optional `latest.json`) from a compact spec per snapshot: `date`, `revision`, `status`, `regions`, `failed_regions`, `services` (written to `service_dim`), `schema_versions`, `extra_files` (to simulate leftover superseded files), `bad_paths`, and `point_latest` (bool). It computes real sha256 and byte sizes. Keep `make_snapshot_tree` only until T096 removes it.
+- [X] T007 [P] Create hand-written edge-case manifests in `backend/tests/fixtures/manifests/`, each a full valid-shape JSON document:
   - `partial.json`, `failed.json`, `purged.json`
   - `bad_path_dotdot.json`, `bad_path_absolute.json`, `bad_path_other_date.json`, `bad_path_other_region.json`
   - `unsupported_major.json` (`manifest_version: "2.0"`), `unsupported_schema.json` (a table with `schema_version: 2`)
@@ -60,21 +60,21 @@ description: "Task list for 018-app-cloud-deployment"
 
 ### Settings and storage
 
-- [ ] T008 Write failing tests in `backend/tests/unit/test_config_data_source.py`:
+- [X] T008 Write failing tests in `backend/tests/unit/test_config_data_source.py`:
   - `PRICING_DATA_URI` accepts `file:///abs`, `/abs` and `s3://bucket[/prefix]`, and rejects relative paths, `http://` and empty values, each with a message naming the setting.
   - A `file://` path that doesn't exist stops startup.
   - Setting `AWS_PRICING_PARQUET_DIR` stops startup with the exact message in [contracts/configuration.md](./contracts/configuration.md).
   - Defaults and bounds hold for `PRICING_CACHE_DIR`, `PRICING_CACHE_MAX_BYTES` (≥ 268435456), `PRICING_CACHE_KEEP` (≥ 0), `DUCKDB_MEMORY_LIMIT`, `DUCKDB_THREADS` (≥ 1), `BACKUP_URI` (`file://` or `s3://` only), `BACKUP_KEEP` (≥ 1), `UPTIME_ALERT_HOURS`, `UPTIME_ALERT_REPEAT_HOURS`, `APP_ENVIRONMENT` and `APP_RELEASE`.
-- [ ] T009 Implement the settings in `backend/src/config.py`:
+- [X] T009 Implement the settings in `backend/src/config.py`:
   - Remove `aws_pricing_parquet_dir`.
   - Add a `model_validator(mode="before")` that raises if `AWS_PRICING_PARQUET_DIR` is present in the environment or `.env`.
   - Add the new fields from [contracts/configuration.md](./contracts/configuration.md), and a parsed `pricing_data_source` property returning `(kind, root)`.
   - Keep every existing setting.
   - Make T008 pass.
-- [ ] T010 [P] Write failing tests in `backend/tests/unit/test_storage.py` for `src/pricing_data/storage.py`:
+- [X] T010 [P] Write failing tests in `backend/tests/unit/test_storage.py` for `src/pricing_data/storage.py`:
   - `LocalStore`: `get` returns bytes or `None` for a missing key; `list_manifest_dates` returns sorted dates from `aws/manifests/` folders and ignores `latest.json` and non-date names; `file_path` stays inside the root.
   - `S3Store`, against an in-memory fake client (a small class in `backend/tests/helpers/fake_s3.py`, also created in this task, implementing `get_object`, `head_object`, `list_objects_v2` with `Delimiter`, `put_object` with `IfNoneMatch`, `delete_object`, `download_fileobj` and the `ChecksumSHA256` fields): `get` maps `NoSuchKey`, `AccessDenied` and 404 `ClientError` to `None` (FR-008) and re-raises other errors; `download` streams to a destination while computing sha256 and fails on a size or hash mismatch.
-- [ ] T011 Implement `backend/src/pricing_data/storage.py`:
+- [X] T011 Implement `backend/src/pricing_data/storage.py`:
   - `LocalStore(root)` and `S3Store(bucket, prefix, client=None)`, both providing `get(key)`, `list_manifest_dates(provider)` and `exists(key)`; `LocalStore.file_path(key)`; `S3Store.download(key, dest, expected_bytes, expected_sha256)`.
   - `S3Store` builds its client lazily with `boto3.client("s3", config=Config(retries={"mode": "standard"}))`, using the default credential chain and never a profile setting.
   - Add `open_store(settings)` to build the store from `pricing_data_source`.
@@ -82,24 +82,24 @@ description: "Task list for 018-app-cloud-deployment"
 
 ### Database lifecycle core (US2, US3, US4, US7, US8 all use it)
 
-- [ ] T012 [P] Write failing tests in `backend/tests/unit/test_backup_store.py` for `src/ops/backup_store.py`, with `file://` in `tmp_path` and `s3://` through the fake S3:
+- [X] T012 [P] Write failing tests in `backend/tests/unit/test_backup_store.py` for `src/ops/backup_store.py`, with `file://` in `tmp_path` and `s3://` through the fake S3:
   - ids follow `<yyyymmddThhmmssZ>-<kind>-<release>`
   - `put_backup` writes `.dump` before `.json`
   - `list_backups` ignores a `.dump` without its `.json`
   - `newest_verified()` and `get(id)`
-- [ ] T013 [P] Write failing tests in `backend/tests/unit/test_backup_retention.py` for the pure function `select_deletions(backups, keep, now)`:
+- [X] T013 [P] Write failing tests in `backend/tests/unit/test_backup_retention.py` for the pure function `select_deletions(backups, keep, now)`:
   - keeps the newest `keep` verified backups
   - never deletes the newest verified backup, even with `keep=1` and a newer unverified one present
   - deletes incomplete backups older than 24 h only
   - returns ids, deleting nothing itself
-- [ ] T014 Implement `backend/src/ops/backup_store.py` (file and S3 backends, using `storage.py` helpers where they fit) and the retention function in `backend/src/ops/backup.py`. Make T012 and T013 pass.
-- [ ] T015 Write failing integration tests in `backend/tests/integration/test_backup_roundtrip.py`, against the test Postgres (`TEST_DATABASE_URL`) with `pg_dump` and `pg_restore` on `PATH`:
+- [X] T014 Implement `backend/src/ops/backup_store.py` (file and S3 backends, using `storage.py` helpers where they fit) and the retention function in `backend/src/ops/backup.py`. Make T012 and T013 pass.
+- [X] T015 Write failing integration tests in `backend/tests/integration/test_backup_roundtrip.py`, against the test Postgres (`TEST_DATABASE_URL`) with `pg_dump` and `pg_restore` on `PATH`:
   - `backup --kind manual` to a `file://` location produces metadata with `alembic_revision`, `row_counts` for every ORM table (from `Base.metadata`, not a hard-coded list), sha256, bytes and `verified: true`.
   - Restoring into an empty database reproduces the same row counts.
   - A corrupted `.dump` (one flipped byte) fails verification with exit code 4.
   - Retention runs only after a verified backup.
   - Skip with a clear reason if `pg_dump` is missing locally. CI must have it (T088).
-- [ ] T016 Implement `backend/src/ops/backup.py`:
+- [X] T016 Implement `backend/src/ops/backup.py`:
   1. `pg_dump -Fc` with an exported snapshot (`--snapshot`, taken in the same transaction as the row counts) to a temp file.
   2. `pg_restore --list` check.
   3. Upload the dump, then the metadata.
@@ -108,7 +108,7 @@ description: "Task list for 018-app-cloud-deployment"
   6. On any failure, call `alerts.notify` and exit `4`.
 
   Make T015 pass.
-- [ ] T017 Write failing integration tests in `backend/tests/integration/test_db_init_restore.py` for `src/ops/db_init.py`:
+- [X] T017 Write failing integration tests in `backend/tests/integration/test_db_init_restore.py` for `src/ops/db_init.py`:
   - **Empty database, no backups**: `fresh`. Migrated to head. The default Admin's password is replaced from a stubbed parameter reader (`admin123` no longer verifies, and the stub password does).
   - **Empty database with backups**: `restored`, from the newest verified one, with row counts verified.
   - **`--backup <id>`**: restores that one.
@@ -116,19 +116,19 @@ description: "Task list for 018-app-cloud-deployment"
   - **Unknown `alembic_revision`**: exit 3, "backup is from a newer release".
   - **Existing database** (an `alembic_version` table is present): `existing`, migrations applied, Admin password untouched.
   - **Fresh database with no owner password configured**: exit 3 unless `--allow-default-admin-password`.
-- [ ] T018 Implement `backend/src/ops/db_init.py` per [contracts/ops-cli.md](./contracts/ops-cli.md):
+- [X] T018 Implement `backend/src/ops/db_init.py` per [contracts/ops-cli.md](./contracts/ops-cli.md):
   - Detect the state, restore with `pg_restore --no-owner --exit-on-error`, verify the counts, run `alembic upgrade head` programmatically (`alembic.command.upgrade` with `backend/alembic.ini`), then on a fresh database set the password with `auth_service.hash_password`.
   - Seed data comes only from the Alembic migrations (`0004` Admin, `0005` standard architectures), which already insert with `WHERE NOT EXISTS`. `alembic upgrade head` therefore covers FR-021's "apply seed data, safe to repeat". Don't add a separate seeding step.
   - Read the owner password through `src/ops/params.py`, a new small module wrapping `ssm.get_parameter(WithDecryption=True)`, so tests can stub it.
   - Write `/run/app/db-init.json`, with the path overridable for tests.
 
   Make T017 pass.
-- [ ] T019 [P] Implement `backend/src/ops/alerts.py` (`notify(message, subject)` publishes to `ALERT_TOPIC_ARN` through SNS, or only logs `alert not sent: no topic` when unset; it never raises) and its unit test `backend/tests/unit/test_alerts.py` (stubbed client, and the unset-topic path).
-- [ ] T020 Implement the CLI entry `backend/src/ops/__main__.py` (argparse subcommands `db-init`, `backup`, `backups list`, `notify`). Each command logs JSON, prints exactly one JSON result object as the **last stdout line**, and exits with the contract's codes (0, 1, 3, 4). Add `backend/tests/unit/test_ops_cli.py`, which runs `python -m src.ops backups list` against a `file://` location and checks the last-line JSON and the exit code.
+- [X] T019 [P] Implement `backend/src/ops/alerts.py` (`notify(message, subject)` publishes to `ALERT_TOPIC_ARN` through SNS, or only logs `alert not sent: no topic` when unset; it never raises) and its unit test `backend/tests/unit/test_alerts.py` (stubbed client, and the unset-topic path).
+- [X] T020 Implement the CLI entry `backend/src/ops/__main__.py` (argparse subcommands `db-init`, `backup`, `backups list`, `notify`). Each command logs JSON, prints exactly one JSON result object as the **last stdout line**, and exits with the contract's codes (0, 1, 3, 4). Add `backend/tests/unit/test_ops_cli.py`, which runs `python -m src.ops backups list` against a `file://` location and checks the last-line JSON and the exit code.
 
 ### Packaging
 
-- [ ] T021 [P] Create `backend/Dockerfile`:
+- [X] T021 [P] Create `backend/Dockerfile`:
   - Base: `python:3.12-slim-bookworm`, pinned by digest.
   - Install `postgresql-client-18` from the PGDG apt repository, with the signing key downloaded and checked against its published fingerprint in the Dockerfile (fail the build on mismatch).
   - Install `uv` (pinned version, copied from its official image by digest), `uv sync --frozen --no-dev`, copy `src/`, `alembic.ini` and `scripts/` needed at runtime.
@@ -137,13 +137,13 @@ description: "Task list for 018-app-cloud-deployment"
   - Labels: `org.opencontainers.image.revision` from build arg `GIT_SHA`, and `APP_RELEASE` from build arg `RELEASE`.
 
   Add `backend/.dockerignore` (`.venv`, `tests`, `__pycache__`, `*.log`).
-- [ ] T022 [P] Create `frontend/Dockerfile.web`: stage 1 `node:20` (pinned by digest) runs `npm ci && npm run build`; stage 2 `caddy:2` (pinned by digest) copies `dist/` to `/srv` and `frontend/Caddyfile` to `/etc/caddy/Caddyfile`. Add `frontend/.dockerignore`.
-- [ ] T023 [P] Create `frontend/Caddyfile`:
+- [X] T022 [P] Create `frontend/Dockerfile.web`: stage 1 `node:20` (pinned by digest) runs `npm ci && npm run build`; stage 2 `caddy:2` (pinned by digest) copies `dist/` to `/srv` and `frontend/Caddyfile` to `/etc/caddy/Caddyfile`. Add `frontend/.dockerignore`.
+- [X] T023 [P] Create `frontend/Caddyfile`:
   - A global `pki { ca local { root { cert /tls/root.crt; key /tls/root.key } } }` block.
   - One site block for `https://{$PUBLIC_ADDRESS}:{$HTTPS_PORT:443}` with `tls internal`, `handle /api/* { reverse_proxy backend:8000 }`, `handle /health { reverse_proxy backend:8000 }`, and `handle { root * /srv; try_files {path} /index.html; file_server }`.
   - No HTTP listener (`auto_https disable_redirects`, and `http_port` unused).
   - JSON access logs to stdout.
-- [ ] T024 Create `compose.yaml` at the repository root with services:
+- [X] T024 Create `compose.yaml` at the repository root with services:
   - `db`: `postgres:18` pinned by digest, `shared_buffers=128MB`, password from the `POSTGRES_PASSWORD_FILE` secret, a healthcheck with `pg_isready`, and a named volume.
   - `tls-init` (backend image): `python -m src.ops fetch-tls --out /tls`, with a tmpfs volume `tls`.
   - `db-init` (backend image): `python -m src.ops db-init ${DB_INIT_ARGS:-}`, depending on `db` healthy.
@@ -152,7 +152,7 @@ description: "Task list for 018-app-cloud-deployment"
   - `ops` (backend image, profile `ops`): used by `docker compose run --rm ops …`.
 
   All images come from variables `BACKEND_IMAGE` and `WEB_IMAGE` (digests in the cloud). Every service gets its settings from `/opt/app/.env` through `env_file`. The `awslogs` logging driver is set through an `x-logging` anchor whose options come from variables (`LOG_GROUP`, `AWS_REGION`), so the local override can replace it.
-- [ ] T025 Add the `fetch-tls` subcommand in `backend/src/ops/tls.py` and wire it in `__main__.py`:
+- [X] T025 Add the `fetch-tls` subcommand in `backend/src/ops/tls.py` and wire it in `__main__.py`:
   - Read `/cloud-pricing-app/<env>/tls/root-key` (SecureString) and `/root-cert` through `params.py`, write them to `--out` with mode 0400, and print the fingerprint and `not_after`.
   - With `TLS_ROOT_DIR` set (local stack), copy from that directory instead.
 
@@ -160,8 +160,8 @@ description: "Task list for 018-app-cloud-deployment"
 
 ### Base stack and `deploy/app` skeleton
 
-- [ ] T026 Look up and record the exact IAM actions and resource types needed, before writing any policy (FR-049, research R2, [contracts/infrastructure.md](./contracts/infrastructure.md) "Still to confirm"). Use the Service Authorization Reference (AWS MCP `search_documentation` or `read_documentation`) for EC2, SSM, ECR, S3, SNS, Logs and IAM PassRole. Write the result into a new section, "Verified action list", in `specs/018-app-cloud-deployment/contracts/infrastructure.md`. List, per action, the resource ARN pattern, whether it accepts only `*`, and the condition keys used. Include `ssm:GetCommandInvocation` and `ssm:ListCommandInvocations`, `ec2:DescribeImages`, `ecr:DescribeImages`, the `ec2:RunInstances` resource set (instance, volume, network-interface, image, subnet, security-group), and `ssm:SendCommand` with `ssm:resourceTag/…`.
-- [ ] T027 Create `infra/base/` (`versions.tf`, `providers.tf`, `variables.tf`, `main.tf`, `iam_ci.tf`, `iam_instance.tf`, `ecr.tf`, `outputs.tf`):
+- [X] T026 Look up and record the exact IAM actions and resource types needed, before writing any policy (FR-049, research R2, [contracts/infrastructure.md](./contracts/infrastructure.md) "Still to confirm"). Use the Service Authorization Reference (AWS MCP `search_documentation` or `read_documentation`) for EC2, SSM, ECR, S3, SNS, Logs and IAM PassRole. Write the result into a new section, "Verified action list", in `specs/018-app-cloud-deployment/contracts/infrastructure.md`. List, per action, the resource ARN pattern, whether it accepts only `*`, and the condition keys used. Include `ssm:GetCommandInvocation` and `ssm:ListCommandInvocations`, `ec2:DescribeImages`, `ecr:DescribeImages`, the `ec2:RunInstances` resource set (instance, volume, network-interface, image, subnet, security-group), and `ssm:SendCommand` with `ssm:resourceTag/…`.
+- [X] T027 Create `infra/base/` (`versions.tf`, `providers.tf`, `variables.tf`, `main.tf`, `iam_ci.tf`, `iam_instance.tf`, `ecr.tf`, `outputs.tf`):
   - **Variables** (all validated): `environment` (`dev|qa|prod`), `aws_region`, `state_bucket_name`, `github_repository` (`grp3d/cloud-pricing-app`), `github_owner_id`, `github_repo_id`, `alert_email`, `data_bucket_name`, `data_read_policy_name`, `log_retention_days` (default 14), `backup_bucket_suffix`, `initial_allowlist` (list, default `[]`).
   - **Data sources**: `aws_iam_openid_connect_provider` by URL `https://token.actions.githubusercontent.com`, the state bucket, the data bucket and the data read policy. A missing item fails the plan in its lookup, before anything is created. Don't add `precondition` blocks for these, because they never run when the lookup fails (contracts/infrastructure.md). T067's runbook gives a check command for each item.
   - **Backup bucket** `cloud-pricing-app-backups-<env>-<suffix>`: public access blocked, SSE-S3, versioning off, a lifecycle rule aborting incomplete multipart uploads after 1 day, `force_destroy = false`.
@@ -176,7 +176,7 @@ description: "Task list for 018-app-cloud-deployment"
   - **CI roles** `cloud-pricing-app-gha-{plan,release,deploy}-<env>` with trust and permissions exactly as in contracts/infrastructure.md and T026's verified list. Trust is `StringLike` on `token.actions.githubusercontent.com:sub` with the immutable subject prefix `repo:grp3d@<owner_id>/cloud-pricing-app@<repo_id>`, and `StringEquals` on `aud = sts.amazonaws.com`.
   - **Outputs**: role ARNs, `gha_trust_subjects`, the backup bucket, the topic ARN, the log group, the repository URLs, the instance profile name and the allowlist parameter name.
   - **Backend**: `backend "s3" {}` with a comment showing `tofu init -backend-config=../envs/<env>.backend.hcl -backend-config="key=app/<env>/base.tfstate"`.
-- [ ] T028 Write `infra/base/tests/base.tftest.hcl` (mocked AWS provider, `command = plan`) asserting contracts/infrastructure.md tests 4, 5 and 6:
+- [X] T028 Write `infra/base/tests/base.tftest.hcl` (mocked AWS provider, `command = plan`) asserting contracts/infrastructure.md tests 4, 5 and 6:
   - no `aws_instance` or `aws_vpc` resources
   - the bucket blocks public access and is encrypted
   - both repositories are IMMUTABLE, scan on push, have the lifecycle rule and `force_delete = false`
@@ -185,9 +185,9 @@ description: "Task list for 018-app-cloud-deployment"
   - the release role's only non-`*` resources are the two repositories
 
   Run `tofu test` in `infra/base`.
-- [ ] T029 [P] Create `infra/envs/prod.tfvars` (environment, region `us-east-1`, `instance_type = "t4g.small"`, `root_volume_gib = 20`, `data_bucket_name = "cloud-pricing-data-prod-g08a9i"`, `data_read_policy_name = "cloud-pricing-data-read-prod"`, `log_retention_days = 14`, `backup_bucket_suffix` chosen by the owner with no account ID, and `ami_id` left as a placeholder comment to fill with `deploy/app ami-latest`), `infra/envs/prod.backend.hcl` (`bucket = "cloud-pricing-shared-tfstate-g08a9i"`, `region`, `encrypt = true`, `use_lockfile = true`, no key), plus `dev.tfvars.example` and `qa.tfvars.example`.
-- [ ] T030 Generate the provider lock file for `infra/base` with `tofu providers lock -platform=linux_arm64 -platform=linux_amd64 -platform=darwin_arm64` and commit `infra/base/.terraform.lock.hcl`. The `infra/instance` lock file is generated in T099, once that stack exists.
-- [ ] T031 Create `deploy/app` (bash, `#!/usr/bin/env bash`, `set -euo pipefail`, executable) with the shared skeleton:
+- [X] T029 [P] Create `infra/envs/prod.tfvars` (environment, region `us-east-1`, `instance_type = "t4g.small"`, `root_volume_gib = 20`, `data_bucket_name = "cloud-pricing-data-prod-g08a9i"`, `data_read_policy_name = "cloud-pricing-data-read-prod"`, `log_retention_days = 14`, `backup_bucket_suffix` chosen by the owner with no account ID, and `ami_id` left as a placeholder comment to fill with `deploy/app ami-latest`), `infra/envs/prod.backend.hcl` (`bucket = "cloud-pricing-shared-tfstate-g08a9i"`, `region`, `encrypt = true`, `use_lockfile = true`, no key), plus `dev.tfvars.example` and `qa.tfvars.example`.
+- [X] T030 Generate the provider lock file for `infra/base` with `tofu providers lock -platform=linux_arm64 -platform=linux_amd64 -platform=darwin_arm64` and commit `infra/base/.terraform.lock.hcl`. The `infra/instance` lock file is generated in T099, once that stack exists.
+- [X] T031 Create `deploy/app` (bash, `#!/usr/bin/env bash`, `set -euo pipefail`, executable) with the shared skeleton:
   - **Argument parsing**: `--env` is required; `AWS_REGION` is required and never read from AWS config files (FR-048).
   - **`require_tools`**: `aws`, `tofu`, `jq` and `openssl`, each with a version check.
   - **`tf_init <stack>`**: `-backend-config=infra/envs/$ENV.backend.hcl -backend-config=key=app/$ENV/<stack>.tfstate`.
@@ -197,7 +197,7 @@ description: "Task list for 018-app-cloud-deployment"
   - **`mask`**: emits `::add-mask::` when `GITHUB_ACTIONS=true`.
   - **Exit codes**: as in [contracts/app-cli.md](./contracts/app-cli.md).
   - **`status`**: implemented here (instance state, address, uptime, release tag, last backup from `ops backups list` through SSM if running, or from S3 listing if down, and the lock holder). If the instance is running, also send the address notice with `ssm_run … ops notify`, because the address is masked in GitHub logs (FR-038). This uses the instance role's existing `sns:Publish`, so the `deploy` role needs no new permission.
-- [ ] T032 [P] Create `deploy/tests/app_test.sh`, a plain bash test runner with no network. It stubs `aws` and `tofu` with fake scripts on `PATH` that record their calls, and asserts:
+- [X] T032 [P] Create `deploy/tests/app_test.sh`, a plain bash test runner with no network. It stubs `aws` and `tofu` with fake scripts on `PATH` that record their calls, and asserts:
   - a missing `--env` gives exit 2
   - a missing `AWS_REGION` gives exit 2 (even when `~/.aws/config` has a region)
   - a held lock gives exit 3 and names the holder

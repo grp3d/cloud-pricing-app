@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Fake AWS CLI for deploy/tests/app_test.sh. Records every call in $FAKE_DIR/calls and answers
+# from files in $FAKE_DIR (responses are the final, already --query'd output):
+#   <service>.<op>             sticky response
+#   <service>.<op>.fail        sticky failure; the content goes to stderr
+#   <service>.<op>.q<N>        queued responses, used once each in order; "FAIL:<msg>" fails
+#   ssm.get-parameter.<name>   per parameter, with / replaced by _ (missing = ParameterNotFound)
+#   s3.cp.base / s3.cp.lock    the base state and the lock object
+set -u
+if [[ "${1:-}" == --version ]]; then echo "aws-cli/2.30.0 Python/3.13 Linux"; exit 0; fi
+args=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --region) shift 2 ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+service="${args[0]:-}"; op="${args[1]:-}"
+printf '%s\n' "$(printf '%s ' "${args[@]}" | tr '\n' ' ')" >>"$FAKE_DIR/calls"
+
+respond() {  # respond <file>
+  local content
+  content="$(cat "$1")"
+  if [[ "$content" == FAIL:* ]]; then printf '%s\n' "${content#FAIL:}" >&2; exit 254; fi
+  printf '%s\n' "$content"
+  exit 0
+}
+
+if [[ "$service $op" == "ssm get-parameter" ]]; then
+  name=""
+  for ((i = 0; i < ${#args[@]}; i++)); do [[ "${args[$i]}" == --name ]] && name="${args[$((i + 1))]}"; done
+  file="$FAKE_DIR/ssm.get-parameter.${name//\//_}"
+  [[ -f "$file" ]] && respond "$file"
+  echo "An error occurred (ParameterNotFound) when calling the GetParameter operation" >&2
+  exit 254
+fi
+if [[ "$service $op" == "s3 cp" ]]; then
+  case "${args[*]}" in
+    *base.tfstate*) [[ -f "$FAKE_DIR/s3.cp.base" ]] && respond "$FAKE_DIR/s3.cp.base" ;;
+    *locks/*) [[ -f "$FAKE_DIR/s3.cp.lock" ]] && respond "$FAKE_DIR/s3.cp.lock" ;;
+  esac
+  echo "fatal error: An error occurred (404) when calling the HeadObject operation: Key not found" >&2
+  exit 1
+fi
+
+queued="$(find "$FAKE_DIR" -maxdepth 1 -name "$service.$op.q*" 2>/dev/null | sort | head -n 1)"
+if [[ -n "$queued" ]]; then
+  content="$(cat "$queued")"; rm -f "$queued"
+  if [[ "$content" == FAIL:* ]]; then printf '%s\n' "${content#FAIL:}" >&2; exit 254; fi
+  printf '%s\n' "$content"; exit 0
+fi
+if [[ -f "$FAKE_DIR/$service.$op.fail" ]]; then cat "$FAKE_DIR/$service.$op.fail" >&2; exit 254; fi
+if [[ -f "$FAKE_DIR/$service.$op" ]]; then respond "$FAKE_DIR/$service.$op"; fi
+exit 0

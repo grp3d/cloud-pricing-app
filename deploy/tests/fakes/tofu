@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Fake OpenTofu for deploy/tests/app_test.sh. Records calls in $FAKE_DIR/calls as "tofu ...".
+#   tofu.show.json    `show -json` output (default: no changes)
+#   tofu.output.json  `output -json` output (default: {})
+#   tofu.state        `state list` output (default: empty)
+#   tofu.<cmd>.fail   make plan/apply/destroy fail
+set -u
+printf 'tofu %s\n' "$*" >>"$FAKE_DIR/calls"
+case "${1:-}" in
+  version) echo '{"terraform_version": "1.10.6"}' ;;
+  init) ;;
+  plan|apply|destroy)
+    if [[ -f "$FAKE_DIR/tofu.$1.fail" ]]; then echo "Error: fake $1 failure" >&2; exit 1; fi ;;
+  show)
+    if [[ -f "$FAKE_DIR/tofu.show.json" ]]; then cat "$FAKE_DIR/tofu.show.json"; else echo '{"resource_changes": []}'; fi ;;
+  output)
+    if [[ -f "$FAKE_DIR/tofu.output.json" ]]; then cat "$FAKE_DIR/tofu.output.json"; else echo '{}'; fi ;;
+  state)
+    [[ -f "$FAKE_DIR/tofu.state" ]] && cat "$FAKE_DIR/tofu.state" ;;
+esac
+exit 0

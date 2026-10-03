@@ -1,0 +1,27 @@
+# Example settings for qa (018-app-cloud-deployment). To add the environment, copy this to
+# qa.tfvars and prod.backend.hcl to qa.backend.hcl, check the data bucket and policy names exist,
+# and follow docs/deployment.md "Adding an environment". No account IDs or personal IPs here.
+
+environment = "qa"
+aws_region  = "us-east-1"
+
+# Account-wide items created by cloud-pricing-data-retrieval (FR-056). Referenced, never changed.
+state_bucket_name     = "cloud-pricing-shared-tfstate-g08a9i" # same as bucket in qa.backend.hcl
+data_bucket_name      = "cloud-pricing-data-qa-g08a9i"
+data_read_policy_name = "cloud-pricing-data-read-qa"
+
+# This repository on GitHub (public IDs: api.github.com/repos/grp3d/cloud-pricing-app).
+github_repository = "grp3d/cloud-pricing-app"
+github_owner_id   = "5554338"
+github_repo_id    = "1378579975"
+
+# base stack
+log_retention_days   = 14
+backup_bucket_suffix = "g08a9i"
+
+# instance stack
+instance_type   = "t4g.small"
+root_volume_gib = 20
+# Fill with `deploy/app ami-latest --env qa` (Canonical Ubuntu 24.04 arm64), then commit.
+# `deploy/app up` refuses to run while this is the placeholder.
+ami_id = "REPLACE-ME"
