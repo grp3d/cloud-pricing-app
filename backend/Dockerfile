@@ -41,8 +41,8 @@ COPY alembic.ini ./
 COPY src ./src
 
 RUN useradd --system --uid 10001 --home /app app \
-    && mkdir -p /run/app /var/lib/app/pricing-cache \
-    && chown -R app:app /run/app /var/lib/app
+    && mkdir -p /run/app /var/lib/app/pricing-cache /tls \
+    && chown -R app:app /run/app /var/lib/app /tls
 USER app
 
 ARG GIT_SHA=unknown

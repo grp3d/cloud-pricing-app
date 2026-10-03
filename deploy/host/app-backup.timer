@@ -1,0 +1,10 @@
+[Unit]
+Description=cloud-pricing-app backup every 6 hours
+
+[Timer]
+OnBootSec=1h
+OnUnitActiveSec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

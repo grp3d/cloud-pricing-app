@@ -112,6 +112,12 @@ The SSM agent ships with Ubuntu's official AMIs. The host never runs the AWS CLI
 
 **Adds**: one pinned AMI ID per env and a helper subcommand.
 
+**Verified (T054, 2026-10-03)**:
+
+- packages.ubuntu.com, noble, arm64: `docker.io` 24.0.7-0ubuntu4 (main), `docker-compose-v2` 2.24.6+ds1-0ubuntu2 (universe) and `amazon-ecr-credential-helper` 0.7.1-1 (universe). All three are apt-signed, so no hand-pinned binary is needed. Compose 2.24 supports the `env_file` `required: false` form that `compose.yaml` uses (added in 2.24.0).
+- Canonical's public parameter `/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id` resolves in `us-east-1` (`ami-0bec8cef5313300ad`, updated 2026-09-23). `deploy/app ami-latest` reads the same parameter.
+- The ECR-token fallback (`ops ecr-login`) is therefore not needed.
+
 ## R5. Release images and registry
 
 **Decision**: **Amazon ECR**, the same registry as the pipeline, chosen by the owner for consistency across the project (2026-10-02).
@@ -155,7 +161,7 @@ The SSM agent ships with Ubuntu's official AMIs. The host never runs the AWS CLI
 - **Root**: an EC P-256 key with a self-signed certificate valid for 5 years, `CN=cloud-pricing-app <env> root`. It is created **once** by `app up` on the first deployment (with `openssl` on the machine running the command) and stored in SSM Parameter Store:
   - `/cloud-pricing-app/<env>/tls/root-key` as a SecureString with the AWS-managed key, which is free
   - `/cloud-pricing-app/<env>/tls/root-cert` as a String
-- **At boot**: an init container (`ops fetch-tls`) writes both to a tmpfs volume that only Caddy reads.
+- **At boot**: an init container (`ops fetch-tls`) writes both, mode 0400, to a Docker volume that only Caddy mounts. *Changed during implementation (T063):* the plan said a tmpfs volume, but Docker drops a tmpfs volume's contents whenever no running container holds it, and a restarting Caddy kept an empty view of it. The volume is now an ordinary one on the instance's encrypted root disk, which is destroyed with the instance; SSM stays the only lasting copy.
 - **If missing**: when the root is missing on an environment that already has backups, "up" stops and asks for `--new-root`, so a root the owner's devices trust is never silently replaced.
 - **Getting it onto devices**: `app cert <env>` prints or saves the public root. The runbook covers macOS (Keychain → Always Trust), iOS (install the profile, then Settings → General → About → Certificate Trust Settings) and Android (user CA, which Chrome honors).
 - **Ports**: only 443 is open. Port 80 is **not** opened, so plain HTTP is refused (Story 6 AS3) with no redirect rule to maintain.

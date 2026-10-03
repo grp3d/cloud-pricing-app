@@ -1,0 +1,96 @@
+# Operate an environment from GitHub, including from a phone (018-app-cloud-deployment, FR-027;
+# contracts/app-cli.md, research.md R11). Runs deploy/app with the environment's `deploy` role —
+# the same script and result as on the laptop. The repo may be public, so the address, any IP
+# input and the account ID are masked (FR-050); the address is emailed instead (FR-038).
+name: app
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [up, down, status, allow-add, allow-remove, allow-list, backup-now]
+      environment:
+        description: Environment
+        type: choice
+        options: [prod]
+      release:
+        description: "up: release to deploy (default: newest v* tag in the registry)"
+        required: false
+      backup:
+        description: "up: backup id to restore instead of the newest"
+        required: false
+      address:
+        description: "allow-add / allow-remove: one IP address"
+        required: false
+      force_without_backup:
+        description: "down: destroy WITHOUT a final backup (only for a database beyond recovery)"
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: app-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: ${{ inputs.action }} (${{ inputs.environment }})
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Mask inputs
+        env:
+          ADDRESS: ${{ inputs.address }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          [[ -z "$ADDRESS" ]] || echo "::add-mask::$ADDRESS"
+          [[ -z "$RELEASE" ]] || echo "::add-mask::$RELEASE"
+
+      - name: Must run from main
+        run: |
+          [[ "$GITHUB_REF" == refs/heads/main ]] || { echo "::error::run this workflow from main"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.10.6
+          tofu_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets[format('AWS_ROLE_DEPLOY_{0}', inputs.environment)] }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: deploy/app
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          APP_ENV: ${{ inputs.environment }}
+          ACTION: ${{ inputs.action }}
+          RELEASE: ${{ inputs.release }}
+          BACKUP: ${{ inputs.backup }}
+          ADDRESS: ${{ inputs.address }}
+          FORCE: ${{ inputs.force_without_backup }}
+        run: |
+          set -euo pipefail
+          case "$ACTION" in
+            up)
+              args=(up)
+              [[ -z "$RELEASE" ]] || args+=(--release "$RELEASE")
+              [[ -z "$BACKUP" ]] || args+=(--backup "$BACKUP") ;;
+            down)
+              args=(down)
+              [[ "$FORCE" != true ]] || args+=(--force-without-backup) ;;
+            allow-add) args=(allow add "$ADDRESS") ;;
+            allow-remove) args=(allow remove "$ADDRESS") ;;
+            allow-list) args=(allow list) ;;
+            status|backup-now) args=("$ACTION") ;;
+          esac
+          deploy/app "${args[@]}" --env "$APP_ENV"

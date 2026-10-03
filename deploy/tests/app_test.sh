@@ -190,6 +190,14 @@ check "exit 0" exit_is 0
 check "masks the address" stdout_has "::add-mask::203.0.113.7"
 end
 
+begin "up masks every allowlisted address in GitHub before OpenTofu runs"
+EXTRA_ENV=(AWS_REGION=us-east-1 GITHUB_ACTIONS=true)
+run_app up --env prod
+check "exit 0" exit_is 0
+check "masks the CIDR" stdout_has "::add-mask::203.0.113.5/32"
+check "masks the bare address" stdout_has "::add-mask::203.0.113.5"
+end
+
 begin "status of a running instance also emails the address"
 running_instance
 invocation Success '{"published": true}'

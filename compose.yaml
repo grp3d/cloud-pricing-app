@@ -43,6 +43,7 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  # Writes the environment's TLS root (from SSM) for Caddy, on every start.
   tls-init:
     <<: *backend-image
     command: ["python", "-m", "src.ops", "fetch-tls", "--out", "/tls"]
@@ -100,9 +101,11 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  # `docker compose run --rm ops <command> …` runs `python -m src.ops <command> …`.
   ops:
     <<: *backend-image
     profiles: ["ops"]
+    entrypoint: ["python", "-m", "src.ops"]
     volumes:
       - run-state:/run/app
       - ops-state:/var/lib/app
@@ -117,9 +120,7 @@ volumes:
   run-state:
   ops-state:
   caddy-data:
-  # The TLS root lives only in memory on the host.
+  # The TLS root, written by tls-init (mode 0400). An ordinary volume on the instance's encrypted
+  # root disk, destroyed with the instance; a tmpfs volume loses its contents whenever no running
+  # container holds it, which broke Caddy after restarts (research.md R6).
   tls:
-    driver_opts:
-      type: tmpfs
-      device: tmpfs
-      o: "size=1m,uid=10001,mode=0700"

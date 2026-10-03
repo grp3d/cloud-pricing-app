@@ -383,6 +383,19 @@ ensure_tls_root() {
 
 # --- Commands -----------------------------------------------------------------------------------
 
+# OpenTofu prints the security-group rules, so hide every allowlisted address in GitHub logs.
+mask_allowlist() {
+  in_github || return 0
+  local value entry entries=()
+  value="$(awsx ssm get-parameter --name "$ALLOWLIST_PARAMETER" --query Parameter.Value --output text 2>/dev/null || true)"
+  [[ -n "$value" && "$value" != none ]] || return 0
+  IFS=',' read -r -a entries <<<"$value"
+  for entry in "${entries[@]}"; do
+    mask "$entry"
+    mask "${entry%/*}"
+  done
+}
+
 preflight() {
   step "preflight"
   require_tools aws tofu jq openssl
@@ -391,6 +404,7 @@ preflight() {
   identity="$(awsx sts get-caller-identity --output json)" || die 3 "no usable AWS credentials"
   mask "$(jq -r .Account <<<"$identity")"
   read_base
+  mask_allowlist
 }
 
 first_deploy_guards() {

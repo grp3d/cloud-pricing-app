@@ -1,0 +1,27 @@
+# Shows the OIDC subject GitHub issues to this repo's workflows, so the CI roles' trust
+# (infra/base/iam_ci.tf, output gha_trust_subjects) can be checked against a real token before
+# the first deploy (018-app-cloud-deployment, FR-051). Prints only the identity claims, never the
+# token. Needs no AWS access. Run it manually from main after setting the OIDC subject template.
+name: oidc-subject
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  show:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const token = await core.getIDToken('sts.amazonaws.com');
+            const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+            core.info(`sub:         ${claims.sub}`);
+            core.info(`ref:         ${claims.ref}`);
+            core.info(`environment: ${claims.environment ?? '(none)'}`);
+            core.info(`event_name:  ${claims.event_name}`);
+            core.info('Compare "sub" with: tofu output gha_trust_subjects (infra/base)');

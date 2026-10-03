@@ -409,6 +409,23 @@ def get_active_snapshot() -> ActiveSnapshot:
     return STATE.active
 
 
+def pricing_status() -> tuple[bool, str | None]:
+    """(pricing works, a fixed public phrase saying why not) for `/health`. Never includes a
+    location or an error text, because `/health` needs no login."""
+    state = STATE
+    if state.active is not None:
+        return True, None
+    if not state.initialized:
+        return False, "not checked yet"
+    if state.last_check_error == NO_SNAPSHOT:
+        return False, NO_SNAPSHOT
+    if state.rejected is not None:
+        return False, "snapshot rejected"
+    if state.last_check_error and state.last_check_error.startswith("checking "):
+        return False, "data source unreachable"
+    return False, "pricing data unavailable"
+
+
 def get_active_snapshot_date() -> str:
     """The active snapshot's date, for callers outside the pricing-data modules."""
     return get_active_snapshot().snapshot_date

@@ -296,13 +296,13 @@ description: "Task list for 018-app-cloud-deployment"
 
 ### Tests for User Story 2
 
-- [ ] T050 [P] [US2] Write `infra/instance/tests/instance.tftest.hcl` (mocked provider, plan) asserting contracts/infrastructure.md tests 1–3:
+- [X] T050 [P] [US2] Write `infra/instance/tests/instance.tftest.hcl` (mocked provider, plan) asserting contracts/infrastructure.md tests 1–3:
   - no bucket, parameter, log group, SNS or IAM resources
   - ingress is exactly 443 from each allowlist entry, with no 22, no 80 and no `0.0.0.0/0`
   - `http_tokens = "required"`, an encrypted root volume with `delete_on_termination`, a public IP and no EIP
   - `user_data_replace_on_change = true`
   - the user-data contains both image digests and no secret values
-- [ ] T051 [P] [US2] Write `backend/tests/unit/test_ops_health.py` for `src/ops/health.py` with stubbed HTTP, a stubbed database check and a stubbed `db-init.json`:
+- [X] T051 [P] [US2] Write `backend/tests/unit/test_ops_health.py` for `src/ops/health.py` with stubbed HTTP, a stubbed database check and a stubbed `db-init.json`:
   - `healthy: true` with `pricing: ok`
   - `healthy: true` with `pricing: unavailable` and a reason (Story 2 AS4)
   - `healthy: true` when the Admin password differs from the SSM owner password (the check never reads that parameter, FR-028)
@@ -311,7 +311,7 @@ description: "Task list for 018-app-cloud-deployment"
   - `--wait` times out with `healthy: false`
 
   Also write `backend/tests/contract/test_health.py`: `GET /health` needs no auth and returns `{"status": "ok", "pricing": "ok"|"unavailable", "pricing_reason": str|null}`; with no active snapshot, `pricing` is `unavailable` and the reason is a fixed phrase with no path or exception text ([contracts/admin-api.md](./contracts/admin-api.md)).
-- [ ] T052 [P] [US2] Extend `deploy/tests/app_test.sh` for `up`:
+- [X] T052 [P] [US2] Extend `deploy/tests/app_test.sh` for `up`:
   - **Release resolution**: picks the highest semver tag present in **both** repositories from stubbed `ecr describe-images` output; a named missing release gives exit 3 "not in this environment's registry" before any `tofu` call.
   - **TLS root**: a missing root with no backups creates it; a missing root with existing backups gives exit 3 unless `--new-root`; a root that expires within 180 days prints a warning naming the expiry date, puts it in the notice, and does not fail or replace the root.
   - **Plan leaves the instance alone while up** (stubbed `tofu show -json` with no `aws_instance` change): no backup step, and the saved plan is applied.
@@ -321,7 +321,7 @@ description: "Task list for 018-app-cloud-deployment"
 
 ### Implementation for User Story 2
 
-- [ ] T053 [US2] Create the cloud-init template `deploy/host/cloud-init.yaml.tftpl`:
+- [X] T053 [US2] Create the cloud-init template `deploy/host/cloud-init.yaml.tftpl`:
   - **Packages**: `docker.io`, `docker-compose-v2`, `amazon-ecr-credential-helper` (from the Ubuntu archive, confirmed by T054).
   - **Swap**: a 2 GiB swap file.
   - **Docker**: `/root/.docker/config.json` with `credHelpers` for `<account>.dkr.ecr.<region>.amazonaws.com` set to `ecr-login`.
@@ -336,8 +336,8 @@ description: "Task list for 018-app-cloud-deployment"
     2. Generate a random Postgres password into `/opt/app/secrets/db_password` (mode 0400).
     3. Run `docker compose up -d`.
   - **Timers**: the systemd units from T066 and T085. Install now as no-op stubs if those stories aren't done.
-- [ ] T054 [US2] Verify the host package plan before relying on it: confirm `amazon-ecr-credential-helper`, `docker.io` and `docker-compose-v2` exist for Ubuntu 24.04 `arm64` (packages.ubuntu.com, noble, universe), and that Canonical's public SSM parameter `/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id` resolves in `us-east-1`. Record the findings in research.md R4. If the helper is missing, switch to fetching an ECR token from the backend image (`python -m src.ops ecr-login`) and note it there.
-- [ ] T055 [US2] Create `infra/instance/` (`versions.tf`, `providers.tf`, `variables.tf`, `network.tf`, `instance.tf`, `outputs.tf`):
+- [X] T054 [US2] Verify the host package plan before relying on it: confirm `amazon-ecr-credential-helper`, `docker.io` and `docker-compose-v2` exist for Ubuntu 24.04 `arm64` (packages.ubuntu.com, noble, universe), and that Canonical's public SSM parameter `/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id` resolves in `us-east-1`. Record the findings in research.md R4. If the helper is missing, switch to fetching an ECR token from the backend image (`python -m src.ops ecr-login`) and note it there.
+- [X] T055 [US2] Create `infra/instance/` (`versions.tf`, `providers.tf`, `variables.tf`, `network.tf`, `instance.tf`, `outputs.tf`):
   - **Inputs**: environment, region, `ami_id`, `instance_type`, `root_volume_gib`, `release`, `backend_digest`, `web_digest`, `db_init_args`.
   - **Base stack values**, read through `terraform_remote_state` on `app/<env>/base.tfstate`.
   - **Allowlist**: `data "aws_ssm_parameter"`. The placeholder `none` means no ingress rule.
@@ -347,9 +347,9 @@ description: "Task list for 018-app-cloud-deployment"
   - **Outputs**: `instance_id`, `public_ip` (marked `sensitive`), `release`, plus the inputs that change user-data (`ami_id`, `backend_digest`, `web_digest`, `db_init_args`), so that `allow` can re-apply with the running instance's own values (T081).
 
   Make T050 pass.
-- [ ] T099 [US2] Generate the provider lock file for `infra/instance` with `tofu providers lock -platform=linux_arm64 -platform=linux_amd64 -platform=darwin_arm64` and commit `infra/instance/.terraform.lock.hcl` (the second half of T030).
-- [ ] T056 [US2] Change `GET /health` in `backend/src/main.py` to return a `HealthOut` model (in `backend/src/models/schemas.py`) with the pricing state from the snapshot monitor, and regenerate the frontend types. Implement `backend/src/ops/health.py` (`health --wait`): poll `db-init.json` and `http://backend:8000/health`, check that the default Admin row exists and is active (direct database query through the ORM), check that `POST /api/v1/auth/login` returns `401` for a random non-existent username, and take the pricing state from `/health`. It never reads the owner password parameter (FR-028). Wire it in `__main__.py`. Make T051 pass.
-- [ ] T057 [US2] Implement `deploy/app up` per research R11 and [contracts/app-cli.md](./contracts/app-cli.md):
+- [X] T099 [US2] Generate the provider lock file for `infra/instance` with `tofu providers lock -platform=linux_arm64 -platform=linux_amd64 -platform=darwin_arm64` and commit `infra/instance/.terraform.lock.hcl` (the second half of T030).
+- [X] T056 [US2] Change `GET /health` in `backend/src/main.py` to return a `HealthOut` model (in `backend/src/models/schemas.py`) with the pricing state from the snapshot monitor, and regenerate the frontend types. Implement `backend/src/ops/health.py` (`health --wait`): poll `db-init.json` and `http://backend:8000/health`, check that the default Admin row exists and is active (direct database query through the ORM), check that `POST /api/v1/auth/login` returns `401` for a random non-existent username, and take the pricing state from `/health`. It never reads the owner password parameter (FR-028). Wire it in `__main__.py`. Make T051 pass.
+- [X] T057 [US2] Implement `deploy/app up` per research R11 and [contracts/app-cli.md](./contracts/app-cli.md):
   1. Preflight: `sts get-caller-identity`, base outputs, the allowlist parameter is readable, the AMI exists, and the release is in both repositories (`ecr describe-images`).
   2. Take the lock.
   3. Resolve the digests.
@@ -362,22 +362,22 @@ description: "Task list for 018-app-cloud-deployment"
   10. Release the lock.
 
   Exit 0 with the pricing warning when `pricing: unavailable`. Make T052 pass.
-- [ ] T058 [US2] Implement TLS root creation inside `deploy/app` (function `ensure_tls_root`):
+- [X] T058 [US2] Implement TLS root creation inside `deploy/app` (function `ensure_tls_root`):
   - If `/cloud-pricing-app/$ENV/tls/root-cert` is missing and the backup bucket has no `<env>/db/*.json`, generate an EC P-256 key and a 5-year self-signed CA cert (`CN=cloud-pricing-app $ENV root`, `basicConstraints=critical,CA:TRUE`, `keyUsage=critical,keyCertSign,cRLSign`) with `openssl` in a `mktemp -d` directory that is removed on exit.
   - Store the key as a SecureString and the cert as a String. Print "NEW ROOT CREATED – install it on your devices (deploy/app cert)".
   - If it is missing and backups exist, exit 3 unless `--new-root`.
   - If it exists and expires within 180 days (`openssl x509 -checkend`), print a warning with the expiry date and include it in the "up" notice. Don't fail and don't replace it. Replacing it stays a deliberate `--new-root` action (spec edge case, research R6).
   - Never print the key.
-- [ ] T059 [US2] Create `.github/workflows/release.yml` per contracts/app-cli.md:
+- [X] T059 [US2] Create `.github/workflows/release.yml` per contracts/app-cli.md:
   - **Triggers**: `push` with tags `v*`, and `workflow_dispatch` with a `tag` input.
   - **Job**: `runs-on: ubuntu-24.04-arm`, a matrix from `fromJSON(vars.RELEASE_ENVIRONMENTS || '["prod"]')`, where the variable holds a JSON list, and `permissions: id-token: write, contents: read`.
   - **Steps**: checkout at the tag; configure AWS credentials with `secrets[format('AWS_ROLE_RELEASE_{0}', upper(matrix.env))]` and `mask-aws-account-id: true`; ECR login; for backend and web, `aws ecr describe-images` (skip if the tag exists) and otherwise `docker buildx build --platform linux/arm64 --push` with `GIT_SHA` and `RELEASE` build args; write the digests to `$GITHUB_STEP_SUMMARY`.
-- [ ] T060 [US2] Create `.github/workflows/app.yml` per contracts/app-cli.md:
+- [X] T060 [US2] Create `.github/workflows/app.yml` per contracts/app-cli.md:
   - **Trigger**: `workflow_dispatch` with inputs `action` (choice), `environment` (choice `prod`), `release`, `backup`, `address` and `force_without_backup`.
   - **Job**: `environment: ${{ inputs.environment }}`, `concurrency: { group: app-${{ inputs.environment }}, cancel-in-progress: false }`, `permissions: id-token: write, contents: read`.
   - **Steps**: first, mask `inputs.address` and `inputs.release`; checkout; set up OpenTofu `1.10.6` with `tofu_wrapper: false`; configure AWS credentials with `secrets[format('AWS_ROLE_DEPLOY_{0}', upper(inputs.environment))]` and `mask-aws-account-id: true`; then run `deploy/app ${action} --env ${environment} …` with `AWS_REGION: ${{ vars.AWS_REGION }}`.
-- [ ] T061 [P] [US2] Create `.github/workflows/oidc-subject.yml` (manual; prints `sub`, `ref`, `environment` and `event_name` from `core.getIDToken('sts.amazonaws.com')`, never the token), mirroring the pipeline repo's version (FR-051).
-- [ ] T062 [US2] Create `compose.local.yaml`, the override for the local packaged stack (also used to smoke-test US2 images before AWS):
+- [X] T061 [P] [US2] Create `.github/workflows/oidc-subject.yml` (manual; prints `sub`, `ref`, `environment` and `event_name` from `core.getIDToken('sts.amazonaws.com')`, never the token), mirroring the pipeline repo's version (FR-051).
+- [X] T062 [US2] Create `compose.local.yaml`, the override for the local packaged stack (also used to smoke-test US2 images before AWS):
   - builds `backend` and `web` from the local Dockerfiles
   - `logging: driver: json-file`
   - `PRICING_DATA_URI=file:///data` with a read-only bind mount of `${LOCAL_DATA_ROOT}`
@@ -386,7 +386,7 @@ description: "Task list for 018-app-cloud-deployment"
   - `HTTPS_PORT=8443`, `PUBLIC_ADDRESS=localhost`
   - no `ALERT_TOPIC_ARN`
   - the owner password from `.env.local`
-- [ ] T063 [US2] Smoke-test the images locally: `docker compose -f compose.yaml -f compose.local.yaml up --build`, then `docker compose run --rm ops health --wait 120` returns `healthy: true` and `db: fresh`. Fix the Dockerfile and Compose issues found. This needs Docker on the laptop (quickstart prerequisites).
+- [X] T063 [US2] Smoke-test the images locally: `docker compose -f compose.yaml -f compose.local.yaml up --build`, then `docker compose run --rm ops health --wait 120` returns `healthy: true` and `db: fresh`. Fix the Dockerfile and Compose issues found. This needs Docker on the laptop (quickstart prerequisites).
 
 **Checkpoint**: from an environment with the base stack and one release, `up` gives a working app, by tests plus quickstart D (run in Phase 11 together with US3 and US4).
 
@@ -400,7 +400,7 @@ description: "Task list for 018-app-cloud-deployment"
 
 ### Tests for User Story 3
 
-- [ ] T064 [P] [US3] Extend `deploy/tests/app_test.sh` for `down`:
+- [X] T064 [P] [US3] Extend `deploy/tests/app_test.sh` for `down`:
   - with no instance in state: exit 0, with no SSM or destroy call
   - a backup with `verified: false`, or an SSM failure: exit 4 and **no** `tofu destroy` call
   - `--force-without-backup`: destroy is called and a warning is printed
@@ -408,12 +408,12 @@ description: "Task list for 018-app-cloud-deployment"
 
 ### Implementation for User Story 3
 
-- [ ] T065 [US3] Implement `deploy/app down` and `deploy/app backup-now` per research R11:
+- [X] T065 [US3] Implement `deploy/app down` and `deploy/app backup-now` per research R11:
   - **`down`**: read the instance id from the instance-stack outputs, or by tags if the outputs are missing; `ssm_run … "docker compose stop web backend && docker compose run --rm ops backup --kind teardown"`; parse the JSON and require `verified: true`; then `tofu destroy -auto-approve`, and confirm no tagged instance remains.
   - **`backup-now`**: SSM `ops backup --kind manual`.
 
   Make T064 pass.
-- [ ] T066 [US3] Create the scheduled backup units `deploy/host/app-backup.service` and `deploy/host/app-backup.timer` (`OnBootSec=1h`, `OnUnitActiveSec=6h`, `Persistent=true`; the service runs `docker compose -f /opt/app/compose.yaml run --rm ops backup --kind scheduled`). Install and enable them in `deploy/host/cloud-init.yaml.tftpl`. The backup command already alerts on failure (T016).
+- [X] T066 [US3] Create the scheduled backup units `deploy/host/app-backup.service` and `deploy/host/app-backup.timer` (`OnBootSec=1h`, `OnUnitActiveSec=6h`, `Persistent=true`; the service runs `docker compose -f /opt/app/compose.yaml run --rm ops backup --kind scheduled`). Install and enable them in `deploy/host/cloud-init.yaml.tftpl`. The backup command already alerts on failure (T016).
 
 **Checkpoint**: US2 and US3 together give the full on-demand cycle.
 
@@ -441,13 +441,13 @@ description: "Task list for 018-app-cloud-deployment"
     - the first release tag
   - **Routine operation**: up, down, status, allow, backup-now, choosing a release or backup, rollback, the lock, reading logs (CloudWatch group), Session Manager shell, updating the AMI (`ami-latest`), adding an environment (add it to `RELEASE_ENVIRONMENTS` **before** tagging), and installing the root on macOS, iOS and Android.
   - **Answered questions**: a section for findings checked and dismissed, with evidence (FR-055). Start it with research R13's result (T091).
-- [ ] T068 [US4] Add the first-deploy guards to `deploy/app up` preflight, each failing with exit 3 and the runbook step to do:
+- [X] T068 [US4] Add the first-deploy guards to `deploy/app up` preflight, each failing with exit 3 and the runbook step to do:
   - the owner-password parameter is missing
   - the allowlist is the placeholder `none` (warn only: "nobody can reach the app")
   - the base stack outputs are missing
   - the AMI placeholder is still in tfvars
   - extend `deploy/tests/app_test.sh` to cover these guards
-- [ ] T069 [US4] Confirm that environments are isolated (FR-034) with a `tofu test` run in `infra/base/tests/base.tftest.hcl` using `environment = "qa"`: every name, the state key prefix, the parameter paths and the trust subjects contain `qa` and never `prod`. Do the same for `infra/instance/tests/instance.tftest.hcl`.
+- [X] T069 [US4] Confirm that environments are isolated (FR-034) with a `tofu test` run in `infra/base/tests/base.tftest.hcl` using `environment = "qa"`: every name, the state key prefix, the parameter paths and the trust subjects contain `qa` and never `prod`. Do the same for `infra/instance/tests/instance.tftest.hcl`.
 
 **Checkpoint**: a new environment can be set up from the runbook alone.
 

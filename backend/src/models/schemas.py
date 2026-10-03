@@ -465,6 +465,17 @@ class ArchitectureFileImportResponse(BaseModel):
     results: list[ImportResult]
 
 
+# --- Health (018-app-cloud-deployment, FR-028, contracts/admin-api.md) ----------------------
+
+
+class HealthOut(BaseModel):
+    status: Literal["ok"]
+    pricing: Literal["ok", "unavailable"]
+    # A fixed phrase ("no snapshot available", "data source unreachable", …), never a location,
+    # a credential or an exception text: /health is public.
+    pricing_reason: str | None = None
+
+
 # --- System information (016-canvas-icon-layout, US5, contracts/api.md §1) --------------------
 
 

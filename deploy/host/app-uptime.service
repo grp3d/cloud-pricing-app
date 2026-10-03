@@ -1,0 +1,10 @@
+# Forgotten-instance alert (018-app-cloud-deployment, FR-044, Story 7; research.md R10).
+[Unit]
+Description=cloud-pricing-app uptime alert
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/app
+ExecStart=/usr/bin/docker compose -f /opt/app/compose.yaml run --rm -T ops uptime-alert
