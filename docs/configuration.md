@@ -27,6 +27,21 @@ refuses to start**, and the error names the setting.
 | `LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` | `INFO` | Minimum level of log records written. |
 | `LOG_FORMAT` | `json` \| `console` | `json` | Log output format. `json` writes one JSON object per line with `timestamp`, `level` and `message`; `console` writes colored, readable lines for local development. Any other value stops startup. |
 
+### Deployment settings
+
+Used by the packaged stack and the `ops` commands (`python -m src.ops …`); the web server only
+displays them. In the cloud, cloud-init sets them; see [deployment.md](deployment.md).
+
+| Environment variable | Default | What it controls |
+|---|---|---|
+| `BACKUP_URI` | unset (backup and restore refuse to run) | Where database backups live: `file:///dir` or `s3://bucket/<env>/db/`. |
+| `BACKUP_KEEP` | `14` | Verified backups kept; older ones are deleted after a new one is verified. The newest verified backup is never deleted. |
+| `OWNER_PASSWORD_PARAMETER` | unset | SSM parameter holding the Admin password for a **fresh** database. A restored database keeps its own passwords. |
+| `ALERT_TOPIC_ARN` | unset (alerts are only logged) | SNS topic for backup failures, the uptime alert and the address notice. |
+| `UPTIME_ALERT_HOURS` / `UPTIME_ALERT_REPEAT_HOURS` | `12` / `12` | When the forgotten-instance alert first fires, and how often it repeats. It never stops anything. |
+| `APP_ENVIRONMENT` / `APP_RELEASE` | `local` / `dev` | Shown in the Admin tab and recorded in backups. |
+| `TLS_ROOT_DIR` | unset | Local packaged stack only: read the TLS root from this directory instead of SSM. |
+
 Removed: `AWS_PRICING_PARQUET_DIR`. If it is still set (in the environment or `backend/.env`), the
 server refuses to start and names `PRICING_DATA_URI` as its replacement.
 

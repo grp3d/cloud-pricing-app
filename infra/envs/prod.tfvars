@@ -24,4 +24,4 @@ instance_type   = "t4g.small"
 root_volume_gib = 20
 # Fill with `deploy/app ami-latest --env prod` (Canonical Ubuntu 24.04 arm64), then commit.
 # `deploy/app up` refuses to run while this is the placeholder.
-ami_id = "REPLACE-ME"
+ami_id = "ami-0bec8cef5313300ad"

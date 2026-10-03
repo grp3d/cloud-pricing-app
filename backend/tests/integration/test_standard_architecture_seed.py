@@ -2,7 +2,7 @@
 (014-architecture-templates-import-export, spec FR-001-FR-007, research.md §1-§2).
 
 The seed file is validated with the same per-architecture validator the Admin import uses,
-against whatever pricing dataset `AWS_PRICING_PARQUET_DIR` points at (the real data locally, the
+against whatever pricing dataset `PRICING_DATA_URI` points at (the real data locally, the
 Parquet fixture in CI) — proving every seeded SKU exists in the region it will be priced in.
 The migration's insert function runs inside a transaction that is rolled back, since
 `conftest.py` truncates architectures between tests anyway.

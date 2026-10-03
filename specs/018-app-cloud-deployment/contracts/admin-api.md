@@ -56,7 +56,7 @@ Still unauthenticated, now with a typed `HealthOut` model:
 
 ## Pricing and catalog responses (changed)
 
-`CalculationResult` and `CatalogSearchResult` keep `snapshot_date` and add `snapshot_revision: int` (FR-059). Both come from the same `ActiveSnapshot` the request used. The frontend shows the revision wherever it shows the snapshot date.
+`CalculationResult` and `CatalogSearchResult` keep `snapshot_date` and add `snapshot_revision: int` (FR-059). Both come from the same `ActiveSnapshot` the request used. The pricing panel shows the date alone for revision 1 and adds a later revision after it, lighter and in parentheses (`2026-10-05 (r2)`); the Admin tab always shows date and revision.
 
 ## Unchanged behavior
 

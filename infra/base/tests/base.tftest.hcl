@@ -267,7 +267,7 @@ run "environment_names_are_isolated" {
     condition = alltrue([
       for n in concat(
         [aws_s3_bucket.backups.bucket, aws_cloudwatch_log_group.app.name, aws_sns_topic.alerts.name,
-         aws_ssm_parameter.allowlist.name, aws_iam_role.instance.name, aws_iam_instance_profile.instance.name],
+        aws_ssm_parameter.allowlist.name, aws_iam_role.instance.name, aws_iam_instance_profile.instance.name],
         [for r in aws_ecr_repository.app : r.name],
         [for r in aws_iam_role.gha : r.name],
       ) : strcontains(n, "qa") && !strcontains(n, "prod")

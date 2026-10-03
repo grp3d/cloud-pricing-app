@@ -160,7 +160,7 @@ Each step has a check:
 
 8. Price a saved architecture.
 
-   **Expect**: the pricing panel shows the snapshot date with its revision, for example `2026-10-05 r1`, matching the Admin tab (FR-059).
+   **Expect**: the pricing panel shows the snapshot date (`Data Timestamp: 2026-10-05`); after the pipeline publishes a corrected revision of that date and it becomes active, it shows `2026-10-05 (r2)`, matching the Admin tab's `2026-10-05 r2` (FR-059).
 
 9. Repeat steps 1–2 ten times, which can be scripted from the laptop.
 

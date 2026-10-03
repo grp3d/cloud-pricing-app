@@ -358,7 +358,9 @@ backups_exist() {
 
 ensure_tls_root() {
   local cert_parameter="$PARAMETER_PREFIX/tls/root-cert" key_parameter="$PARAMETER_PREFIX/tls/root-key"
-  if parameter_exists "$cert_parameter"; then
+  # The root is usable only with both halves: a certificate without its key would let the
+  # instance start but never serve HTTPS, so it counts as missing.
+  if parameter_exists "$cert_parameter" && parameter_exists "$key_parameter"; then
     awsx ssm get-parameter --name "$cert_parameter" --query Parameter.Value --output text >"$WORK_DIR/root.crt"
     if ! openssl x509 -checkend "$ROOT_EXPIRY_WARN_SECONDS" -noout -in "$WORK_DIR/root.crt" >/dev/null 2>&1; then
       local expiry
@@ -369,7 +371,7 @@ ensure_tls_root() {
     return 0
   fi
   if backups_exist && [[ "$NEW_ROOT" != 1 ]]; then
-    die 3 "the $ENV_NAME TLS root is missing but backups exist, so your devices may trust a root that is gone. Re-run with --new-root to create a new one, then re-trust it on every device."
+    die 3 "the $ENV_NAME TLS root (certificate and key) is missing or incomplete but backups exist, so your devices may trust a root that is gone. Re-run with --new-root to create a new one, then re-trust it on every device."
   fi
   local dir
   dir="$(mktemp -d)"

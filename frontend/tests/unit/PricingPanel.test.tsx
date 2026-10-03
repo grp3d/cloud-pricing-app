@@ -50,16 +50,24 @@ function renderPanel(overrides: Partial<PricingPanelProps> = {}) {
 const NOTICE = "Architecture has been updated since last pricing";
 
 describe("PricingPanel snapshot label (018, FR-059)", () => {
-  it("shows the snapshot revision next to its date", () => {
+  it("shows only the date for a snapshot's first revision", () => {
+    renderPanel();
+    const timestamp = screen.getByText("Data Timestamp: 2026-09-24");
+    expect(timestamp.textContent).toBe("Data Timestamp: 2026-09-24");
+  });
+
+  it("shows a later revision in parentheses, in a lighter shade", () => {
     renderPanel({ calculation: { ...calculation, snapshot_revision: 2 } });
-    expect(screen.getByText("Data Timestamp: 2026-09-24 r2")).toBeInTheDocument();
+    const revision = screen.getByText("(r2)");
+    expect(revision.parentElement?.textContent).toBe("Data Timestamp: 2026-09-24 (r2)");
+    expect(revision).toHaveClass("opacity-60");
   });
 });
 
 describe("PricingPanel out-of-date notice (015, FR-018a)", () => {
   it("shows the notice directly below the Data Timestamp line", () => {
     renderPanel({ isOutOfDate: true });
-    const timestamp = screen.getByText("Data Timestamp: 2026-09-24 r1");
+    const timestamp = screen.getByText("Data Timestamp: 2026-09-24");
     const notice = screen.getByRole("status");
     expect(notice).toHaveTextContent(NOTICE);
     expect(timestamp.nextElementSibling).toBe(notice);
@@ -78,7 +86,7 @@ describe("PricingPanel word-wrap toggle placement (015, FR-023)", () => {
     const heading = screen.getByRole("heading", { name: "Price per Sku" });
     expect(toggle.parentElement).toBe(heading.parentElement);
 
-    const timestamp = screen.getByText("Data Timestamp: 2026-09-24 r1");
+    const timestamp = screen.getByText("Data Timestamp: 2026-09-24");
     expect(timestamp.nextElementSibling).toBeNull();
   });
 

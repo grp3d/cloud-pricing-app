@@ -467,11 +467,6 @@ def pricing_status() -> tuple[bool, str | None]:
     return False, "pricing data unavailable"
 
 
-def get_active_snapshot_date() -> str:
-    """The active snapshot's date, for callers outside the pricing-data modules."""
-    return get_active_snapshot().snapshot_date
-
-
 __all__ = [
     "ActiveSnapshotConfigError",
     "CheckResult",
@@ -482,7 +477,6 @@ __all__ = [
     "Selection",
     "check_snapshots",
     "get_active_snapshot",
-    "get_active_snapshot_date",
     "previous_snapshot",
     "run_check",
     "select_snapshot",

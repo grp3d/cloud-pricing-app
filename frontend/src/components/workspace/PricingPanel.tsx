@@ -173,10 +173,14 @@ export function PricingPanel({
           {/* 009-ui-fixes-next-iteration, US6, FR-015/016: replaces the removed
               "For {duration}, priced from snapshot {date}." sentence — same
               `calculation.snapshot_date` value, at the bottom of the column.
-              018-app-cloud-deployment, FR-059: with its revision, so a price from a corrected
-              revision of the same date is never shown under the same label. */}
+              018-app-cloud-deployment, FR-059: a corrected revision of the same date is never
+              shown under the same label — its revision follows, lighter and in parentheses. The
+              first revision, by far the most common, shows the date alone. */}
           <p className="text-2xs text-muted-foreground">
-            Data Timestamp: {calculation.snapshot_date} r{calculation.snapshot_revision}
+            Data Timestamp: {calculation.snapshot_date}
+            {calculation.snapshot_revision > 1 && (
+              <span className="opacity-60"> (r{calculation.snapshot_revision})</span>
+            )}
           </p>
 
           {/* 015-canvas-service-icons, FR-018a: a stored result is still the last calculated

@@ -40,6 +40,9 @@ logger = get_logger("cloud_pricing.admin_system")
 # Most important first: lost regions, then icon gaps.
 _KIND_ORDER = {"missing_regions": 0, "missing_icon": 1}
 _background: set[asyncio.Task] = set()
+# A manual check that has been accepted but may not have taken the monitor lock yet. Checked and
+# set with no await in between, so on the event loop two requests can't both see it clear.
+_manual_check_pending = False
 
 
 def _issue_order(issue: Issue) -> tuple:
@@ -122,14 +125,19 @@ async def get_system_info(_admin: AdminUser) -> SystemInfoOut:
 async def start_snapshot_check(_admin: AdminUser) -> SnapshotCheckStartedOut | JSONResponse:
     """Run one check now (FR-012), serialized with the background check. The result appears in
     `system-info` once it finishes."""
-    if active_snapshot.check_in_progress():
+    global _manual_check_pending
+    if _manual_check_pending or active_snapshot.check_in_progress():
         return JSONResponse(status_code=409, content={"error": "check_in_progress"})
+    _manual_check_pending = True
 
     async def check() -> None:
+        global _manual_check_pending
         try:
             await asyncio.to_thread(active_snapshot.run_check)
         except Exception:  # noqa: BLE001 — recorded in the monitor state and the log
             logger.exception("manual pricing snapshot check failed")
+        finally:
+            _manual_check_pending = False
 
     task = asyncio.create_task(check())
     _background.add(task)

@@ -75,7 +75,7 @@ async def test_a_rejected_manifest_and_a_partial_latest_run_are_shown(
 
 @pytest.mark.asyncio
 async def test_issues_come_back_in_the_documented_order(client, admin_headers, monkeypatch):
-    active_snapshot.get_active_snapshot_date()
+    active_snapshot.get_active_snapshot()
     issues = [
         Issue(
             kind="missing_icon",

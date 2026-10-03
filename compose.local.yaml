@@ -20,8 +20,11 @@ services:
     logging: !override
       driver: json-file
 
+  # Root here only: the laptop's root.key is mode 0600 and owned by your user, and on a Linux
+  # host the image's app user (UID 10001) couldn't read it. The key stays private on disk.
   tls-init:
     <<: *local-backend
+    user: "0"
     environment:
       TLS_ROOT_DIR: /local-tls
     volumes:

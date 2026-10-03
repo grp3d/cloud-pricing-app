@@ -425,7 +425,7 @@ description: "Task list for 018-app-cloud-deployment"
 
 **Independent test**: [quickstart.md](./quickstart.md) parts C and D.
 
-- [ ] T067 [US4] Write `docs/deployment.md`, the runbook (FR-046, FR-054), with two separate parts:
+- [X] T067 [US4] Write `docs/deployment.md`, the runbook (FR-046, FR-054), with two separate parts:
   - **One-time setup per account and environment**: the quickstart C steps in order, each with its check command. Before applying the base stack, one check command per account-wide item (OIDC provider, state bucket, data bucket, data read policy) prints which item is missing and that it comes from cloud-pricing-data-retrieval (FR-056). The steps include:
     - the OIDC subject template (`["repo","context","ref"]`, using a temporary token deleted afterwards)
     - the GitHub environment
@@ -513,7 +513,7 @@ description: "Task list for 018-app-cloud-deployment"
 
 **Independent test**: [quickstart.md](./quickstart.md) part G.
 
-- [ ] T080 [P] [US6] Extend `deploy/tests/app_test.sh` for `allow`:
+- [X] T080 [P] [US6] Extend `deploy/tests/app_test.sh` for `allow`:
   - `add` accepts IPv4 (stored as `/32`) and IPv6 (stored as `/128`), and rejects ranges, hostnames and empty input with exit 2
   - duplicate add is a no-op
   - remove of a missing entry is a no-op with a message
@@ -522,9 +522,9 @@ description: "Task list for 018-app-cloud-deployment"
   - with the instance up, `tofu plan` on `infra/instance` runs with the values from the instance-stack outputs (`release`, `ami_id`, `backend_digest`, `web_digest`, `db_init_args`), not from tfvars or defaults, and the saved plan is applied; with it down, no `tofu` call
   - if that plan would replace or destroy the instance (stubbed `tofu show -json`), exit 3 with "run up instead", the plan is not applied, and the parameter is written back to its previous value (`put-parameter` called with the old list), so nothing changes (FR-029)
   - the lock is taken for add and remove
-- [ ] T081 [US6] Implement `deploy/app allow add|remove|list` (`ssm get-parameter` and `put-parameter --overwrite` on the StringList; replace the placeholder `none` on the first add; restore `none` when the last entry is removed; when the instance is up, plan with the running instance's values from the instance-stack outputs and apply the saved plan only if it leaves the `aws_instance` untouched, otherwise restore the previous parameter value and exit 3; share the plan-inspection helper with T057) and `deploy/app cert [--out]` (prints the root cert from SSM). Also implement `deploy/app cert local --create`, which generates the laptop root into `./.local-tls/` for `compose.local.yaml`, using the same openssl recipe as T058. Make T080 pass.
-- [ ] T082 [US6] Implement `deploy/app ami-latest` (prints the Canonical parameter value for `AWS_REGION`, the arm64 gp3 Ubuntu 24.04 path from T054). Add the related lines to `docs/deployment.md`.
-- [ ] T083 [US6] Add the device-trust instructions to `docs/deployment.md`:
+- [X] T081 [US6] Implement `deploy/app allow add|remove|list` (`ssm get-parameter` and `put-parameter --overwrite` on the StringList; replace the placeholder `none` on the first add; restore `none` when the last entry is removed; when the instance is up, plan with the running instance's values from the instance-stack outputs and apply the saved plan only if it leaves the `aws_instance` untouched, otherwise restore the previous parameter value and exit 3; share the plan-inspection helper with T057) and `deploy/app cert [--out]` (prints the root cert from SSM). Also implement `deploy/app cert local --create`, which generates the laptop root into `./.local-tls/` for `compose.local.yaml`, using the same openssl recipe as T058. Make T080 pass.
+- [X] T082 [US6] Implement `deploy/app ami-latest` (prints the Canonical parameter value for `AWS_REGION`, the arm64 gp3 Ubuntu 24.04 path from T054). Add the related lines to `docs/deployment.md`.
+- [X] T083 [US6] Add the device-trust instructions to `docs/deployment.md`:
   - **macOS**: Keychain Access → import → Always Trust.
   - **iOS**: AirDrop or email the `.crt`, install the profile, then Settings → General → About → Certificate Trust Settings → enable.
   - **Android**: Settings → Security → Encryption & credentials → Install a certificate → CA certificate.
@@ -540,13 +540,13 @@ description: "Task list for 018-app-cloud-deployment"
 
 **Independent test**: [quickstart.md](./quickstart.md) part I step 3.
 
-- [ ] T084 [P] [US7] Write `backend/tests/unit/test_uptime_alert.py` for `src/ops/uptime.py` with injected uptime, now and state file:
+- [X] T084 [P] [US7] Write `backend/tests/unit/test_uptime_alert.py` for `src/ops/uptime.py` with injected uptime, now and state file:
   - below the threshold: no alert
   - first crossing: an alert, and the state file is written
   - within the repeat interval: no alert
   - after the interval: another alert
   - a notify failure is logged and doesn't raise
-- [ ] T085 [US7] Implement `backend/src/ops/uptime.py` (`uptime-alert` reads `/proc/uptime` from the host through a read-only bind mount `/host/proc/uptime:ro` declared on the `ops` service in `compose.yaml`, keeps state in `/var/lib/app/last-uptime-alert`, and calls `alerts.notify`), and wire it in `__main__.py`. Create `deploy/host/app-uptime.service` and `app-uptime.timer` (`OnUnitActiveSec=30min`) and enable them in the cloud-init template. Make T084 pass.
+- [X] T085 [US7] Implement `backend/src/ops/uptime.py` (`uptime-alert` reads `/proc/uptime` from the host through a read-only bind mount `/host/proc/uptime:ro` declared on the `ops` service in `compose.yaml`, keeps state in `/var/lib/app/last-uptime-alert`, and calls `alerts.notify`), and wire it in `__main__.py`. Create `deploy/host/app-uptime.service` and `app-uptime.timer` (`OnUnitActiveSec=30min`) and enable them in the cloud-init template. Make T084 pass.
 
 **Checkpoint**: a forgotten instance is reported within 30 minutes of the threshold.
 
@@ -558,7 +558,7 @@ description: "Task list for 018-app-cloud-deployment"
 
 **Independent test**: [quickstart.md](./quickstart.md) part B.
 
-- [ ] T086 [US8] Add `.env.local.example` at the repository root (`LOCAL_DATA_ROOT`, the owner password for the local `db-init`, `APP_ENVIRONMENT=local`) and the Story 8 section of `docs/deployment.md`: `cert local --create`, `docker compose -f compose.yaml -f compose.local.yaml up --build`, backup, wipe and restore (quickstart B steps 3–4), and seeding the cloud from local data (quickstart B5, with `BACKUP_URI=s3://…` and the owner's AWS profile).
+- [X] T086 [US8] Add `.env.local.example` at the repository root (`LOCAL_DATA_ROOT`, the owner password for the local `db-init`, `APP_ENVIRONMENT=local`) and the Story 8 section of `docs/deployment.md`: `cert local --create`, `docker compose -f compose.yaml -f compose.local.yaml up --build`, backup, wipe and restore (quickstart B steps 3–4), and seeding the cloud from local data (quickstart B5, with `BACKUP_URI=s3://…` and the owner's AWS profile).
 - [ ] T087 [US8] Run quickstart B end to end on the laptop (fresh, then backup, `down -v`, restore) and quickstart A step 3 with `bin/start_back.sh` and `bin/start_front.sh` (non-packaged, unchanged scripts). Record the results in the PR description.
 
 **Checkpoint**: all stories are done.
@@ -569,15 +569,15 @@ description: "Task list for 018-app-cloud-deployment"
 
 **Purpose**: the pipeline lessons applied (FR-045 to FR-055), CI gates, and the measurements required before acceptance.
 
-- [ ] T088 Update `.github/workflows/ci.yml` (FR-052, FR-053):
+- [X] T088 Update `.github/workflows/ci.yml` (FR-052, FR-053):
   - pin every action to a full SHA, and use `runs-on: ubuntu-24.04`
   - backend job: install `postgresql-client-18` (PGDG) so `test_backup_roundtrip.py` and `test_db_init_restore.py` run in CI
   - new `infra` job: `tofu fmt -check -recursive infra/`, then `tofu init -backend=false` plus `validate` plus `test` for `infra/base` and `infra/instance`
   - new `deploy` job: `shellcheck deploy/app deploy/tests/app_test.sh`, then `bash deploy/tests/app_test.sh`
   - new `images` job (on `ubuntu-24.04-arm`): `docker buildx build --platform linux/arm64` for `backend/Dockerfile` and `frontend/Dockerfile.web`, with no push
   - new `plan` job: only on `pull_request` when `vars.AWS_PLAN_ENABLED == 'true'`; assumes `AWS_ROLE_PLAN_PROD` with account-ID masking; runs `tofu plan` for `infra/instance` with the newest release digests or placeholder values, and posts the summary as a PR comment, like the pipeline repo
-- [ ] T089 [P] Check that no secrets or identifiers leak (FR-041, FR-050, SC-013): add `backend/tests/contract/test_no_secret_logging.py` (ops `db-init`, `backup` and `fetch-tls` never log the owner password, TLS key or database password; reuse the pattern in `test_log_secrets.py`), and a CI step that greps the repository for 12-digit AWS account IDs outside `infra/envs/*.example` and fails on a match.
-- [ ] T090 [P] Record the pinned versions and how to upgrade them in `docs/deployment.md` (FR-053): base image digests, the Action SHAs, OpenTofu, provider lock platforms, the PGDG key fingerprint, the AMI (`ami-latest`), and the `uv` image digest.
+- [X] T089 [P] Check that no secrets or identifiers leak (FR-041, FR-050, SC-013): add `backend/tests/contract/test_no_secret_logging.py` (ops `db-init`, `backup` and `fetch-tls` never log the owner password, TLS key or database password; reuse the pattern in `test_log_secrets.py`), and a CI step that greps the repository for 12-digit AWS account IDs outside `infra/envs/*.example` and fails on a match.
+- [X] T090 [P] Record the pinned versions and how to upgrade them in `docs/deployment.md` (FR-053): base image digests, the Action SHAs, OpenTofu, provider lock platforms, the PGDG key fingerprint, the AMI (`ami-latest`), and the `uv` image digest.
 - [ ] T091 Verify research R13: start a throwaway `workflow_dispatch` run of `app.yml` with `action=allow-list` and a dummy `address`. While logged out (a private browser window) and through the unauthenticated REST API (`GET /repos/grp3d/cloud-pricing-app/actions/runs/<id>`), check whether the input value is visible. Record the answer and evidence in `docs/deployment.md` under "Answered questions" (FR-055), and adjust the runbook advice if it is visible.
 - [ ] T092 Real-account acceptance, following quickstart C → I in order on `prod`, recording every result and timing in `specs/018-app-cloud-deployment/acceptance.md`:
   - first `up` (fresh database, new root)
@@ -592,8 +592,8 @@ description: "Task list for 018-app-cloud-deployment"
   Any permission error found here is fixed in `infra/base` **together with a new assertion** in `base.tftest.hcl` (FR-045). It is never fixed by hand in the console.
 - [ ] T093 Measure memory on the `t4g.small` (research R3): during T092, run the standard-architecture pricing scenario through the UI and record peak RSS per container (`docker stats --no-stream` in a loop through Session Manager) in `acceptance.md`. If it is over 1.7 GiB total or there is swapping during requests, stop and raise it with the owner as a spec change. Don't silently resize.
 - [ ] T094 Measure bring-up times (SC-001): a fresh `up` and a restore `up`, from workflow start to the health result, recorded in `acceptance.md`. If either is over 10 minutes, find the slow step (image pull, `apt install`, or restore) and fix it before acceptance.
-- [ ] T095 [P] Final docs pass (FR-054): `docs/configuration.md`, `docs/deployment.md`, `backend/README.md` and the root `README.md` (a short "Deploying" section pointing to the runbook) describe the system exactly as built. Remove every mention of `_SUCCESS`, `AWS_PRICING_PARQUET_DIR` and the old fixture layout (`grep -rn` must find none outside `specs/0[01][0-7]-*`).
-- [ ] T096 Remove dead code left by the rewrite: `make_snapshot_tree` in `backend/tests/helpers/parquet_tree.py` if it is unused, `_marker_mtimes`, `_scan`, `_waiting_reason` and the `pinned_incomplete` handling. Run `uv run ruff check src/` and the full test suites one last time.
+- [X] T095 [P] Final docs pass (FR-054): `docs/configuration.md`, `docs/deployment.md`, `backend/README.md` and the root `README.md` (a short "Deploying" section pointing to the runbook) describe the system exactly as built. Remove every mention of `_SUCCESS`, `AWS_PRICING_PARQUET_DIR` and the old fixture layout (`grep -rn` must find none outside `specs/0[01][0-7]-*`).
+- [X] T096 Remove dead code left by the rewrite: `make_snapshot_tree` in `backend/tests/helpers/parquet_tree.py` if it is unused, `_marker_mtimes`, `_scan`, `_waiting_reason` and the `pinned_incomplete` handling. Run `uv run ruff check src/` and the full test suites one last time.
 
 ---
 

@@ -39,3 +39,35 @@ async def test_a_running_check_answers_409(client, admin_headers):
         resp = await client.post("/api/v1/admin/pricing-snapshot/check", headers=admin_headers)
     assert resp.status_code == 409
     assert resp.json() == {"error": "check_in_progress"}
+
+
+@pytest.mark.asyncio
+async def test_a_second_request_before_the_first_check_starts_gets_409(
+    client, admin_headers, monkeypatch
+):
+    """Two clicks in quick succession: the second must not queue another check, even though
+    the first one hasn't taken the monitor lock yet (Copilot review, finding 7)."""
+    import threading
+
+    release = threading.Event()
+    calls: list[bool] = []
+
+    def slow_run_check(*, at_startup=False):
+        calls.append(at_startup)
+        release.wait(timeout=5)
+
+    monkeypatch.setattr(active_snapshot, "run_check", slow_run_check)
+    try:
+        first = await client.post("/api/v1/admin/pricing-snapshot/check", headers=admin_headers)
+        second = await client.post("/api/v1/admin/pricing-snapshot/check", headers=admin_headers)
+        assert first.status_code == 202
+        assert second.status_code == 409
+    finally:
+        release.set()
+    for _ in range(50):
+        await asyncio.sleep(0.02)
+        third = await client.post("/api/v1/admin/pricing-snapshot/check", headers=admin_headers)
+        if third.status_code == 202:
+            break
+    assert third.status_code == 202  # once the first finishes, a new check can start
+    release.set()

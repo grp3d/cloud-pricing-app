@@ -52,6 +52,7 @@ HCL
   parameter /cloud-pricing-app/prod/owner-password 'secret'
   parameter /cloud-pricing-app/prod/allowlist '203.0.113.5/32'
   parameter /cloud-pricing-app/prod/tls/root-cert "$(cat "$ROOT_CERT_DIR/root.crt")"
+  parameter /cloud-pricing-app/prod/tls/root-key "(a SecureString; its value is never read)"
   fake ecr.describe-images '[{"tags": ["v1.0.0"], "digest": "sha256:aaa"}, {"tags": ["v1.2.0"], "digest": "sha256:bbb"}, {"tags": ["v1.10.0"], "digest": "sha256:ccc"}]'
   fake s3api.list-objects-v2 '0'
   fake ssm.send-command 'cmd-1'
@@ -257,6 +258,24 @@ run_app up --env prod
 check "exit 3" exit_is 3
 check "mentions --new-root" stderr_has "--new-root"
 check "creates nothing" not_called 'ssm put-parameter'
+end
+
+begin "a certificate without its key counts as a missing root (backups exist: needs --new-root)"
+rm "$FAKE_DIR/ssm.get-parameter._cloud-pricing-app_prod_tls_root-key"
+fake s3api.list-objects-v2 '3'
+run_app up --env prod
+check "exit 3" exit_is 3
+check "says it's incomplete" stderr_has "missing or incomplete"
+check "creates nothing" not_called 'ssm put-parameter'
+check "no instance work" not_called '^tofu plan'
+end
+
+begin "a certificate without its key and no backups gets a new root"
+rm "$FAKE_DIR/ssm.get-parameter._cloud-pricing-app_prod_tls_root-key"
+run_app up --env prod
+check "exit 0" exit_is 0
+check "stores a new key" called 'ssm put-parameter --name /cloud-pricing-app/prod/tls/root-key --type SecureString'
+check "replaces the certificate" called 'ssm put-parameter --name /cloud-pricing-app/prod/tls/root-cert --type String .*--overwrite'
 end
 
 begin "a TLS root close to expiry warns but is kept"
