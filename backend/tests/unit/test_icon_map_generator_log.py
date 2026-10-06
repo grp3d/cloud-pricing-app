@@ -9,6 +9,7 @@ import io
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -136,11 +137,14 @@ def run_main(gen, icons, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(gen, "OUT_ICONS", out / "svg")
     monkeypatch.setattr(gen, "_service_icons", lambda _root: icons)
     monkeypatch.setattr(gen, "_special_icons", lambda _root: {})
-    monkeypatch.setattr(gen, "_latest_snapshot", lambda _dir: "2026-09-26")
-    monkeypatch.setattr(gen, "_pricing_services", lambda _dir, _snap: (NAMES, FAMILIES))
+    monkeypatch.setattr(
+        gen, "_latest_snapshot", lambda _uri: SimpleNamespace(snapshot_date="2026-09-26")
+    )
+    monkeypatch.setattr(gen, "_pricing_services", lambda _snapshot: (NAMES, FAMILIES))
 
     def run(*extra: str) -> str:
-        argv = ["generate", "--icons", str(tmp_path / "icons"), "--parquet", str(tmp_path), *extra]
+        argv = ["generate", "--icons", str(tmp_path / "icons"), "--data-uri", str(tmp_path),
+                *extra]
         monkeypatch.setattr(sys, "argv", argv)
         gen.main()
         return capsys.readouterr().out

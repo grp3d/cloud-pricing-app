@@ -22,9 +22,11 @@ alembic upgrade head
 Environment variables (see `src/config.py`):
 
 - `DATABASE_URL` — defaults to `postgresql+psycopg://localhost/cloud_pricing_dev`
-- `AWS_PRICING_PARQUET_DIR` — base directory containing the AWS pricing Parquet tables
-  (`service_dim/`, `product_dim/`, `product_attribute/`, `region_dim/`, `price_fact/`),
-  produced by a separate upstream project. Read-only.
+- `PRICING_DATA_URI` — **required**: the pricing pipeline's storage root, a local folder
+  (`file:///…/DATA/pipeline`) or `s3://bucket[/prefix]`. Snapshots are found only through the
+  pipeline's manifests; the old `snapshot_date=`/`_SUCCESS` layout and the old
+  `AWS_PRICING_PARQUET_DIR` setting are no longer supported (see
+  [`docs/configuration.md`](../docs/configuration.md#pricing-data) for converting old data).
 - `AWS_PRICING_REGION` — defaults to `us-east-1`
 
 The full list of settings (including the pricing-snapshot check interval, the
@@ -53,20 +55,25 @@ The tests run against a real Postgres database and real AWS pricing Parquet data
 either — per the constitution, pricing data is only ever read from its real source). Every test
 module needs Postgres, because `tests/conftest.py` cleans the tables before each test.
 
-`tests/fixtures/pricing_parquet/` is a small (~300 KB) verbatim subset of the upstream data. It
-holds one snapshot, with every table and region partition, but only the SKUs the tests reference.
-CI uses it, and you can too:
+`tests/fixtures/pricing_parquet/` is a small (~300 KB) verbatim subset of the upstream data, in
+the pipeline's storage layout (`aws/parquet/…`, `aws/manifests/<date>/manifest.json`,
+`aws/manifests/latest.json`). It holds one snapshot, with every table and region, but only the
+SKUs the tests reference. The tests use it by default (`tests/conftest.py` sets
+`PRICING_DATA_URI` to it unless you set it), so they need no network.
+
+Rebuild it after a test starts depending on a new SKU (add the SKU to `SEED_SKUS` first), from a
+pipeline storage root or from the legacy folder tree:
 
 ```bash
-AWS_PRICING_PARQUET_DIR="$PWD/tests/fixtures/pricing_parquet" \
-TEST_DATABASE_URL="postgresql+psycopg://localhost/cloud_pricing_test" pytest
-```
-
-Rebuild it after a test starts depending on a new SKU (add the SKU to `SEED_SKUS` first):
-
-```bash
+uv run python scripts/build_test_pricing_fixture.py --source-uri file:///path/to/DATA/pipeline
 uv run python scripts/build_test_pricing_fixture.py --source /path/to/DATA/pricing_aws/parquet
 ```
+
+`tests/fixtures/contracts/` holds the pipeline's contracts, copied verbatim (see `SOURCE.md`);
+`tests/contract/test_manifest_schema_compat.py` checks the app still reads them.
+
+Backup and restore tests (`tests/integration/test_backup_roundtrip.py`,
+`test_db_init_restore.py`) need `pg_dump` and `pg_restore` 18 on `PATH` and skip otherwise.
 
 ## Standard architectures
 
@@ -82,14 +89,16 @@ edit them by hand. To change what gets seeded, edit the rules in
 `docs/common_aws_architectures.md`) and re-run the resolver against the real pricing data:
 
 ```bash
-uv run python scripts/resolve_standard_architectures.py [--snapshot-date YYYY-MM-DD]
+uv run python scripts/resolve_standard_architectures.py [--data-uri file:///path/to/DATA/pipeline]
 ```
+
+It reads the snapshot `latest.json` names; pin another with `ACTIVE_SNAPSHOT_DATE=YYYY-MM-DD`.
 
 Check the report for figures left out and for SKUs flagged as tiered. Then rebuild the test
 fixture against the same snapshot, because it reads the seeded SKUs from the seed file:
 
 ```bash
-uv run python scripts/build_test_pricing_fixture.py --source /path/to/DATA/pricing_aws/parquet \
+uv run python scripts/build_test_pricing_fixture.py --source-uri file:///path/to/DATA/pipeline \
     --snapshot-date YYYY-MM-DD
 ```
 

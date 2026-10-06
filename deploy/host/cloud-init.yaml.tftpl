@@ -1,0 +1,52 @@
+#cloud-config
+# Rendered by infra/instance (018-app-cloud-deployment, research.md R4). Installs Docker and the
+# ECR credential helper from the Ubuntu archive, writes the stack and its settings, then starts
+# it. No secret is in this file: the database password is generated at boot, and the owner
+# password and TLS root are read from SSM by the containers. The images are pinned by digest.
+
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - amazon-ecr-credential-helper
+
+write_files:
+  - path: /root/.docker/config.json
+    permissions: "0600"
+    content: |
+      {"credHelpers": {"${registry_host}": "ecr-login"}}
+  - path: /opt/app/compose.yaml
+    permissions: "0644"
+    encoding: b64
+    content: ${compose_b64}
+  - path: /opt/app/.env
+    permissions: "0600"
+    content: |
+%{ for line in env_lines ~}
+      ${line}
+%{ endfor ~}
+%{ for name, content in units ~}
+  - path: /etc/systemd/system/${name}
+    permissions: "0644"
+    encoding: b64
+    content: ${content}
+%{ endfor ~}
+
+runcmd:
+  - [bash, -c, "fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab"]
+  - - bash
+    - -euc
+    - |
+      TOKEN=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+      ADDRESS=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
+      PASSWORD=$(openssl rand -hex 24)
+      umask 077
+      {
+        echo "PUBLIC_ADDRESS=$ADDRESS"
+        echo "POSTGRES_PASSWORD=$PASSWORD"
+        echo "DATABASE_URL=postgresql+psycopg://app:$PASSWORD@db:5432/cloud_pricing"
+      } >> /opt/app/.env
+  - [systemctl, enable, --now, docker]
+  - [bash, -c, "cd /opt/app && docker compose up -d"]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, app-backup.timer, app-uptime.timer]

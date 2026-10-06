@@ -1,0 +1,534 @@
+{
+  "manifest_version": "1.0",
+  "provider": "aws",
+  "snapshot_date": "2026-09-24",
+  "run_id": "20260924T000000Z-f1a7e0",
+  "revision": 1,
+  "previous_revision": null,
+  "created_at": "2026-09-24T00:00:00Z",
+  "origin": "backfill",
+  "status": "succeeded",
+  "regions": {
+    "requested": [
+      "ap-northeast-1",
+      "eu-west-1",
+      "eu-west-2",
+      "us-east-1",
+      "us-east-2",
+      "us-west-1",
+      "us-west-2"
+    ],
+    "succeeded": [
+      "ap-northeast-1",
+      "eu-west-1",
+      "eu-west-2",
+      "us-east-1",
+      "us-east-2",
+      "us-west-1",
+      "us-west-2"
+    ],
+    "failed": []
+  },
+  "run": {
+    "trigger": "backfill",
+    "mode": "backfill",
+    "host": "test-fixture",
+    "started_at": "2026-09-24T00:00:00Z",
+    "ended_at": "2026-09-24T00:00:00Z",
+    "pipeline_version": {
+      "git_sha": "fixture",
+      "image_tag": "fixture"
+    },
+    "region_results": [
+      {
+        "region": "ap-northeast-1",
+        "outcome": "succeeded",
+        "attempts": 1
+      },
+      {
+        "region": "eu-west-1",
+        "outcome": "succeeded",
+        "attempts": 1
+      },
+      {
+        "region": "eu-west-2",
+        "outcome": "succeeded",
+        "attempts": 1
+      },
+      {
+        "region": "us-east-1",
+        "outcome": "succeeded",
+        "attempts": 1
+      },
+      {
+        "region": "us-east-2",
+        "outcome": "succeeded",
+        "attempts": 1
+      },
+      {
+        "region": "us-west-1",
+        "outcome": "succeeded",
+        "attempts": 1
+      },
+      {
+        "region": "us-west-2",
+        "outcome": "succeeded",
+        "attempts": 1
+      }
+    ]
+  },
+  "raw": null,
+  "tables": {
+    "service_dim": {
+      "schema_version": 1,
+      "row_count": 1328,
+      "regions": {
+        "ap-northeast-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 194,
+          "files": [
+            {
+              "path": "aws/parquet/service_dim/snapshot_date=2026-09-24/region=ap-northeast-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 7353,
+              "sha256": "3d062f715a430c18bf70065b47316ef0c4de3a1a0ec27c843b95579647fe79c3",
+              "row_count": 194
+            }
+          ]
+        },
+        "eu-west-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 202,
+          "files": [
+            {
+              "path": "aws/parquet/service_dim/snapshot_date=2026-09-24/region=eu-west-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 7522,
+              "sha256": "67cede3aa1459b6103e996032bb5dca5035fa831346336af6474ecc046b630ba",
+              "row_count": 202
+            }
+          ]
+        },
+        "eu-west-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 177,
+          "files": [
+            {
+              "path": "aws/parquet/service_dim/snapshot_date=2026-09-24/region=eu-west-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 6829,
+              "sha256": "d34eb076d2dc6f356c81c785711c275c80745c8cdcefc21c6be6697b9f2d76cf",
+              "row_count": 177
+            }
+          ]
+        },
+        "us-east-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 236,
+          "files": [
+            {
+              "path": "aws/parquet/service_dim/snapshot_date=2026-09-24/region=us-east-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 8589,
+              "sha256": "856e17ce62f9d413a469605d88673f3fb6954c5fcc5f7fe062e3d74cbb12d341",
+              "row_count": 236
+            }
+          ]
+        },
+        "us-east-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 171,
+          "files": [
+            {
+              "path": "aws/parquet/service_dim/snapshot_date=2026-09-24/region=us-east-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 6663,
+              "sha256": "2b904901ea4ebdc3880eef250b59681ab41fc4af2d98dcef495e5cb3d4346939",
+              "row_count": 171
+            }
+          ]
+        },
+        "us-west-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 130,
+          "files": [
+            {
+              "path": "aws/parquet/service_dim/snapshot_date=2026-09-24/region=us-west-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 5407,
+              "sha256": "d8f7c7ba26a39331715bc3ceea24d9c98f2cb9ca3fcecdeffe20a063f6ed480d",
+              "row_count": 130
+            }
+          ]
+        },
+        "us-west-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 218,
+          "files": [
+            {
+              "path": "aws/parquet/service_dim/snapshot_date=2026-09-24/region=us-west-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 8027,
+              "sha256": "65b8144c5afcd170d96b2228eb783d907772a982ac3cfa4201d6a7ba2b941fd6",
+              "row_count": 218
+            }
+          ]
+        }
+      }
+    },
+    "product_dim": {
+      "schema_version": 1,
+      "row_count": 644,
+      "regions": {
+        "ap-northeast-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 82,
+          "files": [
+            {
+              "path": "aws/parquet/product_dim/snapshot_date=2026-09-24/region=ap-northeast-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 9190,
+              "sha256": "7804b740c24f3d83b37329c0d14f86e0afbf7590db1cb7b968ae3a91465df66b",
+              "row_count": 82
+            }
+          ]
+        },
+        "eu-west-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 95,
+          "files": [
+            {
+              "path": "aws/parquet/product_dim/snapshot_date=2026-09-24/region=eu-west-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 10302,
+              "sha256": "0d868c2a64aa1ca48363012849aeeacd480250aca4b8d6a1051901a302447cdc",
+              "row_count": 95
+            }
+          ]
+        },
+        "eu-west-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 83,
+          "files": [
+            {
+              "path": "aws/parquet/product_dim/snapshot_date=2026-09-24/region=eu-west-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 9405,
+              "sha256": "0ed8c81b2ce7a2ef2387398e87c7bfb3dbd80325d54413600bae15d0887d350f",
+              "row_count": 83
+            }
+          ]
+        },
+        "us-east-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 115,
+          "files": [
+            {
+              "path": "aws/parquet/product_dim/snapshot_date=2026-09-24/region=us-east-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 11968,
+              "sha256": "14743203a14f2d0681c60a75573d5c9e4123350b3a71e3b0947b640808656050",
+              "row_count": 115
+            }
+          ]
+        },
+        "us-east-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 82,
+          "files": [
+            {
+              "path": "aws/parquet/product_dim/snapshot_date=2026-09-24/region=us-east-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 9217,
+              "sha256": "fa66d4123504c125f1a626350e33c641ae1711fd82af1a96d4125368c3861af5",
+              "row_count": 82
+            }
+          ]
+        },
+        "us-west-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 83,
+          "files": [
+            {
+              "path": "aws/parquet/product_dim/snapshot_date=2026-09-24/region=us-west-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 9219,
+              "sha256": "11443df7d45a1fba7686c6406b0e044b28e80c9bcc1ecee266f7c3b88ee5d699",
+              "row_count": 83
+            }
+          ]
+        },
+        "us-west-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 104,
+          "files": [
+            {
+              "path": "aws/parquet/product_dim/snapshot_date=2026-09-24/region=us-west-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 11021,
+              "sha256": "34737b7fc805deca5c1da4864d4819138eb27f0ee857b024e4cd3a6976612ca5",
+              "row_count": 104
+            }
+          ]
+        }
+      }
+    },
+    "product_attribute": {
+      "schema_version": 1,
+      "row_count": 9885,
+      "regions": {
+        "ap-northeast-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 1239,
+          "files": [
+            {
+              "path": "aws/parquet/product_attribute/snapshot_date=2026-09-24/region=ap-northeast-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 8082,
+              "sha256": "fd9b3fb40746384e4afbc37e2e819b17d40005876c5107dde9a0e2ac3d0dbee4",
+              "row_count": 1239
+            }
+          ]
+        },
+        "eu-west-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 1390,
+          "files": [
+            {
+              "path": "aws/parquet/product_attribute/snapshot_date=2026-09-24/region=eu-west-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 9000,
+              "sha256": "b9339a13ca572193d2121352c761fad07db0f80ca896f9a6607346f185ef62af",
+              "row_count": 1390
+            }
+          ]
+        },
+        "eu-west-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 1290,
+          "files": [
+            {
+              "path": "aws/parquet/product_attribute/snapshot_date=2026-09-24/region=eu-west-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 8303,
+              "sha256": "bd0c3a80e194ca5b79c09fd452cdfa646cb6049664cc20f932a97c27504674e1",
+              "row_count": 1290
+            }
+          ]
+        },
+        "us-east-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 1836,
+          "files": [
+            {
+              "path": "aws/parquet/product_attribute/snapshot_date=2026-09-24/region=us-east-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 10621,
+              "sha256": "38ede95c3ea63f623d30cdf7cbebb0d06d62bb0988430e1d368380f3c54a52f5",
+              "row_count": 1836
+            }
+          ]
+        },
+        "us-east-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 1277,
+          "files": [
+            {
+              "path": "aws/parquet/product_attribute/snapshot_date=2026-09-24/region=us-east-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 7941,
+              "sha256": "056f6e880cd99997ea9a724350a9ed9df740f1baf0230b9e9daa477f80cf892a",
+              "row_count": 1277
+            }
+          ]
+        },
+        "us-west-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 1261,
+          "files": [
+            {
+              "path": "aws/parquet/product_attribute/snapshot_date=2026-09-24/region=us-west-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 8040,
+              "sha256": "770f56aca570b2f44f7197c4031f6ab79f3a2444ff60942804de6b4251a45743",
+              "row_count": 1261
+            }
+          ]
+        },
+        "us-west-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 1592,
+          "files": [
+            {
+              "path": "aws/parquet/product_attribute/snapshot_date=2026-09-24/region=us-west-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 9692,
+              "sha256": "059e35ae46b38e3962d6f0ef12968255a95dfe50b1a5b5638be8872cbe52d4db",
+              "row_count": 1592
+            }
+          ]
+        }
+      }
+    },
+    "region_dim": {
+      "schema_version": 1,
+      "row_count": 260,
+      "regions": {
+        "ap-northeast-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 37,
+          "files": [
+            {
+              "path": "aws/parquet/region_dim/snapshot_date=2026-09-24/region=ap-northeast-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 1684,
+              "sha256": "e671be7d42d80d785920a7e28b3c5e0509740006892d99a8bbd7faa9be79171b",
+              "row_count": 37
+            }
+          ]
+        },
+        "eu-west-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 38,
+          "files": [
+            {
+              "path": "aws/parquet/region_dim/snapshot_date=2026-09-24/region=eu-west-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 1669,
+              "sha256": "ef80ac6cc006c73dbdae55e8886d746a73c3ffcffc507914fec97520da941756",
+              "row_count": 38
+            }
+          ]
+        },
+        "eu-west-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 37,
+          "files": [
+            {
+              "path": "aws/parquet/region_dim/snapshot_date=2026-09-24/region=eu-west-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 1672,
+              "sha256": "e842ade753964c16a04e1d6de40b72f874b2055e46c525a8395652b731d21ee0",
+              "row_count": 37
+            }
+          ]
+        },
+        "us-east-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 37,
+          "files": [
+            {
+              "path": "aws/parquet/region_dim/snapshot_date=2026-09-24/region=us-east-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 1668,
+              "sha256": "b10153a2707141c6381b3b31a1f532b43badf60a828777c71ca0f5698ac56b4f",
+              "row_count": 37
+            }
+          ]
+        },
+        "us-east-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 37,
+          "files": [
+            {
+              "path": "aws/parquet/region_dim/snapshot_date=2026-09-24/region=us-east-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 1662,
+              "sha256": "c35d275e50eb5a2d75710754919553935b1b686eb131544d06eeac664232f3e1",
+              "row_count": 37
+            }
+          ]
+        },
+        "us-west-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 37,
+          "files": [
+            {
+              "path": "aws/parquet/region_dim/snapshot_date=2026-09-24/region=us-west-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 1667,
+              "sha256": "3f3602b8bd21bdbef8b4b550a314d90f347e472ed54e42650f777a059226302a",
+              "row_count": 37
+            }
+          ]
+        },
+        "us-west-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 37,
+          "files": [
+            {
+              "path": "aws/parquet/region_dim/snapshot_date=2026-09-24/region=us-west-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 1655,
+              "sha256": "5dcf72cc32bde528b31965ccb08691d5a4009a63a6e373b139a62b73e93fd3d0",
+              "row_count": 37
+            }
+          ]
+        }
+      }
+    },
+    "price_fact": {
+      "schema_version": 1,
+      "row_count": 1401,
+      "regions": {
+        "ap-northeast-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 182,
+          "files": [
+            {
+              "path": "aws/parquet/price_fact/snapshot_date=2026-09-24/region=ap-northeast-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 6817,
+              "sha256": "a4c1bc7b29242ff866239186cdf91d7faf6052b57ffd39b87cd23e5a87a02cc9",
+              "row_count": 182
+            }
+          ]
+        },
+        "eu-west-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 230,
+          "files": [
+            {
+              "path": "aws/parquet/price_fact/snapshot_date=2026-09-24/region=eu-west-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 8066,
+              "sha256": "331322ec63adf94a0ddc96275e82743b474ee0e616e83d267ce930c17c05da41",
+              "row_count": 230
+            }
+          ]
+        },
+        "eu-west-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 127,
+          "files": [
+            {
+              "path": "aws/parquet/price_fact/snapshot_date=2026-09-24/region=eu-west-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 6490,
+              "sha256": "da1271f389b229478d210968c4464e0528dd8e4b3e8c8bce3527e0d1792313ed",
+              "row_count": 127
+            }
+          ]
+        },
+        "us-east-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 373,
+          "files": [
+            {
+              "path": "aws/parquet/price_fact/snapshot_date=2026-09-24/region=us-east-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 9722,
+              "sha256": "2af9b28046cbad07e1e8c7a0a31254ba99282cbe9195f56f5370c36cd2acf665",
+              "row_count": 373
+            }
+          ]
+        },
+        "us-east-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 142,
+          "files": [
+            {
+              "path": "aws/parquet/price_fact/snapshot_date=2026-09-24/region=us-east-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 6281,
+              "sha256": "f3815331c028e23bd1d0ff9e58c9f11a4ab1d5d96b969b96533ebdd428e3289d",
+              "row_count": 142
+            }
+          ]
+        },
+        "us-west-1": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 111,
+          "files": [
+            {
+              "path": "aws/parquet/price_fact/snapshot_date=2026-09-24/region=us-west-1/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 6141,
+              "sha256": "f6f8a0a31e32beda486f7fb0359fcf9ebe4a9ab754505c5767caabe7a601dbe4",
+              "row_count": 111
+            }
+          ]
+        },
+        "us-west-2": {
+          "written_by_run": "20260924T000000Z-f1a7e0",
+          "row_count": 236,
+          "files": [
+            {
+              "path": "aws/parquet/price_fact/snapshot_date=2026-09-24/region=us-west-2/part-20260924T000000Z-f1a7e0.parquet",
+              "bytes": 7933,
+              "sha256": "e13a62675edc53216d68ee50ad88b81aa11aab7ad33be5debc8b14c971bfdee4",
+              "row_count": 236
+            }
+          ]
+        }
+      }
+    }
+  },
+  "purged": null
+}

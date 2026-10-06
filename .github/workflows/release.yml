@@ -1,0 +1,76 @@
+# Release images (018-app-cloud-deployment, FR-018, FR-053; contracts/app-cli.md, research.md R5).
+#
+# A v* tag builds the backend and web images for linux/arm64 and pushes them to each environment
+# in RELEASE_ENVIRONMENTS (a JSON list, default ["prod"]), using that environment's push-only
+# `release` role. Tags are immutable, so images that already exist are skipped and re-running is
+# safe — that is how a newly added environment gets an existing release: run this workflow
+# manually *from the tag* ("Use workflow from: vX.Y.Z") with the same tag as input.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The v* tag to publish (run this workflow from that tag)"
+        required: true
+
+permissions: {}
+
+jobs:
+  publish:
+    name: publish (${{ matrix.env }})
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJSON(vars.RELEASE_ENVIRONMENTS || '["prod"]') }}
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      APP_ENV: ${{ matrix.env }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+    steps:
+      - name: Check the tag
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::$TAG is not a vX.Y.Z tag"; exit 1; }
+          [[ "$GITHUB_REF" == "refs/tags/$TAG" ]] || { echo "::error::run this workflow from the tag $TAG"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets[format('AWS_ROLE_RELEASE_{0}', matrix.env)] }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Build and push missing images
+        run: |
+          set -euo pipefail
+          account="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::$account"
+          registry="$account.dkr.ecr.$AWS_REGION.amazonaws.com"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          echo "## Release $TAG → $APP_ENV" >>"$GITHUB_STEP_SUMMARY"
+          for image in backend web; do
+            repository="cloud-pricing-app-$image-$APP_ENV"
+            if aws ecr describe-images --repository-name "$repository" --image-ids "imageTag=$TAG" >/dev/null 2>&1; then
+              echo "$repository:$TAG already exists; skipping (tags are immutable)"
+            else
+              if [[ $image == backend ]]; then context=backend; dockerfile=backend/Dockerfile
+              else context=frontend; dockerfile=frontend/Dockerfile.web; fi
+              docker buildx build --platform linux/arm64 --push \
+                --build-arg "GIT_SHA=$GITHUB_SHA" --build-arg "RELEASE=$TAG" \
+                -f "$dockerfile" -t "$registry/$repository:$TAG" "$context"
+            fi
+            # Check the real outcome (FR-047): the tag must now resolve to a digest.
+            digest="$(aws ecr describe-images --repository-name "$repository" --image-ids "imageTag=$TAG" \
+              --query 'imageDetails[0].imageDigest' --output text)"
+            [[ "$digest" == sha256:* ]] || { echo "::error::$repository:$TAG has no digest after push"; exit 1; }
+            echo "- \`$image\`: \`$digest\`" >>"$GITHUB_STEP_SUMMARY"
+          done

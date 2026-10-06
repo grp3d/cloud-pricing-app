@@ -1,0 +1,11 @@
+# Scheduled database backup (018-app-cloud-deployment, FR-025; research.md R10). The ops command
+# verifies the backup, applies retention and alerts on failure itself.
+[Unit]
+Description=cloud-pricing-app scheduled backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/app
+ExecStart=/usr/bin/docker compose -f /opt/app/compose.yaml run --rm -T ops backup --kind scheduled

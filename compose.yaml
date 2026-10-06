@@ -1,0 +1,126 @@
+# The whole app on one host (018-app-cloud-deployment, FR-019; research.md R4, R8, R10).
+#
+# Cloud: cloud-init writes this file and /opt/app/.env (images by digest, settings, the random
+# database password), then runs `docker compose up -d`. Laptop: add compose.local.yaml.
+#
+# Start order: db healthy → db-init (restore or fresh, migrate) → backend healthy → web, with
+# tls-init (the environment's TLS root, from SSM) before web. A failed db-init keeps the backend
+# and web from starting (FR-022). `ops` runs one-off commands:
+#   docker compose run --rm ops backup --kind manual
+
+name: cloud-pricing-app
+
+x-logging: &logging
+  driver: awslogs
+  options:
+    awslogs-group: ${LOG_GROUP:-/cloud-pricing-app/unset}
+    awslogs-region: ${AWS_REGION:-us-east-1}
+    awslogs-create-group: "false"
+    tag: "{{.Name}}"
+
+x-backend-image: &backend-image
+  image: ${BACKEND_IMAGE:?BACKEND_IMAGE must name the backend image}
+  env_file:
+    - path: .env
+      required: false
+  logging: *logging
+
+services:
+  db:
+    image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    command: ["postgres", "-c", "shared_buffers=128MB"]
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_DB: cloud_pricing
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "app", "-d", "cloud_pricing"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    restart: unless-stopped
+    logging: *logging
+
+  # Writes the environment's TLS root (from SSM) for Caddy, on every start.
+  tls-init:
+    <<: *backend-image
+    command: ["python", "-m", "src.ops", "fetch-tls", "--out", "/tls"]
+    volumes:
+      - tls:/tls
+    restart: "no"
+
+  db-init:
+    <<: *backend-image
+    command: python -m src.ops db-init ${DB_INIT_ARGS:-}
+    volumes:
+      - run-state:/run/app
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    <<: *backend-image
+    environment:
+      PRICING_CACHE_DIR: /var/lib/app/pricing-cache
+    volumes:
+      - pricing-cache:/var/lib/app/pricing-cache
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)"
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
+      retries: 6
+    restart: unless-stopped
+
+  web:
+    image: ${WEB_IMAGE:?WEB_IMAGE must name the web image}
+    environment:
+      PUBLIC_ADDRESS: ${PUBLIC_ADDRESS:?PUBLIC_ADDRESS must be set}
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - tls:/tls:ro
+      - caddy-data:/data
+    depends_on:
+      tls-init:
+        condition: service_completed_successfully
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+  # `docker compose run --rm ops <command> …` runs `python -m src.ops <command> …`.
+  ops:
+    <<: *backend-image
+    profiles: ["ops"]
+    entrypoint: ["python", "-m", "src.ops"]
+    volumes:
+      - run-state:/run/app
+      - ops-state:/var/lib/app
+      - /proc/uptime:/host/proc/uptime:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  pricing-cache:
+  run-state:
+  ops-state:
+  caddy-data:
+  # The TLS root, written by tls-init (mode 0400). An ordinary volume on the instance's encrypted
+  # root disk, destroyed with the instance; a tmpfs volume loses its contents whenever no running
+  # container holds it, which broke Caddy after restarts (research.md R6).
+  tls:

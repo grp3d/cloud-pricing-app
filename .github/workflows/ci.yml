@@ -1,16 +1,24 @@
 name: CI
 
+# 018-app-cloud-deployment (FR-052, FR-053): every action is pinned to a full commit SHA, runners
+# and tools to exact versions. Besides the app's tests this checks the infrastructure (tofu fmt,
+# validate, test), deploy/app (shellcheck + its no-network tests), both release images (arm64
+# build, no push), and — when enabled — previews the instance stack's plan on pull requests.
+
 on:
   push:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: cloud_pricing_test
@@ -25,29 +33,54 @@ jobs:
       # user, so without it the runner's OS user ("runner") is used and doesn't exist.
       DATABASE_URL: postgresql+psycopg://postgres@localhost/cloud_pricing_test
       TEST_DATABASE_URL: postgresql+psycopg://postgres@localhost/cloud_pricing_test
-      # A small real subset of the upstream AWS pricing Parquet data, committed to the repo
-      # (rebuild with backend/scripts/build_test_pricing_fixture.py).
-      AWS_PRICING_PARQUET_DIR: ${{ github.workspace }}/backend/tests/fixtures/pricing_parquet
+      # A small real subset of the upstream AWS pricing data, committed to the repo in the
+      # pipeline's storage layout (rebuild with backend/scripts/build_test_pricing_fixture.py).
+      PRICING_DATA_URI: file://${{ github.workspace }}/backend/tests/fixtures/pricing_parquet
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.12.19"
+      - name: Install pg_dump / pg_restore 18 (PGDG, apt-signed)
+        # The backup and restore tests need a client at least as new as the server.
+        run: |
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
+          echo "/usr/lib/postgresql/18/bin" >>"$GITHUB_PATH"
       - run: uv sync --extra dev
         working-directory: backend
-      - run: uv run ruff check src/
+      - run: uv run ruff check src/ scripts/ tests/
         working-directory: backend
       - run: |
           uv run alembic upgrade head
           uv run pytest -v
         working-directory: backend
+      - name: No AWS account IDs in the repository (FR-050, SC-013)
+        # A standalone 12-digit number (not part of a UUID or other hex/word token). Written
+        # without \b so it behaves the same with every grep. Public account IDs that must appear
+        # are allowed by name: 099720109477 is Canonical, the publisher of the Ubuntu AMIs
+        # (infra/base/iam_ci.tf limits launches to its images).
+        run: |
+          set -euo pipefail
+          allowed='099720109477'
+          found="$(git grep -nE '(^|[^0-9A-Za-z_-])[0-9]{12}([^0-9A-Za-z_-]|$)' -- \
+            ':!backend/tests/**' ':!**/*.lock*' ':!**/*.json' ':!infra/**/tests/**' \
+            ':!deploy/tests/**' ':!specs/**' | grep -vE "$allowed" || true)"
+          if [[ -n "$found" ]]; then
+            echo "$found"
+            echo "::error::a 12-digit number (an AWS account ID?) is committed outside the test fixtures"
+            exit 1
+          fi
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
-      - run: npm install
+      - run: npm ci
         working-directory: frontend
       - run: npm run lint
         working-directory: frontend
@@ -60,10 +93,10 @@ jobs:
     # Constitution Principle IV: fail the build if the frontend's generated API types drift
     # from the backend's live OpenAPI schema — a real gate, not advisory. Runs the actual
     # backend (migrated against an ephemeral Postgres) so /openapi.json reflects real code.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
         ports: ["5432:5432"]
@@ -73,9 +106,11 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.12.19"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
       - run: uv sync --extra dev
@@ -88,10 +123,115 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgresql+psycopg://postgres@localhost/postgres
+          # 018-app-cloud-deployment: the backend refuses to start without a data source.
+          PRICING_DATA_URI: file://${{ github.workspace }}/backend/tests/fixtures/pricing_parquet
         run: |
           uv run uvicorn src.main:app --port 8000 &
-          for i in $(seq 1 30); do curl -sf http://localhost:8000/health && break; sleep 1; done
-      - run: npm install
+          for _ in $(seq 1 30); do curl -sf http://localhost:8000/health && break; sleep 1; done
+      - run: npm ci
         working-directory: frontend
       - run: npm run check-api-types
         working-directory: frontend
+
+  infra:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.10.6
+          tofu_wrapper: false
+      - run: tofu fmt -check -recursive infra/
+      - name: validate and test (mocked providers, no cloud access)
+        run: |
+          for stack in base instance; do
+            (cd "infra/$stack" && tofu init -backend=false -input=false && tofu validate && tofu test)
+          done
+      - name: Stack boundaries (contracts/infrastructure.md tests 1 and 4)
+        run: |
+          set -euo pipefail
+          if grep -nE '^resource "aws_(instance|vpc|subnet|security_group)' infra/base/*.tf; then
+            echo "::error::the base stack must not hold disposable compute or network resources"; exit 1
+          fi
+          if grep -nE '^resource "aws_(s3_|ssm_parameter|cloudwatch_log_group|sns_|iam_|ecr_|kms_)' infra/instance/*.tf; then
+            echo "::error::the instance stack must hold nothing long-lived and make no IAM writes"; exit 1
+          fi
+          if grep -nE '^\s*key_name\s*=' infra/instance/*.tf; then
+            echo "::error::no SSH key pair: the shell is Session Manager only"; exit 1
+          fi
+
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: shellcheck deploy/app deploy/tests/app_test.sh deploy/tests/fakes/aws deploy/tests/fakes/tofu
+      - run: bash deploy/tests/app_test.sh
+
+  images:
+    # The release images build for the server's architecture (FR-018); nothing is pushed.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker buildx build --platform linux/arm64 -f backend/Dockerfile backend
+      - run: docker buildx build --platform linux/arm64 -f frontend/Dockerfile.web frontend
+
+  plan:
+    # A preview of the instance stack on pull requests (FR-052), switched on by the variable
+    # AWS_PLAN_ENABLED once the plan role exists. The repo is public: the account ID and every
+    # allowlisted address are masked in the log, and the PR comment shows counts only.
+    if: github.event_name == 'pull_request' && vars.AWS_PLAN_ENABLED == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.10.6
+          tofu_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_PLAN_PROD }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+      - name: Plan infra/instance (prod)
+        id: plan
+        run: |
+          set -euo pipefail
+          allowlist="$(aws ssm get-parameter --name /cloud-pricing-app/prod/allowlist --query Parameter.Value --output text)"
+          IFS=',' read -r -a entries <<<"$allowlist"
+          for e in "${entries[@]}"; do echo "::add-mask::$e"; echo "::add-mask::${e%/*}"; done
+          newest() {
+            aws ecr describe-images --repository-name "$1" --filter tagStatus=TAGGED \
+              --query 'imageDetails[].{t: imageTags, d: imageDigest}' --output json
+          }
+          backend="$(newest cloud-pricing-app-backend-prod)"
+          release="$(jq -r '[.[].t[] | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(ltrimstr("v") | split(".") | map(tonumber)) | last // "v0.0.0"' <<<"$backend")"
+          digest() { jq -r --arg t "$release" 'map(select(.t | index($t)))[0].d // "sha256:0000000000000000000000000000000000000000000000000000000000000000"' <<<"$1"; }
+          ami="$(sed -n -E 's/^ami_id *= *"(ami-[0-9a-f]+)".*/\1/p' infra/envs/prod.tfvars)"
+          cd infra/instance
+          tofu init -input=false -backend-config=../envs/prod.backend.hcl -backend-config=key=app/prod/instance.tfstate
+          tofu plan -input=false -lock=false -out=plan.bin -var-file=../envs/prod.tfvars \
+            -var "release=$release" -var "backend_digest=$(digest "$backend")" \
+            -var "web_digest=$(digest "$(newest cloud-pricing-app-web-prod)")" \
+            ${ami:+-var "ami_id=$ami"}
+          tofu show -json plan.bin | jq -r '
+            [.resource_changes[] | select(.change.actions != ["no-op"])
+              | "\(.change.actions | join("/")) \(.type)"]
+            | group_by(.) | map("- \(length) × \(.[0])") | .[]' >summary.txt
+          echo "release=$release" >>"$GITHUB_OUTPUT"
+      - name: Comment the summary (counts only)
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RELEASE: ${{ steps.plan.outputs.release }}
+        with:
+          script: |
+            const fs = require('fs');
+            const lines = fs.readFileSync('infra/instance/summary.txt', 'utf8').trim() || '- no changes';
+            const body = `### infra/instance plan (prod, ${process.env.RELEASE})\n\n${lines}\n\n` +
+              `_Counts only: resource values (addresses, IDs) stay out of public comments._`;
+            await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });

@@ -230,6 +230,7 @@ This is everything this feature adds that someone must configure, store, schedul
   - FR-038: `status` also sends the address notice, because the address is masked in GitHub logs.
   - FR-011 and SC-006: the clean-up rule is made precise (excess is removed at the next check).
   - FR-056: the "clear message" comes from the failing lookup plus the runbook check, instead of `precondition` blocks that cannot run when a lookup fails.
+  - Launch permission (decided in implementation, recorded after the PR review): the `deploy` role may launch any Canonical-owned image (`ec2:Owner = 099720109477`) rather than one pinned AMI ARN, so an AMI update is a tfvars change plus `up`, not an administrator apply of the base stack. The AMI itself stays pinned in `<env>.tfvars`.
   - The PR preview stays limited to `infra/instance`. Previewing `infra/base` would need wider read permissions on the `plan` role. Base changes are applied by hand by the owner, who sees the plan then.
 
 ## Risks

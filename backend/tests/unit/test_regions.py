@@ -6,26 +6,22 @@ mirroring `test_catalog_search.py`'s convention.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from src.config import settings
-from src.pricing_data.active_snapshot import get_active_snapshot_date
 from src.pricing_data.regions import list_available_regions
-from src.pricing_data.snapshot import _TABLES
+from src.pricing_data.snapshot import TABLES
 
 
 def test_returns_regions_common_to_every_table_at_the_latest_snapshot():
-    snapshot_date = get_active_snapshot_date()
+    """018-app-cloud-deployment: computed here straight from the manifest JSON on disk."""
+    root = Path(settings.pricing_data_source.root)
+    latest = json.loads((root / "aws/manifests/latest.json").read_text())
+    manifest = json.loads((root / latest["manifest_path"]).read_text())
     expected: set[str] | None = None
-    for table in _TABLES:
-        table_dir = (
-            Path(settings.aws_pricing_parquet_dir) / table / f"snapshot_date={snapshot_date}"
-        )
-        codes = {
-            entry.name.removeprefix("region=")
-            for entry in table_dir.iterdir()
-            if entry.is_dir() and entry.name.startswith("region=")
-        }
+    for table in TABLES:
+        codes = set(manifest["tables"][table]["regions"])
         expected = codes if expected is None else expected & codes
 
     assert expected is not None and expected

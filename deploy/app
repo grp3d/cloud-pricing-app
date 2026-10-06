@@ -1,0 +1,728 @@
+#!/usr/bin/env bash
+# deploy/app — bring the app up or down, and the operations around it
+# (018-app-cloud-deployment; contracts/app-cli.md, research.md R11).
+#
+#   deploy/app up      --env <env> [--release vX.Y.Z] [--backup <id>] [--new-root] [--break-lock]
+#   deploy/app down    --env <env> [--force-without-backup] [--break-lock]
+#   deploy/app status  --env <env>
+#   deploy/app allow   add|remove <ip> | list  --env <env>
+#   deploy/app cert    --env <env> [--out file]  |  deploy/app cert local --create
+#   deploy/app ami-latest --env <env>
+#   deploy/app backup-now --env <env>
+#
+# The same script runs on the owner's laptop and in GitHub Actions (app.yml). Environment and
+# region are explicit inputs (--env or APP_ENV, and AWS_REGION) and are never read from AWS
+# config files (FR-048). Every step checks the real outcome of what it started (FR-047).
+#
+# Exit codes: 0 success, 2 usage, 3 precondition not met, 4 backup failed or unverified
+# (nothing destroyed), 5 the instance didn't become healthy, other: unexpected (step printed).
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP=cloud-pricing-app
+CANONICAL_AMI_PARAMETER=/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id
+LOCK_MAX_AGE_SECONDS=$((2 * 3600))
+ROOT_EXPIRY_WARN_SECONDS=$((180 * 86400))
+# Test-only knob: the harness sets 0 so polling loops don't sleep.
+POLL_SECONDS="${APP_POLL_SECONDS:-5}"
+
+COMMAND=""
+SUBCOMMAND=""
+ARGUMENT=""
+ENV_NAME="${APP_ENV:-}"
+RELEASE=""
+BACKUP_ID=""
+NEW_ROOT=0
+BREAK_LOCK=0
+FORCE_WITHOUT_BACKUP=0
+OUT_FILE=""
+CREATE=0
+
+CURRENT_STEP="start"
+LOCK_HELD=0
+WORK_DIR=""
+NOTICE_EXTRA=""
+
+# --- Output and errors --------------------------------------------------------------------------
+
+log() { printf '%s\n' "$*" >&2; }
+step() { CURRENT_STEP="$1"; log "==> $1"; }
+die() {
+  local code="$1"; shift
+  log "deploy/app: error: $*"
+  exit "$code"
+}
+
+in_github() { [[ "${GITHUB_ACTIONS:-}" == "true" ]]; }
+
+# Hide a value in GitHub logs, which may be public (FR-050). No-op elsewhere.
+mask() {
+  if in_github && [[ -n "${1:-}" ]]; then
+    printf '::add-mask::%s\n' "$1"
+  fi
+}
+
+cleanup() {
+  local status=$?
+  if [[ "$LOCK_HELD" == 1 ]]; then
+    lock_release || log "warning: could not release the lock; it expires after 2 hours"
+  fi
+  if [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
+    rm -rf "$WORK_DIR"
+  fi
+  if [[ $status -ne 0 && $status -ne 2 && $status -ne 3 && $status -ne 4 && $status -ne 5 ]]; then
+    log "deploy/app: failed during step: $CURRENT_STEP (exit $status)"
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+
+usage() {
+  sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+}
+
+# --- Arguments ----------------------------------------------------------------------------------
+
+parse_args() {
+  [[ $# -gt 0 ]] || usage
+  COMMAND="$1"; shift
+  case "$COMMAND" in
+    allow)
+      [[ $# -gt 0 ]] || die 2 "allow needs add, remove or list"
+      SUBCOMMAND="$1"; shift
+      case "$SUBCOMMAND" in
+        add|remove) [[ $# -gt 0 && "$1" != --* ]] || die 2 "allow $SUBCOMMAND needs an address"
+                    ARGUMENT="$1"; shift ;;
+        list) ;;
+        *) die 2 "allow needs add, remove or list" ;;
+      esac ;;
+    cert)
+      if [[ $# -gt 0 && "$1" == local ]]; then SUBCOMMAND=local; shift; fi ;;
+    up|down|status|ami-latest|backup-now) ;;
+    -h|--help|help) usage ;;
+    *) die 2 "unknown command: $COMMAND" ;;
+  esac
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --env) [[ $# -ge 2 ]] || die 2 "--env needs a value"; ENV_NAME="$2"; shift 2 ;;
+      --release) [[ $# -ge 2 ]] || die 2 "--release needs a value"; RELEASE="$2"; shift 2 ;;
+      --backup) [[ $# -ge 2 ]] || die 2 "--backup needs a value"; BACKUP_ID="$2"; shift 2 ;;
+      --out) [[ $# -ge 2 ]] || die 2 "--out needs a value"; OUT_FILE="$2"; shift 2 ;;
+      --new-root) NEW_ROOT=1; shift ;;
+      --break-lock) BREAK_LOCK=1; shift ;;
+      --force-without-backup) FORCE_WITHOUT_BACKUP=1; shift ;;
+      --create) CREATE=1; shift ;;
+      *) die 2 "unknown option: $1" ;;
+    esac
+  done
+  if [[ -n "$RELEASE" && ! "$RELEASE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    die 2 "--release must look like v1.2.3, got $RELEASE"
+  fi
+  if [[ -n "$BACKUP_ID" && ! "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z-[a-z]+-[A-Za-z0-9.]+$ ]]; then
+    die 2 "--backup must be a backup id such as 20261005T140309Z-teardown-v1.4.0"
+  fi
+}
+
+require_env_and_region() {
+  [[ -n "$ENV_NAME" ]] || die 2 "--env is required (dev, qa or prod)"
+  [[ "$ENV_NAME" =~ ^(dev|qa|prod)$ ]] || die 2 "--env must be dev, qa or prod, got $ENV_NAME"
+  [[ -n "${AWS_REGION:-}" ]] || die 2 "AWS_REGION is required; it is never read from AWS config files"
+  TFVARS="$REPO_ROOT/infra/envs/$ENV_NAME.tfvars"
+  BACKEND_HCL="$REPO_ROOT/infra/envs/$ENV_NAME.backend.hcl"
+  [[ -f "$TFVARS" && -f "$BACKEND_HCL" ]] || die 3 "infra/envs/$ENV_NAME.tfvars and .backend.hcl must exist"
+  local tf_region
+  tf_region="$(tfvar aws_region)"
+  [[ "$tf_region" == "$AWS_REGION" ]] || die 2 "AWS_REGION=$AWS_REGION but $ENV_NAME.tfvars says $tf_region"
+}
+
+# The value of a simple `name = "value"` line in the env's tfvars.
+tfvar() {
+  sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$TFVARS" | head -n 1
+}
+
+# --- Tools --------------------------------------------------------------------------------------
+
+require_tools() {
+  local tool
+  for tool in "$@"; do
+    command -v "$tool" >/dev/null 2>&1 || die 3 "$tool is required (see docs/deployment.md, laptop tools)"
+  done
+  if [[ " $* " == *" aws "* ]]; then
+    aws --version 2>&1 | grep -q '^aws-cli/2\.' || die 3 "AWS CLI v2 is required"
+  fi
+  if [[ " $* " == *" tofu "* ]]; then
+    local version
+    version="$(tofu version -json | jq -r .terraform_version)"
+    [[ "$(printf '%s\n%s\n' 1.10.0 "$version" | sort -V | head -n 1)" == 1.10.0 ]] \
+      || die 3 "OpenTofu >= 1.10 is required, found $version"
+  fi
+}
+
+awsx() { aws --region "$AWS_REGION" "$@"; }
+
+# --- Base stack outputs -------------------------------------------------------------------------
+
+read_base() {
+  local state_bucket state
+  state_bucket="$(sed -n -E 's/^[[:space:]]*bucket[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' "$BACKEND_HCL" | head -n 1)"
+  if ! state="$(awsx s3 cp "s3://$state_bucket/app/$ENV_NAME/base.tfstate" - 2>/dev/null)" \
+      || [[ "$(jq -r '.outputs.backup_bucket.value // empty' <<<"$state")" == "" ]]; then
+    die 3 "the base stack for $ENV_NAME has not been applied; run the one-time setup in docs/deployment.md"
+  fi
+  BASE_OUTPUTS="$(jq '.outputs | map_values(.value)' <<<"$state")"
+  BACKUP_BUCKET="$(jq -r .backup_bucket <<<"$BASE_OUTPUTS")"
+  ALLOWLIST_PARAMETER="$(jq -r .allowlist_parameter <<<"$BASE_OUTPUTS")"
+  BACKEND_REPOSITORY="$(jq -r .repository_names.backend <<<"$BASE_OUTPUTS")"
+  WEB_REPOSITORY="$(jq -r .repository_names.web <<<"$BASE_OUTPUTS")"
+  PARAMETER_PREFIX="/$APP/$ENV_NAME"
+}
+
+# --- Operation lock (FR-030) --------------------------------------------------------------------
+
+lock_acquire() {
+  local action="$1" body by run_url now
+  now="$(date -u +%s)"
+  by="${GITHUB_ACTOR:+github:$GITHUB_ACTOR}"
+  by="${by:-${USER:-unknown}@$(hostname -s 2>/dev/null || echo host)}"
+  run_url=""
+  if in_github; then
+    run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}"
+  fi
+  body="$WORK_DIR/lock.json"
+  jq -n --arg action "$action" --arg by "$by" --arg run_url "$run_url" --argjson started "$now" \
+    '{action: $action, by: $by, started_at: $started, run_url: $run_url}' >"$body"
+
+  local error
+  if error="$(awsx s3api put-object --bucket "$BACKUP_BUCKET" --key "locks/$ENV_NAME.json" \
+      --body "$body" --if-none-match '*' 2>&1 >/dev/null)"; then
+    LOCK_HELD=1
+    return 0
+  fi
+  [[ "$error" == *PreconditionFailed* || "$error" == *"412"* ]] || die 1 "could not take the lock: $error"
+
+  local holder started age
+  holder="$(awsx s3 cp "s3://$BACKUP_BUCKET/locks/$ENV_NAME.json" - 2>/dev/null || echo '{}')"
+  started="$(jq -r '.started_at // 0' <<<"$holder")"
+  age=$((now - started))
+  if [[ "$BREAK_LOCK" == 1 && $age -gt $LOCK_MAX_AGE_SECONDS ]]; then
+    log "breaking a lock held for ${age}s: $(jq -c . <<<"$holder")"
+    awsx s3api delete-object --bucket "$BACKUP_BUCKET" --key "locks/$ENV_NAME.json" >/dev/null
+    awsx s3api put-object --bucket "$BACKUP_BUCKET" --key "locks/$ENV_NAME.json" \
+      --body "$body" --if-none-match '*' >/dev/null
+    LOCK_HELD=1
+    return 0
+  fi
+  die 3 "another operation holds the $ENV_NAME lock: $(jq -r '"\(.action) by \(.by), started \(.started_at) \(.run_url)"' <<<"$holder") (age ${age}s; --break-lock works after 2 hours)"
+}
+
+lock_release() {
+  awsx s3api delete-object --bucket "$BACKUP_BUCKET" --key "locks/$ENV_NAME.json" >/dev/null
+  LOCK_HELD=0
+}
+
+# --- Instance discovery -------------------------------------------------------------------------
+
+# Sets INSTANCE_ID, INSTANCE_STATE, PUBLIC_IP, LAUNCH_TIME, INSTANCE_RELEASE (empty when none).
+find_instance() {
+  local found
+  found="$(awsx ec2 describe-instances \
+    --filters "Name=tag:environment,Values=$ENV_NAME" "Name=tag:app,Values=$APP" \
+              "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+    --query 'Reservations[].Instances[]' --output json)"
+  INSTANCE_ID="$(jq -r '.[0].InstanceId // empty' <<<"$found")"
+  INSTANCE_STATE="$(jq -r '.[0].State.Name // empty' <<<"$found")"
+  PUBLIC_IP="$(jq -r '.[0].PublicIpAddress // empty' <<<"$found")"
+  LAUNCH_TIME="$(jq -r '.[0].LaunchTime // empty' <<<"$found")"
+  INSTANCE_RELEASE="$(jq -r '(.[0].Tags // []) | map(select(.Key == "release")) | .[0].Value // empty' <<<"$found")"
+  mask "$PUBLIC_IP"
+}
+
+# --- SSM Run Command ----------------------------------------------------------------------------
+
+# ssm_run <instance-id> <shell script>: run on the instance and wait for a terminal status.
+# Fails unless the status is Success, printing stderr's tail. Prints stdout's last line, which
+# for an ops command is its JSON result.
+ssm_run() {
+  local instance="$1" script="$2" params command_id status invocation
+  # Run Command keeps only the first 24,000 characters of stdout, so keep the tail.
+  params="$(jq -n --arg s "$script" \
+    '{commands: ["set -u", "( \($s) ) > /tmp/deploy-app.out 2>&1; rc=$?", "tail -n 40 /tmp/deploy-app.out", "exit $rc"], executionTimeout: ["3600"]}')"
+  command_id="$(awsx ssm send-command --instance-ids "$instance" \
+    --document-name AWS-RunShellScript --comment "deploy/app $COMMAND $ENV_NAME" \
+    --parameters "$params" --query Command.CommandId --output text)"
+  [[ -n "$command_id" && "$command_id" != None ]] || die 1 "SSM did not accept the command"
+
+  while :; do
+    sleep "$POLL_SECONDS"
+    if ! invocation="$(awsx ssm get-command-invocation --command-id "$command_id" \
+        --instance-id "$instance" --output json 2>/dev/null)"; then
+      continue  # InvocationDoesNotExist right after sending
+    fi
+    status="$(jq -r .Status <<<"$invocation")"
+    case "$status" in
+      Pending|InProgress|Delayed) continue ;;
+      Success) break ;;
+      *)
+        log "SSM command $command_id on $instance ended with status $status"
+        jq -r '.StandardOutputContent, .StandardErrorContent' <<<"$invocation" | tail -n 20 >&2
+        return 1 ;;
+    esac
+  done
+  jq -r .StandardOutputContent <<<"$invocation" | sed '/^[[:space:]]*$/d' | tail -n 1
+}
+
+compose_cmd() { printf 'cd /opt/app && docker compose %s' "$1"; }
+
+# Quote one argument for the instance's POSIX sh (Run Command may not use bash).
+sh_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+# --- OpenTofu (instance stack) ------------------------------------------------------------------
+
+tf_init() {
+  local stack="$1"
+  (cd "$REPO_ROOT/infra/$stack" && tofu init -input=false -reconfigure \
+    -backend-config="$BACKEND_HCL" -backend-config="key=app/$ENV_NAME/$stack.tfstate" >/dev/null)
+}
+
+tf() { (cd "$REPO_ROOT/infra/instance" && tofu "$@"); }
+
+# Instance-stack variables beyond the tfvars file.
+INSTANCE_VARS=()
+set_instance_vars() {
+  INSTANCE_VARS=(-var-file="$TFVARS" -var "aws_region=$AWS_REGION"
+    -var "release=$1" -var "backend_digest=$2" -var "web_digest=$3" -var "db_init_args=$4")
+  if [[ -n "${5:-}" ]]; then INSTANCE_VARS+=(-var "ami_id=$5"); fi
+}
+
+# Plan to a file; echo "true" if a running aws_instance would be deleted or replaced (FR-029).
+plan_instance() {
+  tf plan -input=false -lock-timeout=60s -out="$WORK_DIR/instance.plan" "${INSTANCE_VARS[@]}" >&2
+  tf show -json "$WORK_DIR/instance.plan" \
+    | jq '[.resource_changes[]? | select(.type == "aws_instance") | .change.actions | index("delete") != null] | any'
+}
+
+instance_outputs() {
+  tf output -json 2>/dev/null || echo '{}'
+}
+
+# --- Release resolution (FR-057) ----------------------------------------------------------------
+
+repo_images() {
+  awsx ecr describe-images --repository-name "$1" --filter tagStatus=TAGGED \
+    --query 'imageDetails[].{tags: imageTags, digest: imageDigest}' --output json
+}
+
+resolve_release() {
+  local backend_images web_images common
+  backend_images="$(repo_images "$BACKEND_REPOSITORY")"
+  web_images="$(repo_images "$WEB_REPOSITORY")"
+  common="$(jq -rn --argjson b "$backend_images" --argjson w "$web_images" \
+    '([$b[].tags[]] | map(select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")))) as $bt
+     | ([$w[].tags[]] | map(select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")))) as $wt
+     | $bt - ($bt - $wt) | unique | .[]')"
+  if [[ -n "$RELEASE" ]]; then
+    grep -qx "$RELEASE" <<<"$common" \
+      || die 3 "release $RELEASE is not in this environment's registry (both images are needed; re-run release.yml from the tag)"
+  else
+    RELEASE="$(sort -V <<<"$common" | tail -n 1)"
+    [[ -n "$RELEASE" ]] || die 3 "no release is published to this environment's registry yet (tag v* to run release.yml)"
+  fi
+  BACKEND_DIGEST="$(jq -r --arg t "$RELEASE" 'map(select(.tags | index($t)))[0].digest' <<<"$backend_images")"
+  WEB_DIGEST="$(jq -r --arg t "$RELEASE" 'map(select(.tags | index($t)))[0].digest' <<<"$web_images")"
+  log "release $RELEASE: backend $BACKEND_DIGEST, web $WEB_DIGEST"
+}
+
+# --- TLS root (FR-037, research.md R6) ----------------------------------------------------------
+
+make_root() {
+  local dir="$1" cn="$2"
+  openssl ecparam -name prime256v1 -genkey -noout -out "$dir/root.key" 2>/dev/null
+  chmod 600 "$dir/root.key"
+  openssl req -x509 -new -key "$dir/root.key" -sha256 -days 1825 -subj "/CN=$cn" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" -out "$dir/root.crt" 2>/dev/null
+}
+
+parameter_exists() {
+  awsx ssm get-parameter --name "$1" --query Parameter.Name --output text >/dev/null 2>&1
+}
+
+backups_exist() {
+  local count
+  count="$(awsx s3api list-objects-v2 --bucket "$BACKUP_BUCKET" --prefix "$ENV_NAME/db/" \
+    --query "length(Contents[?ends_with(Key, '.json')] || \`[]\`)" --output text)"
+  [[ "$count" =~ ^[0-9]+$ && "$count" -gt 0 ]]
+}
+
+ensure_tls_root() {
+  local cert_parameter="$PARAMETER_PREFIX/tls/root-cert" key_parameter="$PARAMETER_PREFIX/tls/root-key"
+  # The root is usable only with both halves: a certificate without its key would let the
+  # instance start but never serve HTTPS, so it counts as missing.
+  if parameter_exists "$cert_parameter" && parameter_exists "$key_parameter"; then
+    awsx ssm get-parameter --name "$cert_parameter" --query Parameter.Value --output text >"$WORK_DIR/root.crt"
+    if ! openssl x509 -checkend "$ROOT_EXPIRY_WARN_SECONDS" -noout -in "$WORK_DIR/root.crt" >/dev/null 2>&1; then
+      local expiry
+      expiry="$(openssl x509 -enddate -noout -in "$WORK_DIR/root.crt" | cut -d= -f2)"
+      log "WARNING: the $ENV_NAME TLS root expires on $expiry. Plan a deliberate replacement (--new-root) and re-trust it on your devices."
+      NOTICE_EXTRA="$NOTICE_EXTRA The TLS root expires on $expiry."
+    fi
+    return 0
+  fi
+  if backups_exist && [[ "$NEW_ROOT" != 1 ]]; then
+    die 3 "the $ENV_NAME TLS root (certificate and key) is missing or incomplete but backups exist, so your devices may trust a root that is gone. Re-run with --new-root to create a new one, then re-trust it on every device."
+  fi
+  local dir
+  dir="$(mktemp -d)"
+  make_root "$dir" "$APP $ENV_NAME root"
+  awsx ssm put-parameter --name "$key_parameter" --type SecureString --value "file://$dir/root.key" --overwrite >/dev/null
+  awsx ssm put-parameter --name "$cert_parameter" --type String --value "file://$dir/root.crt" --overwrite >/dev/null
+  rm -rf "$dir"
+  log "NEW ROOT CREATED – install it on your devices (deploy/app cert --env $ENV_NAME --out $ENV_NAME-root.crt)"
+  NOTICE_EXTRA="$NOTICE_EXTRA A new TLS root was created; install it on your devices."
+}
+
+# --- Commands -----------------------------------------------------------------------------------
+
+# OpenTofu prints the security-group rules, so hide every allowlisted address in GitHub logs.
+mask_allowlist() {
+  in_github || return 0
+  local value entry entries=()
+  value="$(awsx ssm get-parameter --name "$ALLOWLIST_PARAMETER" --query Parameter.Value --output text 2>/dev/null || true)"
+  [[ -n "$value" && "$value" != none ]] || return 0
+  IFS=',' read -r -a entries <<<"$value"
+  for entry in "${entries[@]}"; do
+    mask "$entry"
+    mask "${entry%/*}"
+  done
+}
+
+preflight() {
+  step "preflight"
+  require_tools aws tofu jq openssl
+  require_env_and_region
+  local identity
+  identity="$(awsx sts get-caller-identity --output json)" || die 3 "no usable AWS credentials"
+  mask "$(jq -r .Account <<<"$identity")"
+  read_base
+  mask_allowlist
+}
+
+first_deploy_guards() {
+  step "first-deploy checks"
+  local ami
+  ami="$(tfvar ami_id)"
+  [[ "$ami" =~ ^ami-[0-9a-f]{8,17}$ ]] \
+    || die 3 "ami_id in infra/envs/$ENV_NAME.tfvars is not set; run deploy/app ami-latest --env $ENV_NAME and commit it"
+  awsx ec2 describe-images --image-ids "$ami" --query 'Images[0].ImageId' --output text >/dev/null 2>&1 \
+    || die 3 "AMI $ami does not exist in $AWS_REGION"
+  parameter_exists "$PARAMETER_PREFIX/owner-password" \
+    || die 3 "the owner password parameter $PARAMETER_PREFIX/owner-password is missing (docs/deployment.md, one-time setup)"
+  local allowlist
+  allowlist="$(awsx ssm get-parameter --name "$ALLOWLIST_PARAMETER" --query Parameter.Value --output text)" \
+    || die 3 "the allowlist parameter $ALLOWLIST_PARAMETER is not readable"
+  if [[ "$allowlist" == none ]]; then
+    log "WARNING: the allowlist is empty, so nobody can reach the app. Add an address with: deploy/app allow add <ip> --env $ENV_NAME"
+  fi
+}
+
+backup_on_instance() {
+  local kind="$1" result
+  step "backup ($kind)"
+  if ! result="$(ssm_run "$INSTANCE_ID" "$(compose_cmd "stop web backend") && $(compose_cmd "run --rm -T ops backup --kind $kind")")"; then
+    die 4 "the $kind backup failed on $INSTANCE_ID; nothing was changed"
+  fi
+  [[ "$(jq -r '.verified // false' <<<"$result" 2>/dev/null)" == true ]] \
+    || die 4 "the $kind backup was not verified ($result); nothing was changed"
+  log "backup $(jq -r .backup_id <<<"$result") verified"
+}
+
+notify_on_instance() {
+  local instance="$1" message="$2"
+  ssm_run "$instance" "$(compose_cmd "run --rm -T ops notify --subject Address --message $(sh_quote "$message")")" >/dev/null \
+    || log "warning: the address notice could not be sent"
+}
+
+cmd_up() {
+  preflight
+  first_deploy_guards
+  step "lock"
+  lock_acquire up
+  step "resolve release"
+  resolve_release
+  step "tls root"
+  ensure_tls_root
+  step "plan"
+  find_instance
+  tf_init instance
+  local db_init_args=""
+  [[ -n "$BACKUP_ID" ]] && db_init_args="--backup $BACKUP_ID"
+  set_instance_vars "$RELEASE" "$BACKEND_DIGEST" "$WEB_DIGEST" "$db_init_args"
+  local replaces
+  replaces="$(plan_instance)"
+  if [[ -n "$INSTANCE_ID" && "$replaces" == true ]]; then
+    log "the plan replaces the running instance $INSTANCE_ID; taking a redeploy backup first"
+    backup_on_instance redeploy
+  fi
+  step "apply"
+  tf apply -input=false -lock-timeout=60s "$WORK_DIR/instance.plan" >&2
+  local outputs new_instance address
+  outputs="$(instance_outputs)"
+  new_instance="$(jq -r '.instance_id.value // empty' <<<"$outputs")"
+  address="$(jq -r '.public_ip.value // empty' <<<"$outputs")"
+  mask "$address"
+  [[ -n "$new_instance" ]] || die 1 "the instance stack has no instance after apply"
+
+  step "wait for the SSM agent"
+  local attempt ping=""
+  for attempt in $(seq 1 60); do  # about 5 minutes at the default poll interval
+    ping="$(awsx ssm describe-instance-information --filters "Key=InstanceIds,Values=$new_instance" \
+      --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || true)"
+    [[ "$ping" == Online ]] && break
+    log "waiting for the SSM agent ($attempt)"
+    sleep "$POLL_SECONDS"
+  done
+  [[ "$ping" == Online ]] || die 5 "the SSM agent on $new_instance did not come online within 5 minutes"
+
+  step "health"
+  local health
+  if ! health="$(ssm_run "$new_instance" "$(compose_cmd "run --rm -T ops health --wait 600")")"; then
+    die 5 "the health check on $new_instance failed; run up again or down (the stack is left for diagnosis)"
+  fi
+  if [[ "$(jq -r '.healthy // false' <<<"$health" 2>/dev/null)" != true ]]; then
+    die 5 "the app is not healthy: $health"
+  fi
+
+  step "notify"
+  local pricing summary
+  pricing="$(jq -r '.pricing // "unknown"' <<<"$health")"
+  summary="$ENV_NAME is up at https://$address (release $RELEASE, database $(jq -r .db <<<"$health"))."
+  if [[ "$pricing" != ok ]]; then
+    summary="$summary WARNING: pricing is unavailable: $(jq -r '.pricing_reason // "unknown"' <<<"$health")."
+  fi
+  summary="$summary$NOTICE_EXTRA"
+  notify_on_instance "$new_instance" "$summary"
+  printf '%s\n' "$summary"
+  jq -nc --arg release "$RELEASE" --arg address "$address" --argjson health "$health" \
+    '{result: "up", release: $release, address: $address, health: $health}'
+}
+
+cmd_down() {
+  preflight
+  step "lock"
+  lock_acquire down
+  step "find instance"
+  find_instance
+  tf_init instance
+  local outputs resources
+  outputs="$(instance_outputs)"
+  resources="$(tf state list 2>/dev/null || true)"
+  if [[ -z "$INSTANCE_ID" && -z "$resources" ]]; then
+    log "$ENV_NAME is already down"
+    jq -nc '{result: "down", already: true}'
+    return 0
+  fi
+  if [[ -n "$INSTANCE_ID" ]]; then
+    if [[ "$FORCE_WITHOUT_BACKUP" == 1 ]]; then
+      log "WARNING: --force-without-backup: destroying $INSTANCE_ID WITHOUT a final backup"
+    else
+      backup_on_instance teardown
+    fi
+  fi
+  step "destroy"
+  set_instance_vars \
+    "$(jq -r '.release.value // "v0.0.0"' <<<"$outputs")" \
+    "$(jq -r '.backend_digest.value // "sha256:0000000000000000000000000000000000000000000000000000000000000000"' <<<"$outputs")" \
+    "$(jq -r '.web_digest.value // "sha256:0000000000000000000000000000000000000000000000000000000000000000"' <<<"$outputs")" \
+    "$(jq -r '.db_init_args.value // ""' <<<"$outputs")" \
+    "$(jq -r '.ami_id.value // empty' <<<"$outputs")"
+  tf destroy -input=false -lock-timeout=60s -auto-approve "${INSTANCE_VARS[@]}" >&2
+  step "confirm"
+  find_instance
+  [[ -z "$INSTANCE_ID" ]] || die 1 "an instance tagged environment=$ENV_NAME still exists after destroy: $INSTANCE_ID"
+  log "$ENV_NAME is down"
+  jq -nc '{result: "down"}'
+}
+
+cmd_status() {
+  require_tools aws jq
+  require_env_and_region
+  read_base
+  find_instance
+  local lock last_backup="none" uptime=""
+  lock="$(awsx s3 cp "s3://$BACKUP_BUCKET/locks/$ENV_NAME.json" - 2>/dev/null || true)"
+  if [[ "$INSTANCE_STATE" == running ]]; then
+    last_backup="$(ssm_run "$INSTANCE_ID" "$(compose_cmd "run --rm -T ops backups list")" \
+      | jq -c '.backups[0] // "none"' 2>/dev/null || echo unknown)"
+    uptime="$(jq -rn --arg t "$LAUNCH_TIME" \
+      'now - ($t | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601) | floor')"
+  else
+    last_backup="$(awsx s3api list-objects-v2 --bucket "$BACKUP_BUCKET" --prefix "$ENV_NAME/db/" \
+      --query "sort(Contents[?ends_with(Key, '.json')].Key || \`[]\`)[-1]" --output text 2>/dev/null || echo unknown)"
+  fi
+  log "environment: $ENV_NAME"
+  log "instance:    ${INSTANCE_ID:-none} ${INSTANCE_STATE:-down}"
+  log "address:     ${PUBLIC_IP:+https://$PUBLIC_IP}"
+  log "release:     ${INSTANCE_RELEASE:-}"
+  log "uptime:      ${uptime:+$((uptime / 3600))h $(((uptime % 3600) / 60))m}"
+  log "last backup: $last_backup"
+  log "lock:        ${lock:-free}"
+  if [[ "$INSTANCE_STATE" == running && -n "$PUBLIC_IP" ]]; then
+    # The address is masked in GitHub logs, so it also goes out by email (FR-038).
+    notify_on_instance "$INSTANCE_ID" "$ENV_NAME is up at https://$PUBLIC_IP (release ${INSTANCE_RELEASE:-unknown})."
+  fi
+  jq -nc --arg state "${INSTANCE_STATE:-down}" --arg release "$INSTANCE_RELEASE" \
+    '{result: "status", state: $state, release: $release}'
+}
+
+valid_ipv4() {
+  local ip="$1" octet
+  [[ "$ip" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || return 1
+  for octet in "${BASH_REMATCH[@]:1}"; do
+    [[ $((10#$octet)) -le 255 ]] || return 1
+  done
+}
+
+valid_ipv6() {
+  local ip="$1"
+  [[ "$ip" =~ ^[0-9A-Fa-f:]+$ && "$ip" == *:*:* && ${#ip} -le 39 ]] || return 1
+  [[ "$ip" != *:::* ]]
+}
+
+normalize_address() {
+  local ip="$1"
+  if [[ "$ip" == */* ]]; then return 1; fi
+  if valid_ipv4 "$ip"; then printf '%s/32' "$ip"; return 0; fi
+  if valid_ipv6 "$ip"; then printf '%s/128' "$(tr 'A-F' 'a-f' <<<"$ip")"; return 0; fi
+  return 1
+}
+
+cmd_allow() {
+  require_tools aws tofu jq
+  require_env_and_region
+  local identity
+  identity="$(awsx sts get-caller-identity --output json)" || die 3 "no usable AWS credentials"
+  mask "$(jq -r .Account <<<"$identity")"
+  read_base
+  local entry=""
+  if [[ "$SUBCOMMAND" != list ]]; then
+    mask "$ARGUMENT"
+    entry="$(normalize_address "$ARGUMENT")" \
+      || die 2 "allow $SUBCOMMAND needs one IPv4 or IPv6 address (no ranges or hostnames), got $ARGUMENT"
+    mask "$entry"
+    step "lock"
+    lock_acquire "allow-$SUBCOMMAND"
+  fi
+  local current list=() e
+  current="$(awsx ssm get-parameter --name "$ALLOWLIST_PARAMETER" --query Parameter.Value --output text)"
+  if [[ "$current" != none && -n "$current" ]]; then
+    IFS=',' read -r -a list <<<"$current"
+  fi
+  for e in "${list[@]+"${list[@]}"}"; do mask "$e"; done
+
+  local changed=0 new=()
+  case "$SUBCOMMAND" in
+    add)
+      if printf '%s\n' "${list[@]+"${list[@]}"}" | grep -qxF "$entry"; then
+        log "$entry is already allowed"
+      else
+        [[ ${#list[@]} -lt 50 ]] || die 2 "the allowlist already has 50 entries; remove one first"
+        list+=("$entry"); changed=1
+      fi ;;
+    remove)
+      for e in "${list[@]+"${list[@]}"}"; do
+        if [[ "$e" == "$entry" ]]; then changed=1; else new+=("$e"); fi
+      done
+      if [[ $changed == 0 ]]; then log "$entry is not in the allowlist; nothing to remove"; fi
+      list=("${new[@]+"${new[@]}"}") ;;
+  esac
+
+  if [[ $changed == 1 ]]; then
+    step "update allowlist"
+    local value="none"
+    if [[ ${#list[@]} -gt 0 ]]; then value="$(IFS=,; printf '%s' "${list[*]}")"; fi
+    awsx ssm put-parameter --name "$ALLOWLIST_PARAMETER" --type StringList --value "$value" --overwrite >/dev/null
+    find_instance
+    if [[ -n "$INSTANCE_ID" ]]; then
+      step "apply security group"
+      tf_init instance
+      local outputs
+      outputs="$(instance_outputs)"
+      set_instance_vars "$(jq -r .release.value <<<"$outputs")" "$(jq -r .backend_digest.value <<<"$outputs")" \
+        "$(jq -r .web_digest.value <<<"$outputs")" "$(jq -r '.db_init_args.value // ""' <<<"$outputs")" \
+        "$(jq -r .ami_id.value <<<"$outputs")"
+      if [[ "$(plan_instance)" == true ]]; then
+        awsx ssm put-parameter --name "$ALLOWLIST_PARAMETER" --type StringList --value "$current" --overwrite >/dev/null
+        die 3 "applying the allowlist would replace the running instance (its configuration changed); the allowlist was restored. Run deploy/app up instead."
+      fi
+      tf apply -input=false -lock-timeout=60s "$WORK_DIR/instance.plan" >&2
+    fi
+  fi
+  log "allowlist for $ENV_NAME:"
+  if [[ ${#list[@]} -eq 0 ]]; then log "  (empty — nobody can reach the app)"; fi
+  for e in "${list[@]+"${list[@]}"}"; do log "  $e"; done
+  jq -nc --argjson count "${#list[@]}" '{result: "allowlist", entries: $count}'
+}
+
+cmd_cert() {
+  if [[ "$SUBCOMMAND" == local ]]; then
+    [[ "$CREATE" == 1 ]] || die 2 "use: deploy/app cert local --create"
+    require_tools openssl
+    local dir="$REPO_ROOT/.local-tls"
+    if [[ -f "$dir/root.crt" ]]; then
+      log "$dir/root.crt already exists; delete it first to make a new one"
+    else
+      mkdir -p "$dir"; chmod 700 "$dir"
+      make_root "$dir" "$APP local root"
+      log "created $dir/root.crt — trust it on this laptop to use https://localhost:8443"
+    fi
+    return 0
+  fi
+  require_tools aws jq
+  require_env_and_region
+  local cert
+  cert="$(awsx ssm get-parameter --name "/$APP/$ENV_NAME/tls/root-cert" --query Parameter.Value --output text)" \
+    || die 3 "the $ENV_NAME TLS root does not exist yet (the first deploy/app up creates it)"
+  if [[ -n "$OUT_FILE" ]]; then
+    printf '%s\n' "$cert" >"$OUT_FILE"
+    log "wrote $OUT_FILE — install it on your devices (docs/deployment.md)"
+  else
+    printf '%s\n' "$cert"
+  fi
+}
+
+cmd_ami_latest() {
+  require_tools aws
+  require_env_and_region
+  awsx ssm get-parameter --name "$CANONICAL_AMI_PARAMETER" --query Parameter.Value --output text
+}
+
+cmd_backup_now() {
+  preflight
+  step "lock"
+  lock_acquire backup-now
+  find_instance
+  [[ "$INSTANCE_STATE" == running ]] || die 3 "$ENV_NAME is not running"
+  local result
+  result="$(ssm_run "$INSTANCE_ID" "$(compose_cmd "run --rm -T ops backup --kind manual")")" \
+    || die 4 "the manual backup failed"
+  [[ "$(jq -r '.verified // false' <<<"$result")" == true ]] || die 4 "the manual backup was not verified: $result"
+  printf '%s\n' "$result"
+}
+
+main() {
+  parse_args "$@"
+  WORK_DIR="$(mktemp -d)"
+  case "$COMMAND" in
+    up) cmd_up ;;
+    down) cmd_down ;;
+    status) cmd_status ;;
+    allow) cmd_allow ;;
+    cert) cmd_cert ;;
+    ami-latest) cmd_ami_latest ;;
+    backup-now) cmd_backup_now ;;
+  esac
+}
+
+main "$@"

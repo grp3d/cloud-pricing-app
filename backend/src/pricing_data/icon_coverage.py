@@ -6,6 +6,9 @@ Uses `aws_service_icons.json` — generated alongside the canvas's own map by
 agree on which services fall back to the generic AWS icon. A service is reported "new" when its
 code isn't in the next-older snapshot date present in every table (markers not required), which
 needs nothing persisted between restarts.
+
+018-app-cloud-deployment: services are read from the files the manifests list, and "the
+next-older snapshot" is the newest usable manifest before the active one (`previous_snapshot`).
 """
 
 from __future__ import annotations
@@ -17,8 +20,11 @@ from pathlib import Path
 import duckdb
 
 from src.logging_config import get_logger
-from src.pricing_data.active_snapshot import ActiveSnapshotState, Issue
-from src.pricing_data.snapshot import TABLES
+from src.pricing_data.active_snapshot import PROVIDER, Issue, MonitorState, previous_snapshot
+from src.pricing_data.duckdb_conn import connect
+from src.pricing_data.snapshot import ActiveSnapshot
+from src.pricing_data.snapshot_cache import ENTRY_FILE, entry_name
+from src.pricing_data.storage import LocalStore, Store
 
 logger = get_logger("cloud_pricing.icon_coverage")
 
@@ -31,15 +37,18 @@ def _mapped_codes() -> frozenset[str]:
     return frozenset(document["by_code"]) | frozenset(document["special_codes"])
 
 
-def _services(parquet_dir: Path, snapshot_date: str) -> dict[str, str | None]:
+def _services(snapshot: ActiveSnapshot) -> dict[str, str | None]:
     """service_code -> service_name for one snapshot, from `service_dim` (all regions)."""
-    pattern = parquet_dir / "service_dim" / f"snapshot_date={snapshot_date}" / "**" / "*.parquet"
-    con = duckdb.connect(":memory:")
+    files = [f for region in sorted(snapshot.regions("service_dim"))
+             for f in snapshot.files("service_dim", region)]
+    if not files:
+        return {}
+    con = connect()
     try:
         rows = con.execute(
             "SELECT service_code, min(service_name) FROM read_parquet(?) "
             "WHERE service_code IS NOT NULL GROUP BY service_code",
-            [str(pattern)],
+            [files],
         ).fetchall()
     except duckdb.IOException:
         return {}
@@ -48,37 +57,21 @@ def _services(parquet_dir: Path, snapshot_date: str) -> dict[str, str | None]:
     return dict(rows)
 
 
-def previous_present_date(parquet_dir: Path, snapshot_date: str) -> str | None:
-    """The newest date older than `snapshot_date` whose folder exists in all five tables."""
-    per_table = [
-        {
-            e.name.removeprefix("snapshot_date=")
-            for e in (parquet_dir / table).iterdir()
-            if e.is_dir() and e.name.startswith("snapshot_date=")
-        }
-        for table in TABLES
-        if (parquet_dir / table).is_dir()
-    ]
-    if len(per_table) != len(TABLES):
-        return None
-    older = {d for d in set.intersection(*per_table) if d < snapshot_date}
-    return max(older) if older else None
-
-
 def find_unmatched_services(
-    parquet_dir: Path, snapshot_date: str, previous_date: str | None
+    snapshot: ActiveSnapshot, previous: ActiveSnapshot | None
 ) -> list[Issue]:
-    """One `missing_icon` issue per service in `snapshot_date` with no icon, new ones first."""
+    """One `missing_icon` issue per service in `snapshot` with no icon, new ones first."""
     mapped = _mapped_codes()
-    current = _services(parquet_dir, snapshot_date)
-    previous = set(_services(parquet_dir, previous_date)) if previous_date else None
+    current = _services(snapshot)
+    previous_codes = set(_services(previous)) if previous is not None else None
+    snapshot_date = snapshot.snapshot_date
     issues = [
         Issue(
             kind="missing_icon",
             snapshot_date=snapshot_date,
             service_code=code,
             service_name=name,
-            is_new=previous is not None and code not in previous,
+            is_new=previous_codes is not None and code not in previous_codes,
             message=f"{code} has no icon; it shows the generic AWS icon on the canvas.",
         )
         for code, name in current.items()
@@ -87,27 +80,39 @@ def find_unmatched_services(
     return sorted(issues, key=lambda i: (not i.is_new, i.service_code or ""))
 
 
-def analyze(state: ActiveSnapshotState, parquet_dir: Path, _previous_active: str | None) -> None:
-    """The active-snapshot monitor's analysis hook (FR-023): replace the missing-icon issues for
-    the active date, keeping the monitor's own region and pinned-snapshot issues."""
-    if state.active_date is None:
+def _previous(store: Store, active: ActiveSnapshot) -> ActiveSnapshot | None:
+    """The next-older usable snapshot. A local source is read in place; for an S3 source its
+    files are local only while still cached, so new-service flags are skipped otherwise."""
+    manifest = previous_snapshot(store, PROVIDER, active.snapshot_date)
+    if manifest is None:
+        return None
+    if isinstance(store, LocalStore):
+        return ActiveSnapshot.from_manifest(manifest, base_dir=store.root, pinned=False)
+    cached = active.base_dir.parent / entry_name(manifest)
+    if not (cached / ENTRY_FILE).is_file():
+        return None
+    return ActiveSnapshot.from_manifest(manifest, base_dir=cached, pinned=False)
+
+
+def analyze(state: MonitorState, store: Store, _previous_active: ActiveSnapshot | None) -> None:
+    """The snapshot monitor's analysis hook (FR-023): replace the missing-icon issues for the
+    active snapshot, keeping the monitor's own region issues."""
+    if state.active is None:
         return
-    unmatched = find_unmatched_services(
-        parquet_dir, state.active_date, previous_present_date(parquet_dir, state.active_date)
-    )
+    unmatched = find_unmatched_services(state.active, _previous(store, state.active))
     state.issues = [i for i in state.issues if i.kind != "missing_icon"] + unmatched
     # 017-structured-json-logging, FR-008 d: one summary, plus one debug line per service.
     for issue in unmatched:
         logger.debug(
             "service has no icon",
-            snapshot_date=state.active_date,
+            snapshot_date=state.active.snapshot_date,
             service_code=issue.service_code,
             service_name=issue.service_name,
             is_new=bool(issue.is_new),
         )
     logger.info(
         "icon coverage analyzed",
-        snapshot_date=state.active_date,
+        snapshot_date=state.active.snapshot_date,
         missing_icon_count=len(unmatched),
         new_service_codes=sorted(i.service_code for i in unmatched if i.is_new),
     )

@@ -7,6 +7,7 @@ import { TooltipProvider } from "../../src/components/ui/tooltip";
 
 const calculation: CalculationResult = {
   snapshot_date: "2026-09-24",
+  snapshot_revision: 1,
   duration: "1_month",
   total_price: "12.00",
   currency: "USD",
@@ -47,6 +48,21 @@ function renderPanel(overrides: Partial<PricingPanelProps> = {}) {
 }
 
 const NOTICE = "Architecture has been updated since last pricing";
+
+describe("PricingPanel snapshot label (018, FR-059)", () => {
+  it("shows only the date for a snapshot's first revision", () => {
+    renderPanel();
+    const timestamp = screen.getByText("Data Timestamp: 2026-09-24");
+    expect(timestamp.textContent).toBe("Data Timestamp: 2026-09-24");
+  });
+
+  it("shows a later revision in parentheses, in a lighter shade", () => {
+    renderPanel({ calculation: { ...calculation, snapshot_revision: 2 } });
+    const revision = screen.getByText("(r2)");
+    expect(revision.parentElement?.textContent).toBe("Data Timestamp: 2026-09-24 (r2)");
+    expect(revision).toHaveClass("opacity-60");
+  });
+});
 
 describe("PricingPanel out-of-date notice (015, FR-018a)", () => {
   it("shows the notice directly below the Data Timestamp line", () => {

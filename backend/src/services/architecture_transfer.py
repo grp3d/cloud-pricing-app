@@ -41,6 +41,7 @@ from src.models.schemas import (
     ImportResult,
     SKUSelectionDefinition,
 )
+from src.pricing_data.active_snapshot import get_active_snapshot
 from src.pricing_data.catalog import find_existing_skus
 from src.pricing_data.regions import list_available_regions
 
@@ -449,8 +450,11 @@ async def import_architectures(
         for region, pairs in definition_sku_pairs(parsed).items():
             if region in available_regions:
                 wanted.setdefault(region, set()).update(pairs)
+    # 018-app-cloud-deployment: one snapshot for every region's check.
+    snapshot = get_active_snapshot()
     existing = {
-        region: find_existing_skus(pairs, region=region) for region, pairs in sorted(wanted.items())
+        region: find_existing_skus(pairs, region=region, snapshot=snapshot)
+        for region, pairs in sorted(wanted.items())
     }
 
     def existing_skus(region: str, pairs: set[tuple[str, str]]) -> set[tuple[str, str]]:

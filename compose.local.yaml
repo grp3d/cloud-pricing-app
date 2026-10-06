@@ -1,0 +1,63 @@
+# The production stack on a laptop (018-app-cloud-deployment, Story 8, FR-019; research.md R15):
+#
+#   deploy/app cert local --create          # once: a laptop TLS root in ./.local-tls
+#   cp .env.local.example .env.local         # once: then edit LOCAL_DATA_ROOT
+#   docker compose --env-file .env.local -f compose.yaml -f compose.local.yaml up --build
+#
+# Then open https://localhost:8443 (trust ./.local-tls/root.crt once). Builds the images from
+# this checkout, reads pricing data from a local pipeline root, keeps backups in
+# ./.local-backups, logs to Docker instead of CloudWatch, and needs no AWS credentials.
+
+x-local-backend: &local-backend
+  env_file:
+    - path: .env.local
+      required: true
+  logging: !override
+    driver: json-file
+
+services:
+  db:
+    logging: !override
+      driver: json-file
+
+  # Root here only: the laptop's root.key is mode 0600 and owned by your user, and on a Linux
+  # host the image's app user (UID 10001) couldn't read it. The key stays private on disk.
+  tls-init:
+    <<: *local-backend
+    user: "0"
+    environment:
+      TLS_ROOT_DIR: /local-tls
+    volumes:
+      - ./.local-tls:/local-tls:ro
+
+  db-init:
+    <<: *local-backend
+    build:
+      context: backend
+    image: ${BACKEND_IMAGE}
+    environment:
+      BACKUP_URI: file:///backups
+    volumes:
+      - ./.local-backups:/backups
+
+  backend:
+    <<: *local-backend
+    environment:
+      PRICING_DATA_URI: file:///data
+    volumes:
+      - ${LOCAL_DATA_ROOT:?LOCAL_DATA_ROOT must name a local pipeline storage root}:/data:ro
+
+  web:
+    build:
+      context: frontend
+      dockerfile: Dockerfile.web
+    image: ${WEB_IMAGE}
+    logging: !override
+      driver: json-file
+
+  ops:
+    <<: *local-backend
+    environment:
+      BACKUP_URI: file:///backups
+    volumes:
+      - ./.local-backups:/backups

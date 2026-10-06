@@ -280,6 +280,8 @@ class CatalogSearchResult(BaseModel):
     results: list[CatalogSKUOut]
     next_cursor: str | None = None
     snapshot_date: str
+    # 018-app-cloud-deployment, FR-059: the revision of `snapshot_date` the rows came from.
+    snapshot_revision: int
     # 008-ui-updates-corrections, FR-024, data-model.md — the true count of every catalog
     # row matching the current filters, independent of how many are returned in `results`
     # (capped at 200, FR-023). Drives the "(n of m results displayed)" indicator.
@@ -322,6 +324,8 @@ class CalculationWarning(BaseModel):
 
 class CalculationResult(BaseModel):
     snapshot_date: str
+    # 018-app-cloud-deployment, FR-059: a corrected revision is never shown under the same label.
+    snapshot_revision: int
     # Echoes the CalculationDuration the total was computed for (004, FR-001) — every price
     # below reflects proration to this duration per FR-002/003/004.
     duration: CalculationDuration
@@ -461,16 +465,22 @@ class ArchitectureFileImportResponse(BaseModel):
     results: list[ImportResult]
 
 
+# --- Health (018-app-cloud-deployment, FR-028, contracts/admin-api.md) ----------------------
+
+
+class HealthOut(BaseModel):
+    status: Literal["ok"]
+    pricing: Literal["ok", "unavailable"]
+    # A fixed phrase ("no snapshot available", "data source unreachable", …), never a location,
+    # a credential or an exception text: /health is public.
+    pricing_reason: str | None = None
+
+
 # --- System information (016-canvas-icon-layout, US5, contracts/api.md §1) --------------------
 
 
-class WaitingSnapshotOut(BaseModel):
-    snapshot_date: str
-    reason: str
-
-
 class IssueOut(BaseModel):
-    kind: Literal["missing_icon", "missing_regions", "pinned_incomplete"]
+    kind: Literal["missing_icon", "missing_regions"]
     snapshot_date: str
     message: str
     service_code: str | None = None
@@ -479,11 +489,76 @@ class IssueOut(BaseModel):
     regions: list[str] | None = None
 
 
-class SystemInfoOut(BaseModel):
-    active_snapshot_date: str | None
+# 018-app-cloud-deployment, FR-014 (contracts/admin-api.md).
+
+
+class DeploymentOut(BaseModel):
+    environment: str
+    release: str
+
+
+class SourceOut(BaseModel):
+    kind: Literal["local", "s3"]
+    # The local root or s3://bucket[/prefix] — never credentials.
+    location: str
+    provider: str
+
+
+class FailedRegionOut(BaseModel):
+    region: str
+    reason: str
+    attempts: int
+
+
+class ActiveSnapshotOut(BaseModel):
+    snapshot_date: str
+    revision: int
+    run_id: str
+    pipeline_version: str
+    created_at: str
     pinned: bool
+    regions: list[str]
+    failed_regions: list[FailedRegionOut]
+
+
+class LatestRunOut(BaseModel):
+    snapshot_date: str
+    revision: int
+    status: Literal["succeeded", "partial", "failed", "purged"]
+    failed_regions: list[FailedRegionOut]
+
+
+class RejectedOut(BaseModel):
+    snapshot_date: str | None
+    revision: int | None
+    reason: str
+
+
+class CacheEntryOut(BaseModel):
+    snapshot_date: str
+    revision: int
+    state: Literal["active", "cached"]
+    bytes: int
+
+
+class CacheOut(BaseModel):
+    total_bytes: int
+    max_bytes: int
+    entries: list[CacheEntryOut]
+
+
+class SystemInfoOut(BaseModel):
+    deployment: DeploymentOut
+    source: SourceOut
+    active: ActiveSnapshotOut | None
+    latest_run: LatestRunOut | None
+    rejected: RejectedOut | None
+    cache: CacheOut | None
     last_check_at: datetime | None
     last_check_error: str | None
     check_interval_seconds: int
-    waiting_snapshots: list[WaitingSnapshotOut]
     issues: list[IssueOut]
+
+
+class SnapshotCheckStartedOut(BaseModel):
+    started: bool

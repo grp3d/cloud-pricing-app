@@ -2,7 +2,7 @@
 spec SC-003).
 
 Builds each seeded definition with the shared row builder under a throwaway user and prices it
-for one month against whatever pricing dataset `AWS_PRICING_PARQUET_DIR` points at. An entry
+for one month against whatever pricing dataset `PRICING_DATA_URI` points at. An entry
 whose unit isn't recognized, or whose SKU has no On-Demand price, would surface as unpriceable.
 """
 

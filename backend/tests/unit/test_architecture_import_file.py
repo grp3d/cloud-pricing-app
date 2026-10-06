@@ -182,9 +182,9 @@ async def test_sku_existence_checked_once_per_region(db_session, monkeypatch):
     calls: list[str] = []
     real = architecture_transfer.find_existing_skus
 
-    def spy(pairs, *, region, snapshot_date=None):
+    def spy(pairs, *, region, snapshot=None):
         calls.append(region)
-        return real(pairs, region=region, snapshot_date=snapshot_date)
+        return real(pairs, region=region, snapshot=snapshot)
 
     monkeypatch.setattr(architecture_transfer, "find_existing_skus", spy)
     await import_architectures(

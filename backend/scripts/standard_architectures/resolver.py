@@ -9,10 +9,9 @@ run (research.md §6) rather than seeding an entry that would silently show as u
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -56,11 +55,9 @@ class Resolution:
     omissions: list[Omission]
 
 
-def _partition(parquet_dir: Path, table: str, snapshot_date: str, region: str) -> str:
-    return str(
-        Path(parquet_dir) / table / f"snapshot_date={snapshot_date}" / f"region={region}"
-        / "part-0.parquet"
-    )
+# 018-app-cloud-deployment: (table, region) -> the data files to read, from a snapshot's
+# manifest (`ActiveSnapshot.files`), never a folder layout.
+FilesFor = Callable[[str, str], list[str]]
 
 
 def _find(
@@ -68,11 +65,10 @@ def _find(
     rule: MatchRule,
     service_code: str,
     *,
-    parquet_dir: Path,
-    snapshot_date: str,
+    files: FilesFor,
 ) -> Match | None:
-    product_dim = _partition(parquet_dir, "product_dim", snapshot_date, rule.region)
-    price_fact = _partition(parquet_dir, "price_fact", snapshot_date, rule.region)
+    product_dim = files("product_dim", rule.region)
+    price_fact = files("price_fact", rule.region)
 
     # Region-scoped the same way as `pricing_data/catalog.py`: a partition also holds rows for
     # other regions, and AWSDataTransfer's own region_code is unreliable.
@@ -130,10 +126,7 @@ def _find(
     return Match(rule=rule, service_code=service_code, sku=sku, unit=unit, tiered=rows_for_unit > 1)
 
 
-def resolve(
-    rules: Sequence[MatchRule], *, parquet_dir: Path | str, snapshot_date: str
-) -> Resolution:
-    parquet_dir = Path(parquet_dir)
+def resolve(rules: Sequence[MatchRule], *, files: FilesFor, snapshot_date: str) -> Resolution:
     matches: list[Match] = []
     omissions: list[Omission] = []
     con: duckdb.DuckDBPyConnection | None = None
@@ -145,9 +138,7 @@ def resolve(
             con = duckdb.connect(":memory:")
         match = None
         for service_code in rule.service_codes:
-            match = _find(
-                con, rule, service_code, parquet_dir=parquet_dir, snapshot_date=snapshot_date
-            )
+            match = _find(con, rule, service_code, files=files)
             if match is not None:
                 break
         if match is None:

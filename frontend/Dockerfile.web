@@ -1,0 +1,18 @@
+# Web image (018-app-cloud-deployment, FR-018, FR-035, FR-037; research.md R5, R6): the built
+# frontend served by Caddy, which also terminates HTTPS with the environment's own root and
+# proxies /api and /health to the backend. Base images are pinned by digest (FR-053).
+
+FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS build
+WORKDIR /src
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM caddy:2@sha256:13b7fbadd017b042956fddbceedeeea12bb1e560534f9b3df281269dbcc61813
+COPY --from=build /src/dist /srv
+COPY Caddyfile /etc/caddy/Caddyfile
+ARG GIT_SHA=unknown
+ARG RELEASE=dev
+LABEL org.opencontainers.image.revision=$GIT_SHA \
+      org.opencontainers.image.version=$RELEASE

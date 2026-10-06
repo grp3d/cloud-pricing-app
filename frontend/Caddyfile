@@ -1,0 +1,39 @@
+# 018-app-cloud-deployment (FR-035, FR-037; research.md R6): HTTPS only, on the instance's IP,
+# with a certificate issued by Caddy's local CA from the environment's own root. Devices that
+# trust that root accept every bring-up's certificate, whatever its address. The root is written
+# to /tls by the tls-init service (ops fetch-tls).
+{
+	# No plain-HTTP listener and no redirect server: only 443 is ever open (FR-035).
+	auto_https disable_redirects
+	# Browsers send no SNI for an IP address; present the instance's certificate anyway.
+	default_sni {$PUBLIC_ADDRESS}
+	skip_install_trust
+	pki {
+		ca local {
+			name "cloud-pricing-app"
+			root {
+				cert /tls/root.crt
+				key /tls/root.key
+			}
+		}
+	}
+}
+
+https://{$PUBLIC_ADDRESS} {
+	tls internal
+	log {
+		output stdout
+		format json
+	}
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /health {
+		reverse_proxy backend:8000
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

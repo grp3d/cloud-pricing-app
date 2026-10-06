@@ -15,8 +15,11 @@ snapshot produces byte-identical files. Afterwards, rebuild the CI Parquet fixtu
 the seeded SKUs (`scripts/build_test_pricing_fixture.py`).
 
     uv run python scripts/resolve_standard_architectures.py \\
-        [--source ../docs/common_aws_architectures.md] [--parquet /path/to/parquet] \\
-        [--snapshot-date YYYY-MM-DD]
+        [--source ../docs/common_aws_architectures.md] [--data-uri file:///…/DATA/pipeline]
+
+018-app-cloud-deployment: the pricing data is read through the pipeline's manifests, exactly as
+the app reads it (`--data-uri` defaults to `PRICING_DATA_URI`; pin a date with
+`ACTIVE_SNAPSHOT_DATE`).
 """
 
 from __future__ import annotations
@@ -39,37 +42,44 @@ from scripts.standard_architectures.resolver import (  # noqa: E402
     to_export_file,
 )
 from src.config import settings  # noqa: E402
+from src.pricing_data.active_snapshot import PROVIDER, select_snapshot  # noqa: E402
+from src.pricing_data.snapshot import ActiveSnapshot  # noqa: E402
+from src.pricing_data.storage import LocalStore, open_store  # noqa: E402
 
 DEFAULT_SOURCE = BACKEND.parent / "docs" / "common_aws_architectures.md"
 SEED_DIR = BACKEND / "src" / "db" / "seed"
 
 
-def _latest_snapshot(parquet_dir: Path) -> str:
-    dates = None
-    for table in ("product_dim", "price_fact"):
-        found = {
-            p.name.removeprefix("snapshot_date=")
-            for p in (parquet_dir / table).iterdir()
-            if p.is_dir() and p.name.startswith("snapshot_date=")
-        }
-        dates = found if dates is None else dates & found
-    if not dates:
-        raise SystemExit(f"no snapshot common to product_dim and price_fact in {parquet_dir}")
-    return max(dates)
+def _snapshot(data_uri: str) -> ActiveSnapshot:
+    """The snapshot `latest.json` names (or `ACTIVE_SNAPSHOT_DATE`'s), read in place."""
+    settings.pricing_data_uri = data_uri
+    store = open_store(settings)
+    if not isinstance(store, LocalStore):
+        raise SystemExit("--data-uri must be a local pipeline storage root")
+    selection = select_snapshot(store, PROVIDER, settings.active_snapshot_date, at_startup=True)
+    if selection.manifest is None:
+        reason = selection.reason or (selection.rejected.reason if selection.rejected else "")
+        raise SystemExit(f"no usable pricing snapshot at {data_uri}: {reason}")
+    return ActiveSnapshot.from_manifest(selection.manifest, base_dir=store.root, pinned=False)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
-    parser.add_argument("--parquet", type=Path, default=Path(settings.aws_pricing_parquet_dir))
-    parser.add_argument("--snapshot-date", default=None)
+    parser.add_argument(
+        "--data-uri",
+        default=settings.pricing_data_uri,
+        help="local pipeline storage root (default: PRICING_DATA_URI)",
+    )
     args = parser.parse_args()
+    if not args.data_uri:
+        raise SystemExit("set PRICING_DATA_URI or pass --data-uri")
 
     source = json.loads(args.source.read_text())
-    snapshot_date = args.snapshot_date or _latest_snapshot(args.parquet)
+    snapshot = _snapshot(args.data_uri)
 
     try:
-        resolution = resolve(RULES, parquet_dir=args.parquet, snapshot_date=snapshot_date)
+        resolution = resolve(RULES, files=snapshot.files, snapshot_date=snapshot.snapshot_date)
     except UnrecognizedUnitError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -88,7 +98,7 @@ def main() -> int:
     (SEED_DIR / "standard_architectures_report.md").write_text(render_report(resolution, source))
 
     print(
-        f"snapshot {snapshot_date}: {len(resolution.matches)} entries matched, "
+        f"snapshot {snapshot.snapshot_date}: {len(resolution.matches)} entries matched, "
         f"{len(resolution.omissions)} figures left out -> {SEED_DIR}"
     )
     return 0

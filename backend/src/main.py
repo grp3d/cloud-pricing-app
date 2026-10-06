@@ -13,6 +13,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
 from fastapi import FastAPI, Request
@@ -21,9 +22,12 @@ from fastapi.responses import JSONResponse
 
 from src.config import settings
 from src.logging_config import configure_logging, get_logger
+from src.models.schemas import HealthOut
+from src.pricing_data import active_snapshot
 from src.pricing_data.active_snapshot import run_check
 from src.pricing_data.catalog import EmptyCatalogFilterError, InvalidRegexPatternError
 from src.pricing_data.errors import PricingDataUnavailableError
+from src.pricing_data.snapshot_cache import startup_cleanup
 from src.services.architecture_transfer import InvalidImportFileError
 from src.services.price_calculation import EmptySnapshotError
 
@@ -48,8 +52,11 @@ async def _snapshot_monitor() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    # FR-017: settle the active snapshot before serving any pricing request. A pinned
-    # ACTIVE_SNAPSHOT_DATE missing from a table raises here, so the server refuses to start.
+    # FR-017: settle the active snapshot before serving any pricing request. 018: an unset
+    # PRICING_DATA_URI, an old-layout directory or an unusable ACTIVE_SNAPSHOT_DATE raises
+    # here, so the server refuses to start; partial S3 copies from a restart are removed first.
+    _ = settings.pricing_data_source
+    startup_cleanup(Path(settings.pricing_cache_dir))
     await asyncio.to_thread(run_check, at_startup=True)
     monitor = asyncio.create_task(_snapshot_monitor())
     try:
@@ -147,9 +154,14 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-@app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+@app.get("/health", response_model=HealthOut)
+async def health() -> HealthOut:
+    """Public liveness plus the pricing state (018-app-cloud-deployment, FR-028), read by
+    `ops health` so the bring-up check needs no login. The reason is a fixed phrase only."""
+    pricing_ok, reason = active_snapshot.pricing_status()
+    return HealthOut(
+        status="ok", pricing="ok" if pricing_ok else "unavailable", pricing_reason=reason
+    )
 
 
 # Routers are registered here as each user story's endpoints are implemented.
