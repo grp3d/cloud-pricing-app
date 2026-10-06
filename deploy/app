@@ -273,7 +273,15 @@ ssm_run() {
   jq -r .StandardOutputContent <<<"$invocation" | sed '/^[[:space:]]*$/d' | tail -n 1
 }
 
-compose_cmd() { printf 'cd /opt/app && docker compose %s' "$1"; }
+# A command for the app's Compose stack on the instance. It first waits for cloud-init to finish
+# (Docker installed, images pulled, stack started): the SSM agent comes online within seconds of
+# boot, long before that. Exit 2 means "done, with recoverable warnings"; 1 means boot failed, so
+# print cloud-init's report and stop. Instant once boot is complete.
+compose_cmd() {
+  # shellcheck disable=SC2016  # $? and $rc are for the instance's shell, not this one
+  printf '%s' '{ cloud-init status --wait >/dev/null 2>&1; rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { cloud-init status --long; exit 1; }; }'
+  printf ' && cd /opt/app && docker compose %s' "$1"
+}
 
 # Quote one argument for the instance's POSIX sh (Run Command may not use bash).
 sh_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
@@ -712,6 +720,12 @@ cmd_backup_now() {
 }
 
 main() {
+  # Explicit inputs only (FR-048): stray TF_VAR_* values in the caller's shell would override or
+  # conflict with infra/envs/<env>.tfvars (a saved plan refuses to apply with different values).
+  local tf_var
+  for tf_var in $(compgen -e | grep '^TF_VAR_' || true); do
+    unset "$tf_var"
+  done
   parse_args "$@"
   WORK_DIR="$(mktemp -d)"
   case "$COMMAND" in

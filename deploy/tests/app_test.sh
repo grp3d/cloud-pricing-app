@@ -27,6 +27,8 @@ setup_case() {
   CASE="$(mktemp -d)"
   REPO="$CASE/repo"
   FAKE_DIR="$CASE/fake"
+  FAKES_EXTRA="$CASE/fakes-extra"
+  mkdir -p "$FAKES_EXTRA"
   mkdir -p "$REPO/deploy" "$REPO/infra/envs" "$REPO/infra/instance" "$REPO/infra/base" "$FAKE_DIR" "$CASE/home/.aws"
   cp "$SCRIPT" "$REPO/deploy/app"
   cat >"$REPO/infra/envs/prod.tfvars" <<'TFVARS'
@@ -77,7 +79,8 @@ running_instance() {
 }
 
 run_app() {
-  (cd "$REPO" && env -i PATH="$FAKES:$PATH" HOME="$CASE/home" FAKE_DIR="$FAKE_DIR" \
+  (cd "$REPO" && env -i PATH="$FAKES_EXTRA:$FAKES:$PATH" HOME="$CASE/home" FAKE_DIR="$FAKE_DIR" \
+    REAL_FAKE_TOFU="$FAKES/tofu" \
     APP_POLL_SECONDS=0 ${EXTRA_ENV[@]+"${EXTRA_ENV[@]}"} ./deploy/app "$@") >"$CASE/out" 2>"$CASE/err"
   RC=$?
 }
@@ -227,6 +230,25 @@ check "by digest" called 'tofu plan .*backend_digest=sha256:b110 .*web_digest=sh
 check "reports the address" stdout_has "https://198.51.100.20"
 check "applies the saved plan" called 'tofu apply .*instance.plan'
 check "never -auto-approve on up" not_called 'tofu apply .*-auto-approve'
+end
+
+begin "TF_VAR_* in the caller's shell never reach OpenTofu"
+EXTRA_ENV=(AWS_REGION=us-east-1 TF_VAR_github_repo_id=999 TF_VAR_release=v9.9.9)
+cat >"$FAKES_EXTRA/tofu" <<'TOFU'
+#!/usr/bin/env bash
+env | grep '^TF_VAR_' >>"$FAKE_DIR/tf_vars_seen" || true
+exec "$REAL_FAKE_TOFU" "$@"
+TOFU
+chmod +x "$FAKES_EXTRA/tofu"
+run_app up --env prod
+check "exit 0" exit_is 0
+check "no TF_VAR reached tofu" bash -c "[[ ! -s '$FAKE_DIR/tf_vars_seen' ]]"
+end
+
+begin "commands on the instance wait for cloud-init before using docker"
+run_app up --env prod
+check "exit 0" exit_is 0
+check "health waits for boot to finish" called 'ssm send-command .*cloud-init status --wait.*ops health'
 end
 
 begin "up with a named release missing from the registry fails before tofu"

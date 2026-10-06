@@ -199,6 +199,14 @@ run "deploy_wildcards_are_approved_or_tag_scoped" {
     error_message = "PassRole is limited to EC2."
   }
   assert {
+    # Found in the first real `up` (2026-10-06): a Canonical AMI's ec2:Owner evaluates to its
+    # owner alias "amazon", not Canonical's account ID, so an account-ID condition denied it.
+    condition = one([
+      for s in jsondecode(aws_iam_role_policy.gha["deploy"].policy).Statement : s if s.Sid == "LaunchFromVerifiedPublicImage"
+    ]).Condition.StringEquals == { "ec2:Owner" = "amazon", "ec2:Public" = "true" }
+    error_message = "Launches use public images from AWS-verified publishers (ec2:Owner = amazon), which includes Canonical's Ubuntu AMIs."
+  }
+  assert {
     condition = one([
       for s in jsondecode(aws_iam_role_policy.gha["deploy"].policy).Statement : s if s.Sid == "RunCommandOnTaggedInstance"
     ]).Condition.StringEquals["ssm:resourceTag/environment"] == "prod"
@@ -209,7 +217,7 @@ run "deploy_wildcards_are_approved_or_tag_scoped" {
       for s in jsondecode(aws_iam_role_policy.gha["deploy"].policy).Statement :
       alltrue([for r in s.Resource : !strcontains(r, ":parameter/") || strcontains(r, "/cloud-pricing-app/prod/") || strcontains(r, "/aws/service/canonical/")])
     ])
-    error_message = "Parameter access is limited to /cloud-pricing-app/<env>/ (and Canonical's public AMI ids)."
+    error_message = "Parameter access is limited to /cloud-pricing-app/<env>/ (and Canonical's public AMI-ID parameters)."
   }
 }
 

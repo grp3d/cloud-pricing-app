@@ -58,15 +58,12 @@ jobs:
         working-directory: backend
       - name: No AWS account IDs in the repository (FR-050, SC-013)
         # A standalone 12-digit number (not part of a UUID or other hex/word token). Written
-        # without \b so it behaves the same with every grep. Public account IDs that must appear
-        # are allowed by name: 099720109477 is Canonical, the publisher of the Ubuntu AMIs
-        # (infra/base/iam_ci.tf limits launches to its images).
+        # without \b so it behaves the same with every grep.
         run: |
           set -euo pipefail
-          allowed='099720109477'
           found="$(git grep -nE '(^|[^0-9A-Za-z_-])[0-9]{12}([^0-9A-Za-z_-]|$)' -- \
             ':!backend/tests/**' ':!**/*.lock*' ':!**/*.json' ':!infra/**/tests/**' \
-            ':!deploy/tests/**' ':!specs/**' | grep -vE "$allowed" || true)"
+            ':!deploy/tests/**' ':!specs/**' || true)"
           if [[ -n "$found" ]]; then
             echo "$found"
             echo "::error::a 12-digit number (an AWS account ID?) is committed outside the test fixtures"

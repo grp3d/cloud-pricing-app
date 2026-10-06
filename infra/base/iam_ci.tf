@@ -165,12 +165,15 @@ locals {
       ]
     },
     {
-      # Canonical's Ubuntu images only; the exact AMI is pinned in <env>.tfvars.
-      Sid       = "LaunchFromCanonicalImage"
+      # Public images from AWS and its verified publishers (Canonical's Ubuntu images carry the
+      # owner alias "amazon", which is what ec2:Owner evaluates — not Canonical's account ID).
+      # Community, Marketplace and account-owned images are refused. The exact AMI is pinned in
+      # <env>.tfvars, so an AMI update needs no base-stack apply.
+      Sid       = "LaunchFromVerifiedPublicImage"
       Effect    = "Allow"
       Action    = ["ec2:RunInstances"]
       Resource  = ["arn:aws:ec2:${local.region}::image/*"]
-      Condition = { StringEquals = { "ec2:Owner" = "099720109477" } }
+      Condition = { StringEquals = { "ec2:Owner" = "amazon", "ec2:Public" = "true" } }
     },
     {
       Sid       = "PassInstanceRole"

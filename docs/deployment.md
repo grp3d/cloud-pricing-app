@@ -206,7 +206,8 @@ real use: release (step 9), deploy (step 10), plan (step 11).
 
 ```bash
 git checkout main && git pull
-git tag v1.0.0 && git push origin v1.0.0
+git tag -a v1.0.0 -m "v1.0.0: first cloud release"   # annotated: records who, when, why
+git push origin v1.0.0
 ```
 
 Then GitHub → **Actions** → **release** → the `v1.0.0` run.
@@ -453,10 +454,10 @@ Review findings checked and settled, with their evidence, so they aren't investi
 - **Must `volume/*` and `network-interface/*` in the `RunInstances` statement carry request-tag
   conditions?** (PR review.) *No.* The statement allows only `ec2:RunInstances`, which can't create
   either on its own; AWS authorizes every resource of a launch, and the instance must carry the
-  tags, sit in a tagged subnet and use a Canonical image. Requiring request tags on the network
+  tags, sit in a tagged subnet and use a verified public image. Requiring request tags on the network
   interface would fail launches, because the AWS provider doesn't reliably tag it.
 - **Must the launch permission pin the exact AMI?** (PR review.) *No — a deliberate trade-off.* It
-  allows Canonical-owned images only (`ec2:Owner`); the exact AMI is pinned in `<env>.tfvars`. Pinning
+  allows public images from AWS-verified publishers only (`ec2:Owner = amazon` — Canonical's Ubuntu AMIs carry that owner alias, so a condition on Canonical's account ID never matches; found in the first real `up`); the exact AMI is pinned in `<env>.tfvars`. Pinning
   it in IAM would make every AMI update an administrator apply of the base stack, while the deploy
   role can already replace the instance; untrusted or custom images stay refused.
 - **Must `ssm:SendCommand`'s document and instance be in one statement?** (PR review.) *No.* IAM
