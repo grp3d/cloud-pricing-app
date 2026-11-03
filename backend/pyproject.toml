@@ -38,12 +38,17 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.ruff]
-line-length = 100
+line-length = 88
 target-version = "py312"
 extend-exclude = ["src/db/migrations/versions"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
 # str+Enum (not StrEnum) is the standard FastAPI/Pydantic v2 pattern for enums that must also
 # serialize as plain JSON strings in the OpenAPI schema — deliberate, not a migration target.
-ignore = ["UP042"]
+ignore = ["E501", "UP042"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.6",
+]

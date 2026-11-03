@@ -28,3 +28,6 @@ infra/**/.terraform/
 *.tfstate*
 .local-backups/
 .local-tls/
+
+# Local copy of the prod TLS root certificate
+prod-root.crt

@@ -116,7 +116,10 @@ def test_find_existing_skus_wraps_duckdb_errors(monkeypatch):
 
 # --- resolve_product_details (015-canvas-service-icons, research.md §2) ---
 
-from src.pricing_data.catalog import ProductDetails, resolve_product_details  # noqa: E402
+from src.pricing_data.catalog import (  # noqa: E402
+    ProductDetails,
+    resolve_product_details,
+)
 
 NAT_GATEWAY_SKU = "2QF2GD6XUCJHFMKF"  # AmazonEC2, product family "NAT Gateway", us-east-1
 S3_NO_FAMILY_SKU = "3Q77AV5KBQJMTNXB"  # AmazonS3, empty product family, us-east-1

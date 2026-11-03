@@ -30,7 +30,13 @@ os.environ.setdefault("PRICING_DATA_URI", f"file://{PRICING_FIXTURE_ROOT}")
 
 from src.db.session import get_session  # noqa: E402
 from src.main import app  # noqa: E402
-from src.models.orm import Architecture, Collection, DataConnector, SKUSelection, User  # noqa: E402
+from src.models.orm import (  # noqa: E402
+    Architecture,
+    Collection,
+    DataConnector,
+    SKUSelection,
+    User,
+)
 
 test_engine = create_async_engine(TEST_DATABASE_URL)
 TestSessionLocal = async_sessionmaker(test_engine, expire_on_commit=False)

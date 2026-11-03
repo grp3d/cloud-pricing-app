@@ -15,10 +15,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.models.schemas import CalculationDuration, PricingTerm, PurchaseOption, SnapshotSelection
+from src.models.schemas import (
+    CalculationDuration,
+    PricingTerm,
+    PurchaseOption,
+    SnapshotSelection,
+)
 from src.pricing_data.pricing import ReservedPrice
 from src.services import price_calculation
-from src.services.price_calculation import EmptySnapshotError, build_transient_architecture
+from src.services.price_calculation import (
+    EmptySnapshotError,
+    build_transient_architecture,
+)
 
 # 018-app-cloud-deployment: price calculation takes one snapshot (date and revision) per request.
 FAKE_SNAPSHOT = SimpleNamespace(snapshot_date="2026-01-01", revision=1)

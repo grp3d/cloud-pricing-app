@@ -16,7 +16,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.models.orm import Architecture, Collection, SKUSelection, User
 from src.services import architecture_transfer
-from src.services.architecture_transfer import InvalidImportFileError, import_architectures
+from src.services.architecture_transfer import (
+    InvalidImportFileError,
+    import_architectures,
+)
 
 KNOWN = ("AmazonEC2", "NN4EGUUQRWVYP98C")  # us-east-1 t3.medium, present in the fixture
 

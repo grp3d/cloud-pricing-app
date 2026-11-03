@@ -26,7 +26,10 @@ from src.models.schemas import (
     ImportableArchitecturesOut,
 )
 from src.services.architecture_import import import_architecture
-from src.services.architecture_service import attach_units_to_architecture, get_owned_architecture
+from src.services.architecture_service import (
+    attach_units_to_architecture,
+    get_owned_architecture,
+)
 
 router = APIRouter(tags=["architectures"])
 

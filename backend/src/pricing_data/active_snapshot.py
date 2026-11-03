@@ -366,7 +366,11 @@ def _log_transitions(result: CheckResult, *, first: bool) -> None:
 
 def _cleanup_cache(store: S3Store, result: CheckResult) -> None:
     """Delete what the clean-up policy says, then record the cache for the Admin tab."""
-    from src.pricing_data.snapshot_cache import apply_cleanup, list_entries, plan_cleanup
+    from src.pricing_data.snapshot_cache import (
+        apply_cleanup,
+        list_entries,
+        plan_cleanup,
+    )
 
     cache_dir = Path(settings.pricing_cache_dir)
     entries = list_entries(cache_dir, PROVIDER)

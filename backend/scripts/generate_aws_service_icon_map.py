@@ -141,7 +141,7 @@ _EC2_EBS_FAMILIES = (
 )
 FAMILY_OVERRIDES: dict[str, dict[str, str]] = {
     "AmazonEC2": {
-        **{family: "Amazon-Elastic-Block-Store" for family in _EC2_EBS_FAMILIES},
+        **dict.fromkeys(_EC2_EBS_FAMILIES, "Amazon-Elastic-Block-Store"),
         "NAT Gateway": "Amazon-Virtual-Private-Cloud",
         "Load Balancer": "Elastic-Load-Balancing",
         "Load Balancer-Application": "Elastic-Load-Balancing",

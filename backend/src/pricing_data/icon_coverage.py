@@ -20,7 +20,12 @@ from pathlib import Path
 import duckdb
 
 from src.logging_config import get_logger
-from src.pricing_data.active_snapshot import PROVIDER, Issue, MonitorState, previous_snapshot
+from src.pricing_data.active_snapshot import (
+    PROVIDER,
+    Issue,
+    MonitorState,
+    previous_snapshot,
+)
 from src.pricing_data.duckdb_conn import connect
 from src.pricing_data.snapshot import ActiveSnapshot
 from src.pricing_data.snapshot_cache import ENTRY_FILE, entry_name

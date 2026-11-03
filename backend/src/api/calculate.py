@@ -9,7 +9,11 @@ import uuid
 from fastapi import APIRouter
 
 from src.api.deps import CurrentUser, DbSession
-from src.models.schemas import CalculateSnapshotRequest, CalculationDuration, CalculationResult
+from src.models.schemas import (
+    CalculateSnapshotRequest,
+    CalculationDuration,
+    CalculationResult,
+)
 from src.services.architecture_service import get_owned_architecture
 from src.services.price_calculation import (
     build_transient_architecture,

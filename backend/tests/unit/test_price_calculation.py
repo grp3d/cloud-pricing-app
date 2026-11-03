@@ -46,7 +46,7 @@ def _mock_no_period_units(monkeypatch):
     totals exactly."""
 
     def fake_resolve_units(selections, *, region=None, snapshot=None):
-        return {key: "Hrs" for key in selections}
+        return dict.fromkeys(selections, "Hrs")
 
     monkeypatch.setattr(price_calculation, "resolve_units", fake_resolve_units)
 
