@@ -1,0 +1,207 @@
+{
+  "created_at": "2026-11-02T22:01:28Z",
+  "manifest_version": "1.1",
+  "origin": "pipeline",
+  "previous_revision": null,
+  "provider": "azure",
+  "purged": null,
+  "raw": {
+    "eastus": {
+      "bytes": 1525315,
+      "file_count": 26,
+      "location": "azure/raw/2026-11-02/eastus/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T22:01:28Z"
+    },
+    "eastus2": {
+      "bytes": 1500040,
+      "file_count": 26,
+      "location": "azure/raw/2026-11-02/eastus2/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T22:01:09Z"
+    },
+    "global": {
+      "bytes": 374920,
+      "file_count": 8,
+      "location": "azure/raw/2026-11-02/global/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T21:48:44Z"
+    },
+    "north-america": {
+      "bytes": 507,
+      "file_count": 1,
+      "location": "azure/raw/2026-11-02/north-america/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T21:46:07Z"
+    },
+    "westus": {
+      "bytes": 1325852,
+      "file_count": 23,
+      "location": "azure/raw/2026-11-02/westus/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T21:58:40Z"
+    },
+    "westus2": {
+      "bytes": 1296342,
+      "file_count": 23,
+      "location": "azure/raw/2026-11-02/westus2/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T21:59:59Z"
+    }
+  },
+  "regions": {
+    "failed": [],
+    "requested": [
+      "eastus",
+      "global",
+      "north-america"
+    ],
+    "succeeded": [
+      "eastus",
+      "global",
+      "north-america"
+    ]
+  },
+  "revision": 1,
+  "run": {
+    "ended_at": "2026-11-02T22:01:28Z",
+    "host": "local",
+    "mode": "regions",
+    "pipeline_version": {
+      "git_sha": "local",
+      "image_tag": "local"
+    },
+    "region_results": [
+      {
+        "attempts": 1,
+        "duplicates_removed": 0,
+        "items_received": 25455,
+        "outcome": "succeeded",
+        "region": "eastus",
+        "requests_made": 27,
+        "services_downloaded": 26,
+        "services_without_price_list": 0,
+        "throttled_responses": 1,
+        "unlocated_rows": 0,
+        "unparseable_prices": 0
+      },
+      {
+        "attempts": 1,
+        "duplicates_removed": 0,
+        "items_received": 2,
+        "outcome": "succeeded",
+        "region": "north-america",
+        "requests_made": 1,
+        "services_downloaded": 1,
+        "services_without_price_list": 0,
+        "throttled_responses": 0,
+        "unlocated_rows": 0,
+        "unparseable_prices": 0
+      },
+      {
+        "attempts": 1,
+        "duplicates_removed": 0,
+        "items_received": 7511,
+        "outcome": "succeeded",
+        "region": "global",
+        "requests_made": 8,
+        "services_downloaded": 8,
+        "services_without_price_list": 0,
+        "throttled_responses": 0,
+        "unlocated_rows": 3967,
+        "unparseable_prices": 0
+      }
+    ],
+    "started_at": "2026-11-02T21:46:00Z",
+    "trigger": "manual"
+  },
+  "run_id": "20261102T214600Z-d37916",
+  "snapshot_date": "2026-11-02",
+  "status": "succeeded",
+  "tables": {
+    "price_item": {
+      "regions": {
+        "eastus": {
+          "files": [
+            {
+              "bytes": 8042,
+              "path": "azure/parquet/price_item/snapshot_date=2026-11-02/region=eastus/part-20261102T214600Z-d37916.parquet",
+              "row_count": 30,
+              "sha256": "cc01787f39097b30c860afaafd5c2e8985a50c825a98c792fd82e854aa9f66e1"
+            }
+          ],
+          "row_count": 30,
+          "written_by_run": "20261102T214600Z-d37916"
+        },
+        "global": {
+          "files": [
+            {
+              "bytes": 4533,
+              "path": "azure/parquet/price_item/snapshot_date=2026-11-02/region=global/part-20261102T214600Z-d37916.parquet",
+              "row_count": 2,
+              "sha256": "8d4c831c71703f4f42080f1d52b605e4279b80d6c18cccc1e2bf41d123f893c1"
+            }
+          ],
+          "row_count": 2,
+          "written_by_run": "20261102T214600Z-d37916"
+        },
+        "north-america": {
+          "files": [
+            {
+              "bytes": 4491,
+              "path": "azure/parquet/price_item/snapshot_date=2026-11-02/region=north-america/part-20261102T214600Z-d37916.parquet",
+              "row_count": 1,
+              "sha256": "6d5e96d64cac315ad5e3b39c4e0692dd681ee2b0f32282a676ac548e82277059"
+            }
+          ],
+          "row_count": 1,
+          "written_by_run": "20261102T214600Z-d37916"
+        }
+      },
+      "row_count": 33,
+      "schema_version": 1
+    },
+    "price_item_savings_plan": {
+      "regions": {
+        "eastus": {
+          "files": [
+            {
+              "bytes": 1263,
+              "path": "azure/parquet/price_item_savings_plan/snapshot_date=2026-11-02/region=eastus/part-20261102T214600Z-d37916.parquet",
+              "row_count": 3,
+              "sha256": "106a3c83c06f73a062d0dfbaa52e140cd79318ad64c4b1e837ad5baebf626767"
+            }
+          ],
+          "row_count": 3,
+          "written_by_run": "20261102T214600Z-d37916"
+        },
+        "global": {
+          "files": [
+            {
+              "bytes": 1223,
+              "path": "azure/parquet/price_item_savings_plan/snapshot_date=2026-11-02/region=global/part-20261102T214600Z-d37916.parquet",
+              "row_count": 2,
+              "sha256": "a2ea7862d9fd538910856f4b77226cddd2b76b8f82ff6a7fcd3f138573776655"
+            }
+          ],
+          "row_count": 2,
+          "written_by_run": "20261102T214600Z-d37916"
+        },
+        "north-america": {
+          "files": [
+            {
+              "bytes": 232,
+              "path": "azure/parquet/price_item_savings_plan/snapshot_date=2026-11-02/region=north-america/part-20261102T214600Z-d37916.parquet",
+              "row_count": 0,
+              "sha256": "2af7d79fc23122adf574c6b411fa47240c6c359908cf7d87d539c95030f7a00d"
+            }
+          ],
+          "row_count": 0,
+          "written_by_run": "20261102T214600Z-d37916"
+        }
+      },
+      "row_count": 5,
+      "schema_version": 1
+    }
+  }
+}

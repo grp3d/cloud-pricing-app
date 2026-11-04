@@ -9,12 +9,14 @@ from fastapi.responses import JSONResponse
 
 from src.api.deps import CurrentUser, DbSession
 from src.logging_config import get_logger
-from src.models.orm import SKUSelection
+from src.models.orm import Collection, DataConnector, SKUSelection
 from src.models.schemas import SKUSelectionCreate, SKUSelectionOut, SKUSelectionUpdate
 from src.services.architecture_service import (
+    architecture_provider,
     get_owned_collection,
     get_owned_connector,
     sku_selection_out_with_unit,
+    validate_selection,
 )
 
 router = APIRouter(tags=["sku-selections"])
@@ -30,6 +32,17 @@ async def add_sku_selection(
     collection_id: uuid.UUID, body: SKUSelectionCreate, session: DbSession, user: CurrentUser
 ) -> SKUSelectionOut:
     collection = await get_owned_collection(collection_id, session, user)
+    options = _options(body.provider_options)
+    provider = await validate_selection(
+        collection.architecture_id,
+        service_code=body.service_code,
+        sku=body.sku,
+        pricing_term=body.pricing_term.value,
+        purchase_option=body.purchase_option.value,
+        provider_options=options,
+        region=collection.region,
+        session=session,
+    )
     # Duplicates are explicitly allowed (spec Edge Cases) — the same SKU may appear more than
     # once, each with independent pricing inputs.
     selection = SKUSelection(
@@ -39,11 +52,17 @@ async def add_sku_selection(
         pricing_term=body.pricing_term.value,
         purchase_option=body.purchase_option.value,
         usage_quantity=body.usage_quantity,
+        provider_options=options,
     )
     session.add(selection)
     await session.commit()
     await session.refresh(selection)
-    return sku_selection_out_with_unit(selection, region=collection.region)
+    return sku_selection_out_with_unit(selection, region=collection.region, provider=provider)
+
+
+def _options(options) -> dict | None:
+    """A validated `provider_options` model → the JSON stored in the column."""
+    return None if options is None else options.model_dump(mode="json")
 
 
 async def _get_owned_sku_selection(
@@ -63,6 +82,14 @@ async def _get_owned_sku_selection(
         connector = await get_owned_connector(selection.connector_id, session, user)
         region = connector.from_collection.region
     return selection, region
+
+
+async def _architecture_id_of(selection: SKUSelection, session: DbSession) -> uuid.UUID:
+    if selection.collection_id is not None:
+        owner = await session.get(Collection, selection.collection_id)
+    else:
+        owner = await session.get(DataConnector, selection.connector_id)
+    return owner.architecture_id
 
 
 async def _move_to_collection(
@@ -127,15 +154,41 @@ async def update_sku_selection(
         refused = await _move_to_collection(selection, body.collection_id, region, session, user)
         if refused is not None:
             return refused
-    if body.pricing_term is not None:
-        selection.pricing_term = body.pricing_term.value
-    if body.purchase_option is not None:
-        selection.purchase_option = body.purchase_option.value
+    architecture_id = await _architecture_id_of(selection, session)
+    pricing_term = body.pricing_term.value if body.pricing_term else selection.pricing_term
+    purchase_option = (
+        body.purchase_option.value if body.purchase_option else selection.purchase_option
+    )
+    options = (
+        _options(body.provider_options)
+        if "provider_options" in body.model_fields_set
+        else selection.provider_options
+    )
+    if (
+        body.pricing_term is not None
+        or body.purchase_option is not None
+        or "provider_options" in body.model_fields_set
+    ):
+        provider = await validate_selection(
+            architecture_id,
+            service_code=selection.service_code,
+            sku=selection.sku,
+            pricing_term=pricing_term,
+            purchase_option=purchase_option,
+            provider_options=options,
+            region=region,
+            session=session,
+        )
+    else:
+        provider = await architecture_provider(architecture_id, session)
+    selection.pricing_term = pricing_term
+    selection.purchase_option = purchase_option
+    selection.provider_options = options
     if body.usage_quantity is not None:
         selection.usage_quantity = body.usage_quantity
     await session.commit()
     await session.refresh(selection)
-    return sku_selection_out_with_unit(selection, region=region)
+    return sku_selection_out_with_unit(selection, region=region, provider=provider)
 
 
 @router.delete("/sku-selections/{sku_selection_id}", status_code=204)

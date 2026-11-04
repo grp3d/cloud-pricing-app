@@ -28,6 +28,7 @@ def _selection_spec(selection: SKUSelection) -> SKUSelectionSpec:
         pricing_term=selection.pricing_term,
         purchase_option=selection.purchase_option,
         usage_quantity=selection.usage_quantity,
+        provider_options=selection.provider_options,
     )
 
 

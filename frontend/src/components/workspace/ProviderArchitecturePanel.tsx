@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import type { ArchitectureSummary, Provider } from "../../api/client";
 import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
+import { providerHint } from "../../lib/providerPricing";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -113,42 +114,47 @@ export function ProviderArchitecturePanel({
       <Separator />
 
       <section aria-label="Cloud providers" className="flex flex-col gap-1">
-        {expanded && (
-          <h3 className="px-1 text-2xs font-medium text-muted-foreground">Providers</h3>
-        )}
+        {expanded && <h3 className="px-1 text-2xs font-medium text-muted-foreground">Providers</h3>}
         <div className={`flex flex-col gap-1.5`}>
           {providers.map((p) =>
             expanded ? (
-              <Button
-                key={p.code}
-                variant={p.code === selectedProvider ? "default" : "outline"}
-                size="sm"
-                disabled={!p.active}
-                aria-pressed={p.code === selectedProvider}
-                onClick={() => p.active && onSelectProvider(p.code)}
-                className="justify-start"
-              >
-                {p.name}
-              </Button>
+              // 019 (FR-001): the hover text gives the snapshot date, or why it's disabled. The
+              // wrapper carries it because a disabled button gets no hover events.
+              <span key={p.code} title={providerHint(p)} className="flex flex-col">
+                <Button
+                  variant={p.code === selectedProvider ? "default" : "outline"}
+                  size="sm"
+                  disabled={!p.active}
+                  aria-pressed={p.code === selectedProvider}
+                  aria-description={providerHint(p)}
+                  onClick={() => p.active && onSelectProvider(p.code)}
+                  className="justify-start"
+                >
+                  {p.name}
+                </Button>
+              </span>
             ) : (
               <Tooltip key={p.code}>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant={p.code === selectedProvider ? "default" : "outline"}
-                    size="icon-sm"
-                    disabled={!p.active}
-                    aria-pressed={p.code === selectedProvider}
-                    aria-label={p.name}
-                    onClick={() => p.active && onSelectProvider(p.code)}
-                  >
-                    {PROVIDER_ICONS[p.code] ? (
-                      <img src={PROVIDER_ICONS[p.code]} alt="" className="size-4" />
-                    ) : (
-                      <Cloud />
-                    )}
-                  </Button>
+                  <span className="flex">
+                    <Button
+                      variant={p.code === selectedProvider ? "default" : "outline"}
+                      size="icon-sm"
+                      disabled={!p.active}
+                      aria-pressed={p.code === selectedProvider}
+                      aria-label={p.name}
+                      aria-description={providerHint(p)}
+                      onClick={() => p.active && onSelectProvider(p.code)}
+                    >
+                      {PROVIDER_ICONS[p.code] ? (
+                        <img src={PROVIDER_ICONS[p.code]} alt="" className="size-4" />
+                      ) : (
+                        <Cloud />
+                      )}
+                    </Button>
+                  </span>
                 </TooltipTrigger>
-                <TooltipContent side="right">{p.name}</TooltipContent>
+                <TooltipContent side="right">{providerHint(p)}</TooltipContent>
               </Tooltip>
             ),
           )}

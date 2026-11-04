@@ -196,3 +196,81 @@ def test_check_time_is_recorded(tmp_path, at_startup):
     _check(LocalStore(tmp_path), state, at_startup=at_startup)
     assert state.last_check_at is not None
     assert state.initialized is True
+
+
+# --- 019-gcp-azure-providers-trends: one monitor state per provider (FR-001, FR-002) ---------
+
+import json  # noqa: E402
+import shutil  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from src.pricing_data import active_snapshot  # noqa: E402
+from src.pricing_data.errors import PricingDataUnavailableError  # noqa: E402
+
+FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "pricing_parquet"
+
+
+def _three_provider_root(tmp_path: Path) -> Path:
+    root = tmp_path / "root"
+    shutil.copytree(FIXTURE_ROOT, root)
+    return root
+
+
+def _set_status(root: Path, provider: str, status: str) -> None:
+    path = next((root / provider / "manifests").glob("*/manifest.json"))
+    manifest = json.loads(path.read_text())
+    manifest["status"] = status
+    path.write_text(json.dumps(manifest))
+
+
+def test_each_provider_has_its_own_active_snapshot(tmp_path, use_pricing_root):
+    use_pricing_root(_three_provider_root(tmp_path))
+    assert active_snapshot.get_active_snapshot("aws").snapshot_date == "2026-09-24"
+    azure = active_snapshot.get_active_snapshot("azure")
+    assert (azure.provider, azure.snapshot_date) == ("azure", "2026-11-02")
+    assert active_snapshot.get_active_snapshot("gcp").provider == "gcp"
+    assert active_snapshot.get_active_snapshot().provider == "aws"  # default stays AWS
+    assert active_snapshot.state_for("azure") is not active_snapshot.state_for("gcp")
+
+
+def test_a_failed_gcp_manifest_leaves_aws_and_azure_untouched(tmp_path, use_pricing_root):
+    root = _three_provider_root(tmp_path)
+    _set_status(root, "gcp", "failed")
+    use_pricing_root(root)
+    assert active_snapshot.get_active_snapshot("aws").provider == "aws"
+    assert active_snapshot.get_active_snapshot("azure").provider == "azure"
+    with pytest.raises(PricingDataUnavailableError):
+        active_snapshot.get_active_snapshot("gcp")
+    status, reason = active_snapshot.provider_status("gcp")
+    assert status == "failed" and reason
+    assert active_snapshot.provider_status("aws")[0] in {"current", "stale"}
+
+
+def test_a_provider_with_no_manifest_has_status_none(tmp_path, use_pricing_root):
+    root = _three_provider_root(tmp_path)
+    shutil.rmtree(root / "azure")
+    use_pricing_root(root)
+    assert active_snapshot.provider_status("azure") == ("none", "no snapshot available")
+    assert active_snapshot.get_active_snapshot("gcp").provider == "gcp"
+
+
+def test_an_old_active_snapshot_is_stale_but_stays_active(tmp_path, use_pricing_root, monkeypatch):
+    use_pricing_root(_three_provider_root(tmp_path))
+    monkeypatch.setattr(active_snapshot.settings, "snapshot_stale_days", 14)
+    status, reason = active_snapshot.provider_status("azure", today=date(2026, 11, 17))
+    assert status == "stale" and "15 days" in reason
+    assert active_snapshot.provider_status("azure", today=date(2026, 11, 16)) == ("current", None)
+    assert active_snapshot.get_active_snapshot("azure").snapshot_date == "2026-11-02"
+
+
+def test_unknown_provider_is_a_value_error():
+    with pytest.raises(ValueError):
+        active_snapshot.state_for("oracle")
+
+
+def test_health_readiness_stays_tied_to_aws(tmp_path, use_pricing_root):
+    root = _three_provider_root(tmp_path)
+    _set_status(root, "azure", "failed")
+    use_pricing_root(root)
+    assert active_snapshot.pricing_status() == (True, None)
+    assert active_snapshot.pricing_status("azure")[0] is False

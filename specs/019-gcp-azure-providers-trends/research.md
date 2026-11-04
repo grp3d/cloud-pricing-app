@@ -30,6 +30,16 @@ Validation rejects an unknown table name or `schema_version` per provider (stora
 
 **Decision**: Keep the existing verified S3 cache (`snapshot_cache.py`), already keyed by provider in `list_entries`. Its clean-up becomes provider-aware: each provider's active snapshot is protected, `pricing_cache_keep` applies per provider, and the size budget (`PRICING_CACHE_MAX_BYTES`) is shared. Measuring the real snapshot sizes is an early task. Azure and GCP are small (validation Q1 and Q2: about 33k and 18k rows per location). If AWS plus both fit under 1 GiB, the default stays; otherwise the default rises with the instance disk in `infra/`.
 
+**Measured** (T008, sum of manifest `bytes` for every file of the newest succeeded snapshot, all regions, local pipeline root, 2026-11-03):
+
+| Provider | Snapshot | Size | Files |
+|---|---|---|---|
+| AWS | 2026-10-05 | 284.4 MB | 35 |
+| Azure | 2026-11-02 | 6.8 MB | 12 |
+| GCP | 2026-11-02 | 1.8 MB | 16 |
+
+Three active snapshots total about 293 MB. With `PRICING_CACHE_KEEP=1` per provider, the worst case (active plus one older snapshot for each) is about 586 MB, under the 1 GiB (1,073.7 MB) default. **The default stays**, and `infra/` is unchanged.
+
 **Rationale**: It reuses the integrity rules feature 018 established (sha256-verified files, a snapshot never mixes revisions) with no new mechanism.
 
 ## R3. A shared request shape with provider adapters behind it (FR-006, Principle III)

@@ -11,8 +11,15 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -111,7 +118,8 @@ class Collection(Base):
     # string, not a DB enum/FK: the set of valid values is driven by which regions the pricing
     # dataset currently has data for (research.md §1, §3), which changes independently of this
     # schema — validated at the API layer against `GET /regions`, not here.
-    region: Mapped[str] = mapped_column(String(20), nullable=False)
+    # 019 (data-model §4): varchar(64), for GCP and Azure location names.
+    region: Mapped[str] = mapped_column(String(64), nullable=False)
     parent_collection_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("collections.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -149,6 +157,10 @@ class DataConnector(Base):
         CheckConstraint(
             "from_collection_id != to_collection_id", name="ck_connector_no_self_link"
         ),
+        CheckConstraint(
+            "arrow_style IN ('none', 'one_way', 'two_way', 'one_to_many', 'many_to_one')",
+            name="ck_connector_arrow_style",
+        ),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -161,6 +173,11 @@ class DataConnector(Base):
     to_collection_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("collections.id"), nullable=False
     )
+    # 019 (data-model §5): how the diagram draws the connector. Visual only.
+    arrow_style: Mapped[str] = mapped_column(String(20), nullable=False, default="none",
+                                             server_default="none")
+    arrow_reversed: Mapped[bool] = mapped_column(nullable=False, default=False,
+                                                 server_default="false")
     deleted_at: Mapped[datetime | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
@@ -177,6 +194,11 @@ class DataConnector(Base):
     # separate query, when eager-loaded.
     from_collection: Mapped[Collection] = relationship(foreign_keys=[from_collection_id])
     to_collection: Mapped[Collection] = relationship(foreign_keys=[to_collection_id])
+    # 019: extra boxes of a one-to-many / many-to-one connector, oldest first.
+    branches: Mapped[list[ConnectorBranch]] = relationship(
+        back_populates="connector", cascade="all, delete-orphan",
+        order_by="ConnectorBranch.created_at",
+    )
 
 
 class SKUSelection(Base):
@@ -193,7 +215,8 @@ class SKUSelection(Base):
             name="ck_sku_selection_exactly_one_parent",
         ),
         CheckConstraint(
-            "pricing_term IN ('on_demand', 'reserved_1yr', 'reserved_3yr')",
+            "pricing_term IN ('on_demand', 'reserved_1yr', 'reserved_3yr', "
+            "'savings_plan_1yr', 'savings_plan_3yr', 'commitment_1yr', 'commitment_3yr')",
             name="ck_sku_selection_pricing_term",
         ),
         CheckConstraint(
@@ -215,6 +238,8 @@ class SKUSelection(Base):
     pricing_term: Mapped[str] = mapped_column(String(20), nullable=False)
     purchase_option: Mapped[str] = mapped_column(String(20), nullable=False)
     usage_quantity: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    # 019 (data-model §3): `gcp_machine` / `azure_vm` options; null = the common pricing path.
+    provider_options: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
@@ -224,3 +249,57 @@ class SKUSelection(Base):
     connector: Mapped[DataConnector | None] = relationship(
         back_populates="sku_selection", foreign_keys=[connector_id]
     )
+
+
+class ConnectorBranch(Base):
+    """019 (data-model §5): one extra box of a one-to-many (extra "to") or many-to-one (extra
+    "from") connector. Same-architecture and no-duplicate rules are in the service layer."""
+
+    __tablename__ = "connector_branches"
+    __table_args__ = (
+        UniqueConstraint("connector_id", "collection_id", name="uq_connector_branch"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    connector_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("data_connectors.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    collection_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("collections.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    connector: Mapped[DataConnector] = relationship(back_populates="branches")
+
+
+class UserPreferences(Base):
+    """019 (data-model §1): one typed JSON row per user (named or guest)."""
+
+    __tablename__ = "user_preferences"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict,
+                                       server_default="{}")
+    schema_version: Mapped[int] = mapped_column(nullable=False, default=1, server_default="1")
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class ServiceCategoryRule(Base):
+    """019 (data-model §2, research R9): a provider grouping → a shared category."""
+
+    __tablename__ = "service_category_rules"
+    __table_args__ = (
+        CheckConstraint("provider IN ('aws', 'gcp', 'azure')",
+                        name="ck_service_category_rule_provider"),
+        CheckConstraint("category IN ('compute', 'storage', 'database', 'networking')",
+                        name="ck_service_category_rule_category"),
+        UniqueConstraint("provider", "match_field", "match_value",
+                         name="uq_service_category_rule_match"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)
+    match_field: Mapped[str] = mapped_column(String(40), nullable=False)
+    match_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
+    priority: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")

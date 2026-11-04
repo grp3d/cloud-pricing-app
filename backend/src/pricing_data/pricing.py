@@ -14,12 +14,14 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 
 import duckdb
 
 from src.pricing_data.active_snapshot import get_active_snapshot
 from src.pricing_data.duckdb_conn import connect, table_files
 from src.pricing_data.errors import PricingDataUnavailableError
+from src.pricing_data.providers.base import Tier
 from src.pricing_data.snapshot import ActiveSnapshot
 
 # The raw AWS price_fact data is inconsistently formatted (e.g. `lease_contract_length` mixes
@@ -50,6 +52,9 @@ def lookup_price(
     """Return the unit price for one SKU/term/purchase_option in `region`, or None if not
     priceable (010-multi-region-support, spec FR-005 — every lookup is now scoped to the
     caller-supplied region rather than one global default)."""
+    # 019: a price type AWS doesn't publish (savings plans, commitments) is never priced.
+    if pricing_term not in _TERM_MAP:
+        return None
     snapshot = snapshot or get_active_snapshot()
     term, lease_length = _TERM_MAP[pricing_term]
     purchase = _PURCHASE_OPTION_MAP[purchase_option]
@@ -71,6 +76,64 @@ def lookup_price(
         raise PricingDataUnavailableError(str(exc)) from exc
 
     return float(row[0]) if row else None
+
+
+def lookup_price_tiers(
+    *,
+    sku: str,
+    pricing_term: str,
+    purchase_option: str,
+    region: str,
+    snapshot: ActiveSnapshot | None = None,
+) -> list[Tier]:
+    """Every `price_fact` row for one SKU/term/purchase_option in `region`, as tiers ordered by
+    numeric `begin_range` (019, research R8). `end_range` "Inf" (or empty) is an open top tier;
+    an empty `begin_range` is 0. A null price is a tier with no rate. Returns `[]` when nothing
+    is published; the caller (`providers.tiers`) decides how the tiers price a quantity.
+
+    Replaces `lookup_price`'s unsorted `LIMIT 1` for on-demand lines, which priced a tiered SKU
+    at whichever tier came back first. `lookup_price` stays for its other callers."""
+    # 019: a price type AWS doesn't publish (savings plans, commitments) is never priced.
+    if pricing_term not in _TERM_MAP:
+        return []
+    snapshot = snapshot or get_active_snapshot()
+    term, lease_length = _TERM_MAP[pricing_term]
+    purchase = _PURCHASE_OPTION_MAP[purchase_option]
+
+    query = (
+        "SELECT price, begin_range, end_range FROM read_parquet(?) WHERE sku = ? AND term = ?"
+    )
+    params: list[object] = [table_files(snapshot, "price_fact", region), sku, term]
+    if lease_length is not None:
+        query += " AND REPLACE(lease_contract_length, ' ', '') = ?"
+        params.append(lease_length)
+    if purchase is not None:
+        query += " AND REPLACE(purchase_option, ' ', '') = ?"
+        params.append(purchase)
+    query += " ORDER BY TRY_CAST(NULLIF(TRIM(begin_range), '') AS DOUBLE) NULLS FIRST"
+
+    try:
+        con = connect()
+        rows = con.execute(query, params).fetchall()
+    except duckdb.Error as exc:
+        raise PricingDataUnavailableError(str(exc)) from exc
+
+    return [
+        Tier(
+            start_quantity=_range_bound(begin) or Decimal(0),
+            rate=None if price is None else Decimal(str(price)),
+            end_quantity=_range_bound(end),
+        )
+        for price, begin, end in rows
+    ]
+
+
+def _range_bound(value: str | None) -> Decimal | None:
+    """A `begin_range`/`end_range` text as a number; `None` for empty or "Inf"."""
+    text = (value or "").strip()
+    if not text or text.lower() == "inf":
+        return None
+    return Decimal(text)
 
 
 @dataclass(frozen=True)
@@ -199,6 +262,10 @@ def resolve_units(
 
     result: dict[tuple[str, str, str], str | None] = {}
     for sku, pricing_term, purchase_option in selections:
+        if pricing_term not in _TERM_MAP:
+            # 019: a price type AWS doesn't publish (savings plans, commitments) is never priced.
+            result[(sku, pricing_term, purchase_option)] = None
+            continue
         term, lease_length = _TERM_MAP[pricing_term]
         purchase = _PURCHASE_OPTION_MAP[purchase_option]
         if lease_length is None:

@@ -94,9 +94,7 @@ describe("ProviderArchitecturePanel — narrow-width layout", () => {
     expect(row!.className).toContain("flex-wrap");
 
     expect(screen.getByRole("button", { name: "Import an architecture" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: `Make ${longName} public` }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `Make ${longName} public` })).toBeInTheDocument();
   });
 
   it("wraps a long architecture name instead of truncating it with an ellipsis, and lets the row grow to fit it", () => {
@@ -111,5 +109,62 @@ describe("ProviderArchitecturePanel — narrow-width layout", () => {
     // row instead of growing the row to fit (caught via manual browser verification, not
     // by this jsdom suite — jsdom doesn't compute real box heights either).
     expect(nameButton.className).toContain("h-auto");
+  });
+});
+
+// --- 019 (T057, FR-001): provider buttons ------------------------------------------------------
+
+describe("ProviderArchitecturePanel provider buttons (019)", () => {
+  const three: Provider[] = [
+    {
+      code: "aws",
+      name: "AWS",
+      active: true,
+      status: "stale",
+      reason: "snapshot is 41 days old",
+      snapshot_date: "2026-09-24",
+      snapshot_revision: 1,
+    },
+    {
+      code: "gcp",
+      name: "GCP",
+      active: false,
+      status: "failed",
+      reason: "snapshot rejected",
+      snapshot_date: null,
+      snapshot_revision: null,
+    },
+    {
+      code: "azure",
+      name: "Azure",
+      active: true,
+      status: "current",
+      reason: null,
+      snapshot_date: "2026-11-02",
+      snapshot_revision: 1,
+    },
+  ];
+
+  it("enables active providers and explains each on hover", () => {
+    renderPanel({ providers: three });
+    const azure = screen.getByRole("button", { name: "Azure" });
+    const gcp = screen.getByRole("button", { name: "GCP" });
+    expect(azure).toBeEnabled();
+    expect(gcp).toBeDisabled();
+    expect(azure.parentElement).toHaveAttribute("title", "Azure: pricing snapshot 2026-11-02");
+    expect(gcp.parentElement).toHaveAttribute("title", "GCP: snapshot rejected");
+    expect(screen.getByRole("button", { name: "AWS" }).parentElement).toHaveAttribute(
+      "title",
+      "AWS: pricing snapshot 2026-09-24 (snapshot is 41 days old)",
+    );
+  });
+
+  it("selects only an active provider", () => {
+    const onSelectProvider = vi.fn();
+    renderPanel({ providers: three, onSelectProvider });
+    screen.getByRole("button", { name: "Azure" }).click();
+    screen.getByRole("button", { name: "GCP" }).click();
+    expect(onSelectProvider).toHaveBeenCalledTimes(1);
+    expect(onSelectProvider).toHaveBeenCalledWith("azure");
   });
 });

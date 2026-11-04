@@ -171,7 +171,7 @@
     },
     "product_dim": {
       "schema_version": 1,
-      "row_count": 644,
+      "row_count": 645,
       "regions": {
         "ap-northeast-1": {
           "written_by_run": "20260924T000000Z-f1a7e0",
@@ -247,13 +247,13 @@
         },
         "us-west-2": {
           "written_by_run": "20260924T000000Z-f1a7e0",
-          "row_count": 104,
+          "row_count": 105,
           "files": [
             {
               "path": "aws/parquet/product_dim/snapshot_date=2026-09-24/region=us-west-2/part-20260924T000000Z-f1a7e0.parquet",
-              "bytes": 11021,
-              "sha256": "34737b7fc805deca5c1da4864d4819138eb27f0ee857b024e4cd3a6976612ca5",
-              "row_count": 104
+              "bytes": 11055,
+              "sha256": "e45039baabf6f2c4aec60b547da90b2d5e8142210064504f8b37de245cbc06e6",
+              "row_count": 105
             }
           ]
         }
@@ -261,7 +261,7 @@
     },
     "product_attribute": {
       "schema_version": 1,
-      "row_count": 9885,
+      "row_count": 9894,
       "regions": {
         "ap-northeast-1": {
           "written_by_run": "20260924T000000Z-f1a7e0",
@@ -337,13 +337,13 @@
         },
         "us-west-2": {
           "written_by_run": "20260924T000000Z-f1a7e0",
-          "row_count": 1592,
+          "row_count": 1601,
           "files": [
             {
               "path": "aws/parquet/product_attribute/snapshot_date=2026-09-24/region=us-west-2/part-20260924T000000Z-f1a7e0.parquet",
-              "bytes": 9692,
-              "sha256": "059e35ae46b38e3962d6f0ef12968255a95dfe50b1a5b5638be8872cbe52d4db",
-              "row_count": 1592
+              "bytes": 9711,
+              "sha256": "7d962564bf26bdcb381fdb52b69b266d5522778d1f30b883dfa8852a2283a1a7",
+              "row_count": 1601
             }
           ]
         }
@@ -441,7 +441,7 @@
     },
     "price_fact": {
       "schema_version": 1,
-      "row_count": 1401,
+      "row_count": 1405,
       "regions": {
         "ap-northeast-1": {
           "written_by_run": "20260924T000000Z-f1a7e0",
@@ -517,13 +517,13 @@
         },
         "us-west-2": {
           "written_by_run": "20260924T000000Z-f1a7e0",
-          "row_count": 236,
+          "row_count": 240,
           "files": [
             {
               "path": "aws/parquet/price_fact/snapshot_date=2026-09-24/region=us-west-2/part-20260924T000000Z-f1a7e0.parquet",
-              "bytes": 7933,
-              "sha256": "e13a62675edc53216d68ee50ad88b81aa11aab7ad33be5debc8b14c971bfdee4",
-              "row_count": 236
+              "bytes": 8069,
+              "sha256": "107464f86a2f0ed9a9cf6e8683d025bbc3b37e639f40c9c73bbd5813ea3256da",
+              "row_count": 240
             }
           ]
         }

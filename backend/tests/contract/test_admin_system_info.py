@@ -110,3 +110,52 @@ async def test_issues_come_back_in_the_documented_order(client, admin_headers, m
     ]
     regions_issue = resp.json()["issues"][0]
     assert regions_issue["regions"] == ["eu-west-2"]
+
+
+# --- 019 (T039, contracts §9, FR-009): per-provider snapshot state ------------------------------
+
+
+@pytest.mark.asyncio
+async def test_every_provider_has_its_own_block(client, admin_headers):
+    for code in ("aws", "azure", "gcp"):
+        active_snapshot.get_active_snapshot(code)  # checked, as after startup
+    body = (await client.get("/api/v1/admin/system-info", headers=admin_headers)).json()
+    providers = body["providers"]
+    assert set(providers) == {"aws", "azure", "gcp"}
+    for block in providers.values():
+        assert set(block) >= {"active_snapshot", "latest_run", "rejected", "issues", "status"}
+        assert block["checked"] is True
+        assert block["rejected"] is None and isinstance(block["issues"], list)
+        assert block["latest_run"]["status"] == "succeeded"
+    assert providers["aws"]["active_snapshot"] == body["active"]
+    assert providers["azure"]["active_snapshot"]["snapshot_date"] == "2026-11-02"
+    assert providers["azure"]["active_snapshot"]["regions"] == ["eastus"]
+    assert providers["gcp"]["active_snapshot"]["regions"] == ["us-east1"]
+    assert providers["azure"]["name"] == "Azure"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_provider_shows_its_reason(client, admin_headers, tmp_path,
+                                                  use_pricing_root):
+    import json
+    import shutil
+    from pathlib import Path
+
+    root = tmp_path / "root"
+    shutil.copytree(Path(__file__).resolve().parents[1] / "fixtures" / "pricing_parquet", root)
+    path = next((root / "gcp" / "manifests").glob("*/manifest.json"))
+    manifest = json.loads(path.read_text())
+    manifest["status"] = "failed"
+    path.write_text(json.dumps(manifest))
+    use_pricing_root(root)
+    for code in ("azure", "gcp"):
+        try:
+            active_snapshot.get_active_snapshot(code)
+        except Exception:  # noqa: BLE001 — GCP is meant to be unavailable
+            pass
+    providers = (await client.get("/api/v1/admin/system-info",
+                                  headers=admin_headers)).json()["providers"]
+    assert providers["gcp"]["status"] == "failed"
+    assert providers["gcp"]["active_snapshot"] is None
+    assert providers["gcp"]["reason"]
+    assert providers["azure"]["status"] in {"current", "stale"}

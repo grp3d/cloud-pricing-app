@@ -38,7 +38,10 @@ def scratch_database(base_url: str) -> Iterator[str]:
     finally:
         with connect(admin_url, autocommit=True) as admin:
             admin.execute(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s",
+                # Client sessions only: an autovacuum worker can't be signalled by a non-superuser
+                # role, and DROP DATABASE stops it by itself.
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = %s AND backend_type = 'client backend'",
                 (name,),
             )
             admin.execute(f'DROP DATABASE IF EXISTS "{name}"')

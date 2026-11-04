@@ -1,7 +1,7 @@
 import { AlertTriangle, Calculator, TrendingDown, TrendingUp, WrapText } from "lucide-react";
 import { useState } from "react";
 
-import type { CalculationDuration, CalculationResult } from "../../api/client";
+import type { CalculationDuration, CalculationResult, PriceLineItem } from "../../api/client";
 import { useMeasuredWidth } from "../../hooks/useMeasuredWidth";
 import { awsDataTransferLabel } from "../../lib/awsDataTransfer";
 import { groupLineItemsByRegion } from "../../lib/regionPricingGroups";
@@ -51,6 +51,53 @@ function formatPrice(value: string): string {
   return Number.isFinite(n)
     ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : value;
+}
+
+/** A quantity or rate for the line detail: up to 6 decimals, grouped (019). */
+function formatAmount(value: string): string {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: 6 }) : value;
+}
+
+/** 019 (contracts §5, FR-008): what a line's price is made of — its price type when not on
+ * demand, its graduated tiers, and a GCP machine's cores and RAM. Null when there's nothing to
+ * add (a plain on-demand price). */
+export function LineDetail({ item }: { item: PriceLineItem }) {
+  const label =
+    item.price_type_label && item.price_type_label !== "On demand" ? item.price_type_label : null;
+  const tiers = item.tiers ?? [];
+  const components = item.components ?? [];
+  if (!label && tiers.length === 0 && components.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-0.5 pl-[2ch] text-2xs text-muted-foreground">
+      {label && <p>{label}</p>}
+      {tiers.length > 0 && (
+        <ul aria-label="Price tiers" className="flex flex-col">
+          {tiers.map((t) => (
+            <li key={t.from_quantity} className="flex justify-between gap-2">
+              <span>
+                {formatAmount(t.from_quantity)}–{t.to_quantity ? formatAmount(t.to_quantity) : "∞"}{" "}
+                at {formatAmount(t.rate)}: {formatAmount(t.quantity)}
+              </span>
+              <span className="tabular-nums">{formatPrice(t.cost)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {components.length > 0 && (
+        <ul aria-label="Price components" className="flex flex-col">
+          {components.map((c) => (
+            <li key={c.label} className="flex justify-between gap-2">
+              <span>
+                {c.label}: {formatAmount(c.quantity)} at {formatAmount(c.rate)}
+              </span>
+              <span className="tabular-nums">{formatPrice(c.cost)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export interface PricingPanelProps {
@@ -149,8 +196,8 @@ export function PricingPanel({
           {calculation.unpriceable.length > 0 && (
             <div role="alert" className="text-2xs text-destructive">
               <p className="flex items-center gap-1.5">
-                <AlertTriangle className="size-4 shrink-0" /> Some SKUs could not be priced and
-                are excluded from the total:
+                <AlertTriangle className="size-4 shrink-0" /> Some SKUs could not be priced and are
+                excluded from the total:
               </p>
               <ul className="list-disc pl-5">
                 {calculation.unpriceable.map((u) => (
@@ -191,11 +238,10 @@ export function PricingPanel({
               role="status"
               className="flex items-center gap-1.5 text-2xs text-amber-700 dark:text-amber-500"
             >
-              <AlertTriangle className="size-4 shrink-0" /> Architecture has been updated since
-              last pricing
+              <AlertTriangle className="size-4 shrink-0" /> Architecture has been updated since last
+              pricing
             </p>
           )}
-
         </section>
       )}
     </aside>
@@ -303,6 +349,7 @@ function PricePerSkuSection({
                     text={`${item.service_code} / ${dataTransferLabel ?? item.sku}`}
                     price={formatPrice(item.price!)}
                     wordWrap={wordWrap}
+                    detail={<LineDetail item={item} />}
                   />
                 );
               })}
@@ -329,10 +376,12 @@ function PriceLine({
   text,
   price,
   wordWrap,
+  detail,
 }: {
   text: string;
   price: string;
   wordWrap: boolean;
+  detail?: React.ReactNode;
 }) {
   const [labelRef, labelWidth] = useMeasuredWidth<HTMLSpanElement>();
 
@@ -350,6 +399,7 @@ function PriceLine({
         <span className="shrink-0 tabular-nums">{price}</span>
       </div>
       {wordWrap && remainder !== null && <p className="pl-[2ch]">{remainder}</p>}
+      {detail}
     </li>
   );
 }

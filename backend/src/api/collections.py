@@ -64,7 +64,7 @@ async def create_collection(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="region is required when parent_collection_id is not given",
             )
-        if body.region not in list_available_regions():
+        if body.region not in list_available_regions(architecture.provider):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"region '{body.region}' is not currently available",

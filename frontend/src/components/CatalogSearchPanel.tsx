@@ -2,9 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 
-import { type CatalogSKU, InvalidRegexPatternError, api } from "../api/client";
+import {
+  type CatalogKind,
+  type CatalogSKU,
+  InvalidRegexPatternError,
+  type ProviderCode,
+  api,
+} from "../api/client";
 import { summarizeAttributes } from "../lib/skuDetail";
 import { awsDataTransferLabel } from "../lib/awsDataTransfer";
+import { CATALOG_KIND_LABELS, SEARCH_PLACEHOLDERS } from "../lib/providerPricing";
 import { Button } from "./ui/button";
 import { ErrorMessage } from "./ErrorMessage";
 
@@ -14,6 +21,18 @@ interface Props {
    * the selected collection's region, or, for a selected connector, that connector's "from"
    * collection's region. `undefined` disables searching (nothing resolvable to scope it to). */
   region: string | undefined;
+  /** 019 (contracts §3): the architecture's provider (default AWS). */
+  provider?: ProviderCode;
+  /** 019: the search preset to start with (GCP and Azure), e.g. data transfer for a
+   * connector. */
+  defaultKind?: CatalogKind;
+}
+
+/** 019 (spec edge case): where an item's price applies, when it isn't just this region. */
+function scopeLabel(r: CatalogSKU): string {
+  if (r.location_scope === "global") return " [global]";
+  if (r.location_scope === "multi_regional") return " [multi-regional]";
+  return "";
 }
 
 /** The exact text shown for one result (FR-025) — sorting uses this same string so the
@@ -24,6 +43,10 @@ interface Props {
  * no `instanceType` to fall back to — indistinguishable from every other AWSDataTransfer row);
  * every other service is unaffected (FR-030) since the label is `null` for them. */
 function summaryText(r: CatalogSKU): string {
+  if (r.provider && r.provider !== "aws") {
+    // 019: GCP and Azure summaries already name the product; no AWS attribute summary.
+    return `${r.service_name} — ${r.summary}${r.unit ? ` (${r.unit})` : ""}${scopeLabel(r)}`;
+  }
   const details = summarizeAttributes(r.attributes);
   const summary = awsDataTransferLabel(r.service_code, r.attributes) ?? r.summary;
   return `${r.service_name} — ${r.product_family} — ${summary}${
@@ -51,37 +74,52 @@ function summaryText(r: CatalogSKU): string {
  * own displayed text (FR-025); an "(n of m)" indicator appears when fewer results are shown
  * than actually match (FR-024).
  */
-export function CatalogSearchPanel({ onAdd, region }: Props) {
+export function CatalogSearchPanel({ onAdd, region, provider = "aws", defaultKind }: Props) {
+  const isAws = provider === "aws";
   const [serviceCode, setServiceCode] = useState("");
   const [productFamily, setProductFamily] = useState("");
   const [text, setText] = useState("");
+  // 019 (contracts §3): GCP and Azure search presets.
+  const [kind, setKind] = useState<CatalogKind | "">(isAws ? "" : (defaultKind ?? ""));
   // 009-ui-fixes-next-iteration, US9, FR-029: dedicated region filters, distinct from the
-  // three general fields above, shown only for AWSDataTransfer-relevant searches.
+  // three general fields above, shown only for AWSDataTransfer-relevant searches (AWS only).
   const [fromRegionCode, setFromRegionCode] = useState("");
   const [toRegionCode, setToRegionCode] = useState("");
-  const showRegionFields = /awsdatatransfer/i.test(serviceCode);
+  const showRegionFields = isAws && /awsdatatransfer/i.test(serviceCode);
+  const placeholders = SEARCH_PLACEHOLDERS[provider];
 
   const hasFilter = Boolean(
-    serviceCode || productFamily || text || fromRegionCode || toRegionCode,
+    serviceCode || productFamily || text || kind || fromRegionCode || toRegionCode,
   );
 
   const search = useQuery({
-    queryKey: ["catalog", region, serviceCode, productFamily, text, fromRegionCode, toRegionCode],
+    queryKey: [
+      "catalog",
+      provider,
+      region,
+      serviceCode,
+      productFamily,
+      text,
+      kind,
+      fromRegionCode,
+      toRegionCode,
+    ],
     queryFn: () =>
       api.searchCatalog({
         region: region!,
+        ...(isAws ? {} : { provider }),
         service_code: serviceCode,
         product_family: productFamily,
         q: text,
-        from_region_code: fromRegionCode,
-        to_region_code: toRegionCode,
+        ...(isAws
+          ? { from_region_code: fromRegionCode, to_region_code: toRegionCode }
+          : { kind: kind || undefined }),
       }),
     enabled: hasFilter && Boolean(region),
     retry: false, // an invalid regex pattern won't become valid by retrying the same request
   });
 
-  const regexError =
-    search.error instanceof InvalidRegexPatternError ? search.error : null;
+  const regexError = search.error instanceof InvalidRegexPatternError ? search.error : null;
   const otherError = search.isError && !regexError ? search.error : null;
 
   const sortedResults = search.data
@@ -93,14 +131,32 @@ export function CatalogSearchPanel({ onAdd, region }: Props) {
   const fieldErrorClassName = "text-2xs text-destructive";
 
   return (
-    <div aria-label="AWS catalog search" className="flex h-full min-h-0 flex-col gap-2">
+    <div
+      aria-label={`${provider.toUpperCase()} catalog search`}
+      className="flex h-full min-h-0 flex-col gap-2"
+    >
       {/* Fixed (non-scrolling) filter row + status messages (FR-022) — only the results
           list below scrolls, mirroring 007's FR-004 fixed-top-controls pattern. */}
       <div className="flex shrink-0 flex-col gap-1.5">
+        {!isAws && (
+          <select
+            aria-label="Kind of service"
+            className={inputClassName}
+            value={kind}
+            onChange={(e) => setKind(e.target.value as CatalogKind | "")}
+          >
+            <option value="">Any kind of service</option>
+            {(Object.keys(CATALOG_KIND_LABELS) as CatalogKind[]).map((k) => (
+              <option key={k} value={k}>
+                {CATALOG_KIND_LABELS[k]}
+              </option>
+            ))}
+          </select>
+        )}
         <div>
           <input
             className={inputClassName}
-            placeholder="Service code (e.g. AmazonEC2)"
+            placeholder={placeholders.service}
             value={serviceCode}
             onChange={(e) => setServiceCode(e.target.value)}
           />
@@ -111,7 +167,7 @@ export function CatalogSearchPanel({ onAdd, region }: Props) {
         <div>
           <input
             className={inputClassName}
-            placeholder="Product family (e.g. Compute Instance)"
+            placeholder={placeholders.group}
             value={productFamily}
             onChange={(e) => setProductFamily(e.target.value)}
           />
@@ -165,9 +221,7 @@ export function CatalogSearchPanel({ onAdd, region }: Props) {
           Enter at least one filter to search.
         </p>
       )}
-      {search.isLoading && (
-        <p className="shrink-0 text-2xs text-muted-foreground">Searching…</p>
-      )}
+      {search.isLoading && <p className="shrink-0 text-2xs text-muted-foreground">Searching…</p>}
       {otherError && (
         <div className="shrink-0">
           <ErrorMessage
@@ -187,9 +241,7 @@ export function CatalogSearchPanel({ onAdd, region }: Props) {
       {search.data && search.data.total > 0 && (
         <p
           className={`shrink-0 text-2xs ${
-            sortedResults.length < search.data.total
-              ? "text-destructive"
-              : "text-muted-foreground"
+            sortedResults.length < search.data.total ? "text-destructive" : "text-muted-foreground"
           }`}
         >
           {sortedResults.length} of {search.data.total} services displayed
@@ -200,7 +252,7 @@ export function CatalogSearchPanel({ onAdd, region }: Props) {
         <ul className="flex flex-col gap-1">
           {sortedResults.map((r) => (
             <li
-              key={r.sku}
+              key={`${r.service_code}/${r.sku}`}
               className="flex items-start justify-between gap-2 rounded border border-transparent px-1 py-1 text-2xs hover:border-border"
             >
               <span className="min-w-0 break-words">{summaryText(r)}</span>

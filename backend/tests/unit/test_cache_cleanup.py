@@ -32,7 +32,7 @@ def test_the_active_entry_is_never_deleted():
 
 def test_the_entry_superseded_by_this_check_survives_until_the_next():
     old, active = _entry("2026-10-05"), _entry("2026-10-12")
-    kwargs = dict(active=active, keep=0, max_bytes=10 * GB, purged_dates=set())
+    kwargs = {"active": active, "keep": 0, "max_bytes": 10 * GB, "purged_dates": set()}
     assert plan_cleanup([old, active], superseded_this_check=old, **kwargs) == []
     assert _names(plan_cleanup([old, active], superseded_this_check=None, **kwargs)) == [
         "2026-10-05-r1"
@@ -117,3 +117,75 @@ def test_run_check_cleans_the_cache_one_check_after_a_switch(tmp_path, monkeypat
         assert not (cache / "aws" / "2026-10-05-r1").exists()
     finally:
         active_snapshot.set_analysis_hook(None)
+
+
+# --- 019-gcp-azure-providers-trends (research R2): clean-up across providers ----------------
+
+
+def _pentry(provider: str, date: str, revision: int = 1, size: int = GB) -> CacheEntry:
+    return CacheEntry(Path(f"/cache/{provider}/{date}-r{revision}"), date, revision, size,
+                      "2026-10-01T00:00:00Z")
+
+
+def _view(entries, active, superseded=None, purged=()):
+    from src.pricing_data.snapshot_cache import ProviderCache
+
+    return ProviderCache(entries=entries, active=active, superseded_this_check=superseded,
+                         purged_dates=set(purged))
+
+
+def _paths(paths) -> list[str]:
+    return sorted(f"{p.parent.name}/{p.name}" for p in paths)
+
+
+def test_every_providers_active_entry_is_protected():
+    from src.pricing_data.snapshot_cache import plan_cleanup_providers
+
+    aws, azure = _pentry("aws", "2026-10-05", size=5 * GB), _pentry("azure", "2026-11-02")
+    views = {"aws": _view([aws], aws), "azure": _view([azure], azure)}
+    assert plan_cleanup_providers(views, keep=0, max_bytes=1) == []
+
+
+def test_keep_applies_per_provider():
+    from src.pricing_data.snapshot_cache import plan_cleanup_providers
+
+    aws = [_pentry("aws", d) for d in ("2026-09-21", "2026-09-28", "2026-10-05")]
+    azure = [_pentry("azure", d) for d in ("2026-10-19", "2026-10-26", "2026-11-02")]
+    views = {"aws": _view(aws, aws[-1]), "azure": _view(azure, azure[-1])}
+    deletions = plan_cleanup_providers(views, keep=1, max_bytes=100 * GB)
+    assert _paths(deletions) == ["aws/2026-09-21-r1", "azure/2026-10-19-r1"]
+
+
+def test_the_size_budget_is_shared_and_oldest_goes_first():
+    from src.pricing_data.snapshot_cache import plan_cleanup_providers
+
+    aws_old, aws_active = (_pentry("aws", "2026-10-05", size=3 * GB),
+                           _pentry("aws", "2026-10-12", size=3 * GB))
+    azure_old, azure_active = (_pentry("azure", "2026-10-26", size=GB),
+                               _pentry("azure", "2026-11-02", size=GB))
+    views = {
+        "aws": _view([aws_old, aws_active], aws_active),
+        "azure": _view([azure_old, azure_active], azure_active),
+    }
+    # 8 GB in all, budget 6 GB: the oldest unprotected entry (AWS 2026-10-05) goes.
+    assert _paths(plan_cleanup_providers(views, keep=5, max_bytes=6 * GB)) == [
+        "aws/2026-10-05-r1"
+    ]
+    # Budget 4 GB: both old entries go; the active ones stay even over budget.
+    assert _paths(plan_cleanup_providers(views, keep=5, max_bytes=4 * GB)) == [
+        "aws/2026-10-05-r1", "azure/2026-10-26-r1"
+    ]
+
+
+def test_superseded_and_purged_rules_apply_per_provider():
+    from src.pricing_data.snapshot_cache import plan_cleanup_providers
+
+    gcp_old, gcp_active = _pentry("gcp", "2026-10-26"), _pentry("gcp", "2026-11-02")
+    azure_purged, azure_active = _pentry("azure", "2026-10-26"), _pentry("azure", "2026-11-02")
+    views = {
+        "gcp": _view([gcp_old, gcp_active], gcp_active, superseded=gcp_old),
+        "azure": _view([azure_purged, azure_active], azure_active, purged={"2026-10-26"}),
+    }
+    assert _paths(plan_cleanup_providers(views, keep=0, max_bytes=100 * GB)) == [
+        "azure/2026-10-26-r1"
+    ]

@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     # Snapshots kept besides the active one.
     pricing_cache_keep: int = Field(default=1, ge=0)
 
+    # 019 (research R10): the derived price history for Trends. Persistent (not the temp folder)
+    # and outside `pricing_cache_max_bytes`, so each historical snapshot is processed once, ever.
+    pricing_history_dir: str = str(Path.home() / ".cloud-pricing" / "history")
+
     # 018 (research R3): fits DuckDB beside Postgres on a 2 GiB instance.
     duckdb_memory_limit: str = "512MB"
     duckdb_threads: int = Field(default=2, ge=1)
@@ -108,6 +112,10 @@ class Settings(BaseSettings):
     # bad upstream data). Unset = the newest snapshot marked complete in every table.
     active_snapshot_date: date | None = None
 
+    # 019 (contracts §1): an active snapshot older than this is shown as `stale` (two missed
+    # weekly runs by default). A stale provider stays active.
+    snapshot_stale_days: int = Field(default=14, ge=1)
+
     # 016-canvas-icon-layout, US8 (FR-025): values that used to be fixed in code. Every default
     # is today's behavior; each is overridable by the upper-cased name as an environment
     # variable, and an invalid value stops startup naming the setting (FR-026). Documented in
@@ -138,6 +146,11 @@ class Settings(BaseSettings):
         if source.kind == "local" and not Path(source.root).is_dir():
             raise ValueError(f"local directory {source.root} does not exist")
         return value
+
+    @field_validator("pricing_history_dir")
+    @classmethod
+    def _expand_history_dir(cls, value: str) -> str:
+        return str(Path(value).expanduser())
 
     @field_validator("backup_uri")
     @classmethod

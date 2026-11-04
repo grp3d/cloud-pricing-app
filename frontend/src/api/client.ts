@@ -28,6 +28,15 @@ export type ArchitectureFileImportResponse =
   components["schemas"]["ArchitectureFileImportResponse"];
 export type ImportResult = components["schemas"]["ImportResult"];
 export type SystemInfo = components["schemas"]["SystemInfoOut"];
+export type ProviderSystem = components["schemas"]["ProviderSystemOut"];
+export type ProviderCode = "aws" | "gcp" | "azure";
+/** 019 (research R6): a selection's provider-specific options (data-model §3). */
+export type ProviderOptions =
+  components["schemas"]["GcpMachineOptions-Input"] | components["schemas"]["AzureVmOptions"];
+export type CatalogKind = components["schemas"]["CatalogKind"];
+export type PriceLineItem = components["schemas"]["PriceLineItem"];
+export type TierPart = components["schemas"]["TierPartOut"];
+export type PriceComponent = components["schemas"]["PriceComponentOut"];
 
 const BASE = "/api/v1";
 
@@ -193,8 +202,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ name, provider }),
     }),
-  deleteArchitecture: (id: string) =>
-    request<void>(`/architectures/${id}`, { method: "DELETE" }),
+  deleteArchitecture: (id: string) => request<void>(`/architectures/${id}`, { method: "DELETE" }),
   /** Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020). */
   setArchitecturePublic: (id: string, isPublic: boolean) =>
     request<ArchitectureSummary>(`/architectures/${id}`, {
@@ -202,8 +210,7 @@ export const api = {
       body: JSON.stringify({ is_public: isPublic }),
     }),
   /** Every other user's public architectures, pre-grouped/sorted server-side (FR-023-026). */
-  listImportableArchitectures: () =>
-    request<ImportableArchitectures>("/architectures/importable"),
+  listImportableArchitectures: () => request<ImportableArchitectures>("/architectures/importable"),
   /** Deep-copies a public architecture into the caller's own list under `name` (FR-028/029). */
   importArchitecture: (architectureId: string, name: string) =>
     request<ArchitectureSummary>(`/architectures/${architectureId}/import`, {
@@ -247,15 +254,23 @@ export const api = {
       body: JSON.stringify({ region }),
     }),
 
-  /** Regions the pricing dataset currently has data for (010-multi-region-support, FR-017). */
-  listRegions: () => request<{ regions: Region[] }>("/regions"),
+  /** Regions the pricing dataset currently has data for (010-multi-region-support, FR-017);
+   * 019: per provider (contracts §2). */
+  listRegions: (provider: ProviderCode = "aws") =>
+    request<{ regions: Region[] }>(`/regions?provider=${provider}`),
 
   searchCatalog: (params: {
     region: string;
+    /** 019 (contracts §3): default `aws`. */
+    provider?: ProviderCode;
     service_code?: string;
     product_family?: string;
     q?: string;
+    /** 019: an Azure/GCP search preset. */
+    kind?: CatalogKind;
+    /** AWS only. */
     from_region_code?: string;
+    /** AWS only. */
     to_region_code?: string;
   }) => {
     // 008-ui-updates-corrections, FR-023: request the backend's own maximum (200, matched
@@ -273,6 +288,7 @@ export const api = {
       pricing_term: PricingTerm;
       purchase_option: PurchaseOption;
       usage_quantity: string;
+      provider_options?: ProviderOptions | null;
     },
   ) =>
     request<SKUSelection>(`/collections/${collectionId}/sku-selections`, {
@@ -287,14 +303,15 @@ export const api = {
       usage_quantity: string;
       /** 016-canvas-icon-layout, FR-004a: move the service to another box (same region). */
       collection_id: string;
+      /** 019: sent → replaced (null clears); not sent → unchanged. */
+      provider_options: ProviderOptions | null;
     }>,
   ) =>
     request<SKUSelection>(`/sku-selections/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
-  deleteSkuSelection: (id: string) =>
-    request<void>(`/sku-selections/${id}`, { method: "DELETE" }),
+  deleteSkuSelection: (id: string) => request<void>(`/sku-selections/${id}`, { method: "DELETE" }),
 
   createConnector: (architectureId: string, fromCollectionId: string, toCollectionId: string) =>
     request<DataConnector>(`/architectures/${architectureId}/connectors`, {
@@ -313,6 +330,7 @@ export const api = {
       pricing_term: PricingTerm;
       purchase_option: PurchaseOption;
       usage_quantity: string;
+      provider_options?: ProviderOptions | null;
     },
   ) =>
     request<SKUSelection>(`/connectors/${connectorId}/sku-selection`, {
@@ -321,10 +339,9 @@ export const api = {
     }),
 
   calculate: (architectureId: string, duration: CalculationDuration = "1_month") =>
-    request<CalculationResult>(
-      `/architectures/${architectureId}/calculate?duration=${duration}`,
-      { method: "POST" },
-    ),
+    request<CalculationResult>(`/architectures/${architectureId}/calculate?duration=${duration}`, {
+      method: "POST",
+    }),
 
   // 008-ui-updates-corrections, US5, FR-016a: prices an ad-hoc set of selections (the
   // Prior Calculation's own stored selections) at a new Duration, with no persisted

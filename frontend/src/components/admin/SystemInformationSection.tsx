@@ -13,6 +13,14 @@ const ISSUE_TYPE_LABELS: Record<Issue["kind"], string> = {
   missing_icon: "Missing icon",
 };
 
+const PROVIDER_STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
+  current: "default",
+  partial: "secondary",
+  stale: "secondary",
+  failed: "destructive",
+  none: "secondary",
+};
+
 const RUN_STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
   succeeded: "secondary",
   partial: "destructive",
@@ -166,10 +174,57 @@ export function SystemInformationSection({ pollMs = 2_000 }: { pollMs?: number }
             </dd>
           </dl>
           {checkError && <p className="text-2xs text-destructive">{checkError}</p>}
+
+          {/* 019 (FR-009, contracts §9): each provider's snapshot on its own — one provider's
+              broken data never hides the others'. */}
+          {Object.keys(data.providers ?? {}).length > 0 && (
+            <>
+              <h3 className="text-2xs font-semibold">Providers</h3>
+              <table aria-label="Provider snapshots" className="w-full border-collapse text-2xs">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="py-1.5">Provider</th>
+                    <th className="py-1.5">Status</th>
+                    <th className="py-1.5">Active snapshot</th>
+                    <th className="py-1.5">Regions</th>
+                    <th className="py-1.5">Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(data.providers ?? {}).map(([code, p]) => (
+                    <tr key={code} className="border-b border-border">
+                      <td className="py-1.5">{p.name}</td>
+                      <td className="py-1.5">
+                        <Badge variant={PROVIDER_STATUS_VARIANT[p.status] ?? "secondary"}>
+                          {p.status}
+                        </Badge>
+                      </td>
+                      <td className="py-1.5">
+                        {p.active_snapshot
+                          ? `${p.active_snapshot.snapshot_date} r${p.active_snapshot.revision}`
+                          : "None"}
+                      </td>
+                      <td className="py-1.5">{p.active_snapshot?.regions.join(", ") ?? "—"}</td>
+                      <td className="py-1.5">
+                        {[
+                          p.reason,
+                          p.latest_run && p.latest_run.status !== "succeeded"
+                            ? `latest run ${p.latest_run.snapshot_date} ${p.latest_run.status}`
+                            : null,
+                          p.rejected ? `refused: ${p.rejected.reason}` : null,
+                          p.issues.length > 0 ? `${p.issues.length} issue(s)` : null,
+                        ]
+                          .filter(Boolean)
+                          .join("; ") || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
           {data.last_check_error && (
-            <p className="text-2xs text-destructive">
-              Last check failed: {data.last_check_error}
-            </p>
+            <p className="text-2xs text-destructive">Last check failed: {data.last_check_error}</p>
           )}
 
           {data.cache && (

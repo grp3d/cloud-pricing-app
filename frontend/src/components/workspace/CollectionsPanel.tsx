@@ -1,13 +1,20 @@
 import { Link2, Link2Off, PanelLeftClose, PanelLeftOpen, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import type { CatalogSKU, Collection, CollectionType, Region } from "../../api/client";
+import type {
+  CatalogSKU,
+  Collection,
+  CollectionType,
+  ProviderCode,
+  Region,
+} from "../../api/client";
 import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { regionLabel } from "../../lib/providerPricing";
 import { CatalogSearchPanel } from "../CatalogSearchPanel";
 import { ErrorMessage } from "../ErrorMessage";
 
@@ -122,9 +129,7 @@ function ConnectDialog({
             </Select>
           </div>
           {from && to && from === to && (
-            <p className="text-xs text-destructive">
-              From and To must be different Collections.
-            </p>
+            <p className="text-xs text-destructive">From and To must be different Collections.</p>
           )}
         </div>
         <DialogFooter>
@@ -170,6 +175,8 @@ export interface CollectionsPanelProps {
   /** 010-multi-region-support, spec FR-005/FR-006: region to scope "Add a Service" search to —
    * the selected collection's region, or a selected connector's "from" collection's region. */
   searchRegion: string | undefined;
+  /** 019 (FR-006): the architecture's provider, for catalog search. */
+  provider?: ProviderCode;
   /** 010-multi-region-support, spec FR-003/FR-017: the region control on a selected
    * collection — the available-regions list, the change handler, and its pending state. */
   regions: Region[];
@@ -211,6 +218,7 @@ export function CollectionsPanel({
   onDeleteConnector,
   onPickSku,
   searchRegion,
+  provider = "aws",
   regions,
   onUpdateCollectionRegion,
   isUpdatingCollectionRegion,
@@ -355,7 +363,7 @@ export function CollectionsPanel({
                     <SelectContent>
                       {regions.map((r) => (
                         <SelectItem key={r.code} value={r.code}>
-                          {r.code}
+                          {regionLabel(r)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -400,7 +408,19 @@ export function CollectionsPanel({
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
             <h3 className="shrink-0 text-2xs font-medium text-muted-foreground">Add a Service</h3>
             {selection ? (
-              <CatalogSearchPanel onAdd={onPickSku} region={searchRegion} />
+              <CatalogSearchPanel
+                // A new provider starts a fresh search (its filters differ); for GCP and Azure so
+                // does switching between a box and a connector (its preset kind differs). AWS
+                // keeps its filters across selections, as before.
+                key={provider === "aws" ? "aws" : `${provider}-${selection.kind}`}
+                onAdd={onPickSku}
+                region={searchRegion}
+                provider={provider}
+                // 019 (T054): a connector's service is usually its data transfer.
+                defaultKind={
+                  provider !== "aws" && selection.kind === "connector" ? "data_transfer" : undefined
+                }
+              />
             ) : (
               <p className="text-2xs text-muted-foreground">
                 Select a Collection or Connector first.

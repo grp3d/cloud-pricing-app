@@ -1,7 +1,7 @@
 import { PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import type { SKUSelection } from "../../api/client";
+import type { ProviderCode, SKUSelection } from "../../api/client";
 import type { ServiceConfigSelection } from "../../lib/serviceConfigSelection";
 import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
 import { Button } from "../ui/button";
@@ -24,6 +24,8 @@ export interface ServiceConfigPanelProps {
    * and persisted by `WorkspacePage`; ignored while collapsed, which always uses the rail
    * width below. */
   width: number;
+  /** 019 (FR-005a): the architecture's provider picks the editor's provider fields. */
+  provider?: ProviderCode;
 }
 
 /**
@@ -44,6 +46,7 @@ export function ServiceConfigPanel({
   actionError,
   onDismissActionError,
   width,
+  provider = "aws",
 }: ServiceConfigPanelProps) {
   // 009-ui-fixes-next-iteration follow-up: collapsed/expanded state now survives a reload —
   // see `CollectionsPanel.tsx`'s identical comment for the mechanism.
@@ -74,6 +77,10 @@ export function ServiceConfigPanel({
       : hasContent
         ? resolvedExisting!.unit
         : undefined;
+  // 019 (FR-005): what the item publishes and what kind of item it is, from the catalog (a new
+  // service) or the stored selection's resolved details (an existing one).
+  const item =
+    selection?.kind === "new" ? selection.catalogSku : hasContent ? resolvedExisting! : undefined;
 
   return (
     <aside
@@ -152,6 +159,10 @@ export function ServiceConfigPanel({
               key={`new-${selection!.catalogSku.service_code}-${selection!.catalogSku.sku}`}
               onSubmit={onSubmitNew}
               unit={unit}
+              provider={provider}
+              priceTypes={item?.price_types}
+              kind={item?.kind}
+              attributes={attributes}
             />
           ) : (
             <PricingInputsForm
@@ -161,8 +172,13 @@ export function ServiceConfigPanel({
                 pricing_term: resolvedExisting!.pricing_term,
                 purchase_option: resolvedExisting!.purchase_option,
                 usage_quantity: resolvedExisting!.usage_quantity,
+                provider_options: resolvedExisting!.provider_options ?? null,
               }}
               unit={unit}
+              provider={provider}
+              priceTypes={item?.price_types}
+              kind={item?.kind}
+              attributes={attributes}
               onSubmit={(inputs) => onSubmitExisting(resolvedExisting!.id, inputs)}
             />
           )}

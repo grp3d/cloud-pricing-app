@@ -25,6 +25,7 @@ from src.models.schemas import (
     ImportableArchitectureOut,
     ImportableArchitecturesOut,
 )
+from src.pricing_data.providers.registry import has_adapter
 from src.services.architecture_import import import_architecture
 from src.services.architecture_service import (
     attach_units_to_architecture,
@@ -38,8 +39,9 @@ router = APIRouter(tags=["architectures"])
 async def create_architecture(
     body: ArchitectureCreate, session: DbSession, user: CurrentUser
 ) -> Architecture:
-    if body.provider != "aws":
-        raise HTTPException(status_code=400, detail="Only 'aws' is supported in v1")
+    # 019 (US1): any provider with a pricing adapter (Constitution III).
+    if not has_adapter(body.provider):
+        raise HTTPException(status_code=400, detail=f"Provider not supported: {body.provider}")
     architecture = Architecture(user_id=user.id, name=body.name, provider=body.provider)
     session.add(architecture)
     await session.commit()

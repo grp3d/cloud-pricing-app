@@ -9,4 +9,9 @@ from __future__ import annotations
 
 
 class PricingDataUnavailableError(Exception):
-    """Raised when the AWS pricing Parquet data cannot be read or queried."""
+    """Raised when a provider's pricing Parquet data cannot be read or queried. `provider`
+    names whose data (019: the 503 says which provider is unavailable and why)."""
+
+    def __init__(self, message: str = "", provider: str = "aws") -> None:
+        super().__init__(message)
+        self.provider = provider

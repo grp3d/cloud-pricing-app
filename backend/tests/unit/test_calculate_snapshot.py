@@ -22,6 +22,7 @@ from src.models.schemas import (
     SnapshotSelection,
 )
 from src.pricing_data.pricing import ReservedPrice
+from src.pricing_data.providers import aws
 from src.services import price_calculation
 from src.services.price_calculation import (
     EmptySnapshotError,
@@ -33,13 +34,13 @@ FAKE_SNAPSHOT = SimpleNamespace(snapshot_date="2026-01-01", revision=1)
 
 
 def _selection(**kwargs) -> SnapshotSelection:
-    defaults = dict(
-        service_code="AmazonEC2",
-        sku="SKU1",
-        pricing_term=PricingTerm.on_demand,
-        purchase_option=PurchaseOption.not_applicable,
-        usage_quantity=Decimal("2"),
-    )
+    defaults = {
+        "service_code": "AmazonEC2",
+        "sku": "SKU1",
+        "pricing_term": PricingTerm.on_demand,
+        "purchase_option": PurchaseOption.not_applicable,
+        "usage_quantity": Decimal("2"),
+    }
     defaults.update(kwargs)
     return SnapshotSelection(**defaults)
 
@@ -82,9 +83,9 @@ def test_reserved_term_total_at_two_durations_matches_authoritative_formula(monk
     006's own test suite already established for these inputs (`test_price_calculation.py`'s
     `test_reserved_partial_upfront_includes_amortized_upfront_share`/
     `test_reserved_3yr_amortizes_upfront_against_1095_days`)."""
-    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda *_: FAKE_SNAPSHOT)
     monkeypatch.setattr(
-        price_calculation,
+        aws,  # 019 (T045): reached through the AWS adapter
         "lookup_reserved_price",
         lambda **kw: ReservedPrice(recurring_rate=1.0, upfront_fee=365.0),
     )
@@ -116,9 +117,9 @@ def test_reserved_term_total_ignores_usage_quantity_not_estimated(monkeypatch):
     quantity (spec FR-001, Clarifications: it has no Reserved-term meaning at all). Confirms
     `build_transient_architecture` routes through the real, unmodified formula rather than
     any input-derived shortcut: an absurd `usage_quantity` must change nothing."""
-    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda: FAKE_SNAPSHOT)
+    monkeypatch.setattr(price_calculation, "get_active_snapshot", lambda *_: FAKE_SNAPSHOT)
     monkeypatch.setattr(
-        price_calculation,
+        aws,  # 019 (T045): reached through the AWS adapter
         "lookup_reserved_price",
         lambda **kw: ReservedPrice(recurring_rate=1.0, upfront_fee=365.0),
     )

@@ -18,11 +18,22 @@ async def test_create_architecture(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_non_aws_provider_rejected(client, auth_headers):
+async def test_unknown_provider_rejected(client, auth_headers):
+    """019 (US1): was `test_non_aws_provider_rejected`; GCP and Azure are now supported."""
     resp = await client.post(
-        "/api/v1/architectures", json={"name": "x", "provider": "gcp"}, headers=auth_headers
+        "/api/v1/architectures", json={"name": "x", "provider": "oracle"}, headers=auth_headers
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["gcp", "azure"])
+async def test_gcp_and_azure_architectures_can_be_created(client, auth_headers, provider):
+    resp = await client.post(
+        "/api/v1/architectures", json={"name": "x", "provider": provider}, headers=auth_headers
+    )
+    assert resp.status_code == 201
+    assert resp.json()["provider"] == provider
 
 
 @pytest.mark.asyncio

@@ -37,3 +37,11 @@ def test_known_region_is_present():
     # us-east-1 is the app's former single global pricing region (spec FR-016) — must still be
     # present in the live multi-region dataset.
     assert "us-east-1" in list_available_regions()
+
+
+# --- 019 (T034, research R5) -------------------------------------------------------------------
+
+
+def test_other_providers_list_only_selectable_regions():
+    assert list_available_regions("gcp") == ["us-east1"]
+    assert list_available_regions("azure") == ["eastus"]  # not `global`, not `north-america`

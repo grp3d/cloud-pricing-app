@@ -15,6 +15,7 @@ import pytest
 
 from src.services.architecture_transfer import (
     InvalidImportFileError,
+    specs_from_definition,
     validate_definition,
     validate_envelope,
 )
@@ -240,7 +241,12 @@ def test_rule4_component_inside_component():
     assert error == 'Invalid nesting: "Worker" must be inside a VPC'
 
 
-def test_rule4a_provider_not_supported():
+def test_rule4a_provider_not_supported(monkeypatch):
+    """019 (US1): GCP and Azure have adapters now, so rule 4a fails only for a provider with
+    none (simulated here; the file format names only the three providers)."""
+    from src.services import architecture_transfer
+
+    monkeypatch.setattr(architecture_transfer, "has_adapter", lambda code: code == "aws")
     raw = _definition()
     raw["provider"] = "gcp"
     _, error = _validate(raw)
@@ -283,3 +289,33 @@ def test_input_not_mutated():
     snapshot = copy.deepcopy(raw)
     _validate(raw)
     assert raw == snapshot
+
+
+# --- 019 (T038, research R15): provider options in the file -----------------------------------
+
+
+def test_provider_options_are_read_and_written():
+    raw = _definition()
+    raw["provider"] = "azure"
+    raw["collections"][0]["sku_selections"][0]["provider_options"] = {
+        "kind": "azure_vm", "version": 1, "os": "windows"}
+    definition, error = _validate(raw)
+    assert error is None
+    collections, _ = specs_from_definition(definition)
+    assert collections[0].sku_selections[0].provider_options == {
+        "kind": "azure_vm", "version": 1, "os": "windows"}
+
+
+def test_an_older_file_without_the_new_fields_still_validates():
+    definition, error = _validate(_definition())
+    assert error is None
+    collections, _ = specs_from_definition(definition)
+    assert collections[0].sku_selections[0].provider_options is None
+
+
+def test_invalid_provider_options_fail_rule_1():
+    raw = _definition()
+    raw["collections"][0]["sku_selections"][0]["provider_options"] = {"kind": "gcp_machine",
+                                                                      "vcpus": 0}
+    _, error = _validate(raw)
+    assert error.startswith("Invalid architecture definition:")

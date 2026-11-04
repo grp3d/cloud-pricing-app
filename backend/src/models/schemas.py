@@ -24,7 +24,14 @@ class ORMBase(BaseModel):
 class ProviderOut(BaseModel):
     code: str
     name: str
+    # 019 (contracts §1, FR-001): true exactly when the provider has a usable active snapshot
+    # and the app can price it.
     active: bool
+    status: Literal["current", "partial", "failed", "stale", "none"] = "none"
+    # A short public phrase when not `current`; never a location or an error text.
+    reason: str | None = None
+    snapshot_date: str | None = None
+    snapshot_revision: int | None = None
 
 
 # --- Regions (010-multi-region-support) ---------------------------------------------------
@@ -32,6 +39,9 @@ class ProviderOut(BaseModel):
 
 class RegionOut(BaseModel):
     code: str
+    # 019 (contracts §2): the provider's own name for the region (Azure `US East`); the code
+    # when the provider publishes none (AWS, GCP).
+    display_name: str | None = None
 
 
 class RegionsOut(BaseModel):
@@ -101,6 +111,12 @@ class PricingTerm(str, Enum):
     on_demand = "on_demand"
     reserved_1yr = "reserved_1yr"
     reserved_3yr = "reserved_3yr"
+    # 019 (research R6): Azure savings plans and GCP committed-use discounts. Which ones a
+    # selection may use depends on its architecture's provider (`PROVIDER_PRICE_TYPES`).
+    savings_plan_1yr = "savings_plan_1yr"
+    savings_plan_3yr = "savings_plan_3yr"
+    commitment_1yr = "commitment_1yr"
+    commitment_3yr = "commitment_3yr"
 
 
 class PurchaseOption(str, Enum):
@@ -122,18 +138,63 @@ class CalculationDuration(str, Enum):
 # --- SKU Selection ---------------------------------------------------------------------------
 
 
+ProviderCode = Literal["aws", "gcp", "azure"]
+
+
+class CatalogKind(str, Enum):
+    """019 (contracts §3, research R6): search presets matching the pipeline's reference
+    lookups. Azure and GCP only."""
+
+    vm = "vm"
+    block_storage = "block_storage"
+    object_storage = "object_storage"
+    data_transfer = "data_transfer"
+    managed_db = "managed_db"
+
+
+class GcpMachineOptions(BaseModel):
+    """019 (research R6): a GCP machine priced as vCPUs × core rate + GiB × RAM rate. The
+    selection's `sku` is the core SKU; `ram_sku` is the matching RAM SKU."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["gcp_machine"]
+    version: Literal[1] = 1
+    vcpus: int = Field(gt=0)
+    memory_gib: Decimal = Field(gt=0)
+    ram_sku: str = Field(min_length=1)
+
+
+class AzureVmOptions(BaseModel):
+    """019 (research R6): which Azure VM meter to price, by operating system."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["azure_vm"]
+    version: Literal[1] = 1
+    os: Literal["linux", "windows"]
+
+
+# A selection's provider-specific options; null means the common pricing path (data-model §3).
+ProviderOptions = Annotated[GcpMachineOptions | AzureVmOptions, Field(discriminator="kind")]
+
+
 class SKUSelectionCreate(BaseModel):
     service_code: str = Field(min_length=1)
     sku: str = Field(min_length=1)
     pricing_term: PricingTerm
     purchase_option: PurchaseOption
     usage_quantity: Decimal = Field(gt=0)
+    # 019 (contracts §4): must match the architecture's provider.
+    provider_options: ProviderOptions | None = None
 
 
 class SKUSelectionUpdate(BaseModel):
     pricing_term: PricingTerm | None = None
     purchase_option: PurchaseOption | None = None
     usage_quantity: Decimal | None = Field(default=None, gt=0)
+    # 019: sent → replaced (null clears it); not sent → unchanged.
+    provider_options: ProviderOptions | None = None
     # 016-canvas-icon-layout, FR-004a/FR-004b (contracts/api.md §2): moves the service to another
     # box — one in the same Architecture and the same region. Connector-owned services can't move.
     collection_id: uuid.UUID | None = None
@@ -146,6 +207,7 @@ class SKUSelectionOut(ORMBase):
     pricing_term: PricingTerm
     purchase_option: PurchaseOption
     usage_quantity: Decimal
+    provider_options: ProviderOptions | None = None
     # Resolved read-only from the AWS Pricing Catalog at response time (never a stored
     # column) — attached by the endpoint after construction, since Pydantic's ORM-attribute
     # serialization has no DuckDB access. `None` when unpriceable (003, FR-004/FR-005).
@@ -159,6 +221,11 @@ class SKUSelectionOut(ORMBase):
     # product-family-specific icon (015-canvas-service-icons, contracts/api.md). `None` when the
     # SKU has no catalog row or its product family is empty.
     product_family: str | None = None
+    # 019 (FR-005): the item's published price types and search kind, from the provider
+    # adapter at response time, so the Service Editor offers only what the item publishes.
+    # Empty / null when the provider doesn't report them (AWS) or the item isn't found.
+    price_types: list[PricingTerm] = []
+    kind: CatalogKind | None = None
 
 
 # --- Collection --------------------------------------------------------------------------
@@ -262,6 +329,8 @@ class ArchitectureImportRequest(BaseModel):
 # --- Catalog search ------------------------------------------------------------------------
 
 
+
+
 class CatalogSKUOut(BaseModel):
     service_code: str
     service_name: str
@@ -274,6 +343,13 @@ class CatalogSKUOut(BaseModel):
     # Billing unit, e.g. "Hrs", "GB-Mo" — null if this SKU has no price data at all
     # (003, FR-004/FR-005).
     unit: str | None = None
+    # 019 (contracts §3): optional, so AWS results are unchanged.
+    provider: str = "aws"
+    location_scope: Literal["regional", "multi_regional", "global"] = "regional"
+    kind: CatalogKind | None = None
+    # The price types this item publishes (FR-005); empty when the provider doesn't report
+    # them per item (AWS).
+    price_types: list[PricingTerm] = []
 
 
 class CatalogSearchResult(BaseModel):
@@ -291,6 +367,29 @@ class CatalogSearchResult(BaseModel):
 # --- Price calculation ---------------------------------------------------------------------
 
 
+class PriceComponentOut(BaseModel):
+    """019 (contracts §5): one part of a composite price, e.g. a GCP machine's cores or RAM."""
+
+    label: str
+    sku: str
+    quantity: Decimal
+    rate: Decimal
+    cost: Decimal
+
+
+class TierPartOut(BaseModel):
+    """019 (contracts §5, research R8): the part of a line's quantity priced at one tier.
+    `from_quantity`/`to_quantity` are the published monthly bounds (`to_quantity` null for an
+    open top tier); `quantity` and `cost` are what the part contributes to the requested
+    duration, so the parts add up to the line's price."""
+
+    from_quantity: Decimal
+    to_quantity: Decimal | None
+    rate: Decimal
+    quantity: Decimal
+    cost: Decimal
+
+
 class PriceLineItem(BaseModel):
     sku_selection_id: uuid.UUID
     service_code: str
@@ -303,6 +402,12 @@ class PriceLineItem(BaseModel):
     # "Global" section by the frontend (spec FR-015) — not expected in normal operation, since
     # every Collection has a NOT NULL region and every Connector a NOT NULL from_collection_id.
     region: str | None = None
+    # 019 (contracts §5): the tier breakdown of a tiered price; null when not tiered.
+    tiers: list[TierPartOut] | None = None
+    # 019 (contracts §5): how the provider names the price type (e.g. "Savings plan, 1 year").
+    price_type_label: str | None = None
+    # 019 (contracts §5): the parts of a composite price (`gcp_machine`); null otherwise.
+    components: list[PriceComponentOut] | None = None
 
 
 class UnpriceableItem(BaseModel):
@@ -392,6 +497,8 @@ class SKUSelectionDefinition(BaseModel):
     # Serialized as a decimal string (preserves `Numeric(18, 4)` exactly); a JSON number is
     # also accepted on import.
     usage_quantity: Decimal = Field(ge=0, decimal_places=4)
+    # 019 (research R15): optional, so older files import unchanged.
+    provider_options: ProviderOptions | None = None
 
 
 class CollectionDefinition(BaseModel):
@@ -547,9 +654,25 @@ class CacheOut(BaseModel):
     entries: list[CacheEntryOut]
 
 
+class ProviderSystemOut(BaseModel):
+    """019 (contracts §9, FR-009): one provider's snapshot state in the Admin tab."""
+
+    name: str
+    status: Literal["current", "partial", "failed", "stale", "none"]
+    reason: str | None
+    checked: bool
+    active_snapshot: ActiveSnapshotOut | None
+    latest_run: LatestRunOut | None
+    rejected: RejectedOut | None
+    last_check_error: str | None
+    issues: list[IssueOut]
+
+
 class SystemInfoOut(BaseModel):
     deployment: DeploymentOut
     source: SourceOut
+    # The top-level snapshot fields are AWS's, unchanged (018); every provider is in
+    # `providers` (019).
     active: ActiveSnapshotOut | None
     latest_run: LatestRunOut | None
     rejected: RejectedOut | None
@@ -558,6 +681,7 @@ class SystemInfoOut(BaseModel):
     last_check_error: str | None
     check_interval_seconds: int
     issues: list[IssueOut]
+    providers: dict[str, ProviderSystemOut] = {}
 
 
 class SnapshotCheckStartedOut(BaseModel):

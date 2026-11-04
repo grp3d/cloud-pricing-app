@@ -28,13 +28,21 @@ from src.models.schemas import (
     CalculationDuration,
     CalculationResult,
     CalculationWarning,
+    PriceComponentOut,
     PriceLineItem,
     SnapshotSelection,
+    TierPartOut,
     UnpriceableItem,
 )
 from src.pricing_data.active_snapshot import get_active_snapshot
-from src.pricing_data.duration import classify_unit
-from src.pricing_data.pricing import lookup_price, lookup_reserved_price, resolve_units
+from src.pricing_data.providers.base import price_type_label
+from src.pricing_data.providers.registry import get_provider
+from src.pricing_data.providers.tiers import (
+    NOT_PUBLISHED,
+    UnpriceableTierError,
+    normalize_tiers,
+    price_for_duration,
+)
 
 
 class EmptySnapshotError(ValueError):
@@ -72,8 +80,10 @@ def calculate_architecture_price(
     architecture: Architecture,
     duration: CalculationDuration = CalculationDuration.one_month,
 ) -> CalculationResult:
-    # 018-app-cloud-deployment, FR-059: one snapshot (date and revision) for the whole result.
-    snapshot = get_active_snapshot()
+    # 018-app-cloud-deployment, FR-059: one snapshot (date and revision) for the whole result —
+    # 019: the architecture's own provider's (FR-003).
+    provider = get_provider(architecture.provider)
+    snapshot = get_active_snapshot(provider.code)
     duration_days = _DURATION_DAYS[duration]
 
     # Gather every SKU Selection: one per Collection SKU, plus one per Connector's attached SKU.
@@ -111,12 +121,13 @@ def calculate_architecture_price(
                 connector.from_collection_id
             )
 
-    # Batch-resolve billing units for On-Demand selections only (006) — a Reserved selection's
-    # cost no longer depends on unit classification at all (FR-001/FR-002), so there's nothing
-    # for this batch to usefully resolve for one; scoping it down keeps the query's purpose
-    # honest (003's `resolve_units`, research.md #2). Grouped by region (010-multi-region-
-    # support, research.md §11): each call covers only its own region's selections, merged —
-    # safe, since AWS SKU codes are themselves region-scoped.
+    # Batch-resolve billing units for usage-priced selections only (006) — a Reserved
+    # selection's cost doesn't depend on unit classification at all (FR-001/FR-002), so there's
+    # nothing for this batch to usefully resolve for one; scoping it down keeps the query's
+    # purpose honest (003's `resolve_units`, research.md #2). Grouped by region (010-multi-
+    # region-support, research.md §11): each call covers only its own region's selections,
+    # merged — safe, since AWS SKU codes are themselves region-scoped. 019: through the
+    # provider's adapter; Azure and GCP quotes carry their own unit, so this is AWS's lookup.
     on_demand_selections = [
         s for s in selections if _RESERVED_TERM_DAYS.get(s.pricing_term) is None
     ]
@@ -128,11 +139,13 @@ def calculate_architecture_price(
             continue
         on_demand_by_region.setdefault(region, []).append(s)
     for region, region_selections in on_demand_by_region.items():
+        if provider.reports_price_types:
+            continue  # Azure, GCP: the quote's own unit is used
         units.update(
-            resolve_units(
+            provider.units(
+                snapshot,
                 [(s.sku, s.pricing_term, s.purchase_option) for s in region_selections],
                 region=region,
-                snapshot=snapshot,
             )
         )
 
@@ -163,6 +176,8 @@ def calculate_architecture_price(
     for selection in selections:
         term_days = _RESERVED_TERM_DAYS.get(selection.pricing_term)
         region = selection_regions.get(selection.id)
+        tier_parts: list[TierPartOut] | None = None
+        components: list[PriceComponentOut] | None = None
 
         if region is None:
             # Defensive fallback only (data-model.md) — expected unreachable given
@@ -171,33 +186,34 @@ def calculate_architecture_price(
             _mark_unpriceable(selection, "no region could be determined for this selection")
             continue
 
+        # 019 (research R3): every price comes from the architecture's provider adapter.
+        quote = provider.price(
+            snapshot,
+            item=selection.sku,
+            pricing_term=selection.pricing_term,
+            purchase_option=selection.purchase_option,
+            region=region,
+            options=getattr(selection, "provider_options", None),
+        )
+
         if term_days is not None:
-            # Reserved (006): a fully separate procedure from On-Demand below — never reads
-            # `usage_quantity`, never calls `lookup_price`/`classify_unit`.
-            reserved_price = lookup_reserved_price(
-                sku=selection.sku,
-                pricing_term=selection.pricing_term,
-                purchase_option=selection.purchase_option,
-                region=region,
-                snapshot=snapshot,
-            )
-            if reserved_price is None or reserved_price.recurring_rate is None:
+            # Reserved (006): a fully separate procedure from usage pricing below — never
+            # reads `usage_quantity` or classifies the unit. An Azure reservation is a whole-term
+            # fee with a zero recurring rate (research R6), so it takes the all-upfront path.
+            if quote is None or quote.recurring_rate is None:
                 _mark_unpriceable(
                     selection,
-                    "no recurring rate for term/purchase_option in current snapshot",
+                    f"{NOT_PUBLISHED}: no recurring rate for term/purchase_option in current "
+                    "snapshot",
                 )
                 continue
 
             # Recurring rate bills continuously for every hour of the requested duration —
             # never scaled by `usage_quantity` (FR-001).
-            displayed_cost = (
-                Decimal(str(reserved_price.recurring_rate))
-                * _HOURS_PER_DAY
-                * Decimal(duration_days)
-            )
+            displayed_cost = quote.recurring_rate * _HOURS_PER_DAY * Decimal(duration_days)
 
             if selection.purchase_option != "no_upfront":
-                if reserved_price.upfront_fee is None:
+                if quote.upfront_fee is None:
                     _mark_unpriceable(
                         selection,
                         "no upfront fee for term/purchase_option in current snapshot despite "
@@ -206,49 +222,53 @@ def calculate_architecture_price(
                     continue
                 # A duration-proportional share of the one-time upfront fee, in addition to the
                 # recurring contribution above — never dropped (FR-002).
-                displayed_cost += (
-                    Decimal(str(reserved_price.upfront_fee))
-                    * Decimal(duration_days)
-                    / Decimal(term_days)
-                )
+                displayed_cost += quote.upfront_fee * Decimal(duration_days) / Decimal(term_days)
             # else: no_upfront has no upfront fee to add (FR-003).
         else:
-            # On-demand: unchanged from 004 (FR-006, SC-003) — which proration rule applies
-            # depends on the billing unit, classified from the unit `resolve_units` already
-            # resolved above.
-            unit_price = lookup_price(
-                sku=selection.sku,
-                pricing_term=selection.pricing_term,
-                purchase_option=selection.purchase_option,
-                region=region,
-                snapshot=snapshot,
-            )
-            if unit_price is None:
+            # Usage-priced (on demand, savings plan, committed use; 019, research R8): the
+            # adapter returns every published tier; the quantity is converted to a 31-day month
+            # by its unit class, priced tier by tier, and scaled to the duration
+            # (`providers.tiers.price_for_duration`). A single tier gives exactly 004's result
+            # (FR-006, SC-003).
+            if quote is None or not quote.tiers:
                 _mark_unpriceable(
-                    selection, "no price for term/purchase_option in current snapshot"
+                    selection,
+                    f"{NOT_PUBLISHED}: no price for term/purchase_option in current snapshot",
                 )
                 continue
 
-            raw_cost = Decimal(str(unit_price)) * selection.usage_quantity
-            unit = units.get((selection.sku, selection.pricing_term, selection.purchase_option))
-            classification = classify_unit(unit)
-            if classification.category == "no_period":
-                # Entered quantity is a steady daily rate — scale up to the duration (FR-003).
-                displayed_cost = raw_cost * Decimal(duration_days)
-            elif classification.category == "fixed_period":
-                # raw_cost already covers that unit's own period — rescale to the duration
-                # (FR-004).
-                displayed_cost = (
-                    raw_cost * Decimal(duration_days) / Decimal(classification.period_days)
+            unit = quote.unit or units.get(
+                (selection.sku, selection.pricing_term, selection.purchase_option)
+            )
+            try:
+                tiered = price_for_duration(
+                    normalize_tiers(quote.tiers), selection.usage_quantity, unit, duration_days,
+                    quote.unit_class,
                 )
-            else:
-                # unrecognized — excluded, never guessed (FR-005).
-                _mark_unpriceable(
-                    selection,
-                    f"billing unit '{unit}' isn't recognized as time-based; excluded "
-                    f"from the {duration_days}-day total",
-                )
+            except UnpriceableTierError as exc:
+                # A missing tier price, conflicting tiers or an unrecognized unit: excluded,
+                # never guessed (FR-005, FR-007).
+                _mark_unpriceable(selection, str(exc))
                 continue
+            displayed_cost = tiered.cost
+            if len(tiered.parts) > 1 or len(quote.tiers) > 1:
+                tier_parts = [
+                    TierPartOut(
+                        from_quantity=p.from_quantity, to_quantity=p.to_quantity, rate=p.rate,
+                        quantity=p.quantity, cost=p.cost,
+                    )
+                    for p in tiered.parts
+                ]
+            if quote.components and len(tiered.parts) == 1:
+                # A composite price (GCP machine): each part's share of the one tier's quantity.
+                base_quantity = tiered.parts[0].quantity
+                components = [
+                    PriceComponentOut(
+                        label=c.label, sku=c.sku, quantity=c.multiplier * base_quantity,
+                        rate=c.rate, cost=c.multiplier * base_quantity * c.rate,
+                    )
+                    for c in quote.components
+                ]
 
         total += displayed_cost
         line_items.append(
@@ -259,6 +279,11 @@ def calculate_architecture_price(
                 price=displayed_cost,
                 priceable=True,
                 region=region,
+                tiers=tier_parts,
+                price_type_label=price_type_label(
+                    selection.pricing_term, selection.purchase_option
+                ),
+                components=components,
             )
         )
 

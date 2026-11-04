@@ -72,6 +72,9 @@ export interface paths {
          *     searched — the selected collection's region, or a connector's "from" collection's region
          *     (FR-006). Distinct from `from_region_code`/`to_region_code`, which remain AWSDataTransfer
          *     attribute filters unrelated to which partition is read.
+         *
+         *     019: `provider` (default `aws`) picks the adapter. `kind` is an Azure/GCP search preset;
+         *     `from_region_code`/`to_region_code` are AWS-only (422 otherwise).
          */
         get: operations["search_skus_api_v1_catalog_skus_get"];
         put?: never;
@@ -745,6 +748,28 @@ export interface components {
             /** Is Public */
             is_public: boolean;
         };
+        /**
+         * AzureVmOptions
+         * @description 019 (research R6): which Azure VM meter to price, by operating system.
+         */
+        AzureVmOptions: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "azure_vm";
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+            /**
+             * Os
+             * @enum {string}
+             */
+            os: "linux" | "windows";
+        };
         /** CacheEntryOut */
         CacheEntryOut: {
             /** Snapshot Date */
@@ -809,6 +834,13 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * CatalogKind
+         * @description 019 (contracts §3, research R6): search presets matching the pipeline's reference
+         *     lookups. Azure and GCP only.
+         * @enum {string}
+         */
+        CatalogKind: "vm" | "block_storage" | "object_storage" | "data_transfer" | "managed_db";
         /** CatalogSKUOut */
         CatalogSKUOut: {
             /** Service Code */
@@ -830,6 +862,23 @@ export interface components {
             };
             /** Unit */
             unit?: string | null;
+            /**
+             * Provider
+             * @default aws
+             */
+            provider: string;
+            /**
+             * Location Scope
+             * @default regional
+             * @enum {string}
+             */
+            location_scope: "regional" | "multi_regional" | "global";
+            kind?: components["schemas"]["CatalogKind"] | null;
+            /**
+             * Price Types
+             * @default []
+             */
+            price_types: components["schemas"]["PricingTerm"][];
         };
         /** CatalogSearchResult */
         CatalogSearchResult: {
@@ -992,6 +1041,54 @@ export interface components {
             /** Attempts */
             attempts: number;
         };
+        /**
+         * GcpMachineOptions
+         * @description 019 (research R6): a GCP machine priced as vCPUs × core rate + GiB × RAM rate. The
+         *     selection's `sku` is the core SKU; `ram_sku` is the matching RAM SKU.
+         */
+        "GcpMachineOptions-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gcp_machine";
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+            /** Vcpus */
+            vcpus: number;
+            /** Memory Gib */
+            memory_gib: number | string;
+            /** Ram Sku */
+            ram_sku: string;
+        };
+        /**
+         * GcpMachineOptions
+         * @description 019 (research R6): a GCP machine priced as vCPUs × core rate + GiB × RAM rate. The
+         *     selection's `sku` is the core SKU; `ram_sku` is the matching RAM SKU.
+         */
+        "GcpMachineOptions-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gcp_machine";
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+            /** Vcpus */
+            vcpus: number;
+            /** Memory Gib */
+            memory_gib: string;
+            /** Ram Sku */
+            ram_sku: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1087,6 +1184,22 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * PriceComponentOut
+         * @description 019 (contracts §5): one part of a composite price, e.g. a GCP machine's cores or RAM.
+         */
+        PriceComponentOut: {
+            /** Label */
+            label: string;
+            /** Sku */
+            sku: string;
+            /** Quantity */
+            quantity: string;
+            /** Rate */
+            rate: string;
+            /** Cost */
+            cost: string;
+        };
         /** PriceLineItem */
         PriceLineItem: {
             /**
@@ -1104,12 +1217,18 @@ export interface components {
             priceable: boolean;
             /** Region */
             region?: string | null;
+            /** Tiers */
+            tiers?: components["schemas"]["TierPartOut"][] | null;
+            /** Price Type Label */
+            price_type_label?: string | null;
+            /** Components */
+            components?: components["schemas"]["PriceComponentOut"][] | null;
         };
         /**
          * PricingTerm
          * @enum {string}
          */
-        PricingTerm: "on_demand" | "reserved_1yr" | "reserved_3yr";
+        PricingTerm: "on_demand" | "reserved_1yr" | "reserved_3yr" | "savings_plan_1yr" | "savings_plan_3yr" | "commitment_1yr" | "commitment_3yr";
         /** ProviderOut */
         ProviderOut: {
             /** Code */
@@ -1118,6 +1237,42 @@ export interface components {
             name: string;
             /** Active */
             active: boolean;
+            /**
+             * Status
+             * @default none
+             * @enum {string}
+             */
+            status: "current" | "partial" | "failed" | "stale" | "none";
+            /** Reason */
+            reason?: string | null;
+            /** Snapshot Date */
+            snapshot_date?: string | null;
+            /** Snapshot Revision */
+            snapshot_revision?: number | null;
+        };
+        /**
+         * ProviderSystemOut
+         * @description 019 (contracts §9, FR-009): one provider's snapshot state in the Admin tab.
+         */
+        ProviderSystemOut: {
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "current" | "partial" | "failed" | "stale" | "none";
+            /** Reason */
+            reason: string | null;
+            /** Checked */
+            checked: boolean;
+            active_snapshot: components["schemas"]["ActiveSnapshotOut"] | null;
+            latest_run: components["schemas"]["LatestRunOut"] | null;
+            rejected: components["schemas"]["RejectedOut"] | null;
+            /** Last Check Error */
+            last_check_error: string | null;
+            /** Issues */
+            issues: components["schemas"]["IssueOut"][];
         };
         /**
          * PurchaseOption
@@ -1128,6 +1283,8 @@ export interface components {
         RegionOut: {
             /** Code */
             code: string;
+            /** Display Name */
+            display_name?: string | null;
         };
         /** RegionsOut */
         RegionsOut: {
@@ -1153,6 +1310,8 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: number | string;
+            /** Provider Options */
+            provider_options?: (components["schemas"]["GcpMachineOptions-Input"] | components["schemas"]["AzureVmOptions"]) | null;
         };
         /** SKUSelectionDefinition */
         SKUSelectionDefinition: {
@@ -1164,6 +1323,8 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: string;
+            /** Provider Options */
+            provider_options?: (components["schemas"]["GcpMachineOptions-Output"] | components["schemas"]["AzureVmOptions"]) | null;
         };
         /** SKUSelectionOut */
         SKUSelectionOut: {
@@ -1180,6 +1341,8 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: string;
+            /** Provider Options */
+            provider_options?: (components["schemas"]["GcpMachineOptions-Output"] | components["schemas"]["AzureVmOptions"]) | null;
             /** Unit */
             unit?: string | null;
             /**
@@ -1191,6 +1354,12 @@ export interface components {
             };
             /** Product Family */
             product_family?: string | null;
+            /**
+             * Price Types
+             * @default []
+             */
+            price_types: components["schemas"]["PricingTerm"][];
+            kind?: components["schemas"]["CatalogKind"] | null;
         };
         /** SKUSelectionUpdate */
         SKUSelectionUpdate: {
@@ -1198,6 +1367,8 @@ export interface components {
             purchase_option?: components["schemas"]["PurchaseOption"] | null;
             /** Usage Quantity */
             usage_quantity?: number | string | null;
+            /** Provider Options */
+            provider_options?: (components["schemas"]["GcpMachineOptions-Input"] | components["schemas"]["AzureVmOptions"]) | null;
             /** Collection Id */
             collection_id?: string | null;
         };
@@ -1250,6 +1421,32 @@ export interface components {
             check_interval_seconds: number;
             /** Issues */
             issues: components["schemas"]["IssueOut"][];
+            /**
+             * Providers
+             * @default {}
+             */
+            providers: {
+                [key: string]: components["schemas"]["ProviderSystemOut"];
+            };
+        };
+        /**
+         * TierPartOut
+         * @description 019 (contracts §5, research R8): the part of a line's quantity priced at one tier.
+         *     `from_quantity`/`to_quantity` are the published monthly bounds (`to_quantity` null for an
+         *     open top tier); `quantity` and `cost` are what the part contributes to the requested
+         *     duration, so the parts add up to the line's price.
+         */
+        TierPartOut: {
+            /** From Quantity */
+            from_quantity: string;
+            /** To Quantity */
+            to_quantity: string | null;
+            /** Rate */
+            rate: string;
+            /** Quantity */
+            quantity: string;
+            /** Cost */
+            cost: string;
         };
         /** UnpriceableItem */
         UnpriceableItem: {
@@ -1334,7 +1531,9 @@ export interface operations {
     };
     get_regions_api_v1_regions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                provider?: "aws" | "gcp" | "azure";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1350,15 +1549,26 @@ export interface operations {
                     "application/json": components["schemas"]["RegionsOut"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     search_skus_api_v1_catalog_skus_get: {
         parameters: {
             query: {
                 region: string;
+                provider?: "aws" | "gcp" | "azure";
                 service_code?: string | null;
                 product_family?: string | null;
                 q?: string | null;
+                kind?: components["schemas"]["CatalogKind"] | null;
                 from_region_code?: string | null;
                 to_region_code?: string | null;
                 limit?: number | null;

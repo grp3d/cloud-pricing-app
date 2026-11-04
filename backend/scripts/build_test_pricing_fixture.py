@@ -55,6 +55,7 @@ SEED_SKUS = (
     "2THCJ54S3VW8G6VS",  # reserved-term SKU (bug report)
     "47NTBKB4KMUU98P8",  # t3.medium Linux on-demand, region_code eu-west-1
     "28EK9CZBYC9JU7KW",  # AWSDataTransfer us-east-1 -> us-west-2-pdx-1
+    "5M4327XEUKBBTWAT",  # 019: internet egress us-west-2, 4 graduated tiers (research R8)
 )
 
 
@@ -205,8 +206,10 @@ def _manifest(snapshot_date: str, regions: list[str], tables: dict) -> dict:
 def build(source: LegacySource | PipelineSource, out: Path, snapshot_date: str | None) -> None:
     snapshot_date = snapshot_date or source.default_date()
     regions = source.regions(snapshot_date)
-    if out.exists():
-        shutil.rmtree(out)
+    # 019: the fixture root also holds azure/ and gcp/ (scripts/build_provider_fixtures.py),
+    # so only the AWS tree is replaced.
+    if (out / PROVIDER).exists():
+        shutil.rmtree(out / PROVIDER)
     con = duckdb.connect()
     seed_pattern = "|".join(SEED_SKUS)
     tables: dict[str, dict] = {

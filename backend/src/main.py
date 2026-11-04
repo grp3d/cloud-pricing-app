@@ -24,9 +24,10 @@ from src.config import settings
 from src.logging_config import configure_logging, get_logger
 from src.models.schemas import HealthOut
 from src.pricing_data import active_snapshot
-from src.pricing_data.active_snapshot import run_check
+from src.pricing_data.active_snapshot import provider_status, run_check
 from src.pricing_data.catalog import EmptyCatalogFilterError, InvalidRegexPatternError
 from src.pricing_data.errors import PricingDataUnavailableError
+from src.pricing_data.snapshot import PROVIDER_NAMES
 from src.pricing_data.snapshot_cache import startup_cleanup
 from src.services.architecture_transfer import InvalidImportFileError
 from src.services.price_calculation import EmptySnapshotError
@@ -86,12 +87,22 @@ app.add_middleware(
 async def pricing_data_unavailable_handler(
     request: Request, exc: PricingDataUnavailableError
 ) -> JSONResponse:
-    logger.error("pricing data unavailable", path=request.url.path, error=str(exc))
+    provider = getattr(exc, "provider", "aws")
+    logger.error(
+        "pricing data unavailable", path=request.url.path, error=str(exc), provider=provider
+    )
+    # 019 (SC-008): the provider and its public status reason, never the internal error text.
+    _status, reason = provider_status(provider)
     return JSONResponse(
         status_code=503,
         content={
             "error": "pricing_data_unavailable",
-            "message": "The AWS pricing data source is temporarily unreachable. Please retry.",
+            "message": (
+                f"The {PROVIDER_NAMES.get(provider, provider)} pricing data source is "
+                "temporarily unreachable. Please retry."
+            ),
+            "provider": provider,
+            "reason": reason or "pricing data unavailable",
         },
     )
 

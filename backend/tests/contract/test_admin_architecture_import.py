@@ -3,6 +3,7 @@ contracts/api.md; spec FR-018-FR-025)."""
 
 from __future__ import annotations
 
+import copy
 import uuid
 
 import pytest
@@ -158,3 +159,70 @@ async def test_imported_architecture_is_not_in_the_public_import_list(
     listing = await client.get("/api/v1/architectures/importable", headers=auth_headers)
     names = [a["name"] for g in listing.json()["groups"] for a in g["architectures"]]
     assert "Hidden" not in names
+
+
+# --- 019 (T038, research R15): Azure and GCP architectures round-trip ---------------------------
+
+from tests.helpers.providers import AZURE, build_architecture  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_an_azure_architecture_with_options_round_trips(client, admin_headers):
+    source_id, source = await _named_user(client, admin_headers, "azsource")
+    arch_id = await build_architecture(client, source, "azure", name="Azure App")
+    collection = (await client.get(f"/api/v1/architectures/{arch_id}", headers=source)).json()[
+        "collections"][0]
+    service_code, sku = AZURE["vm"]
+    windows = {"kind": "azure_vm", "version": 1, "os": "windows"}
+    added = await client.post(
+        f"/api/v1/collections/{collection['id']}/sku-selections",
+        json={"service_code": service_code, "sku": sku, "pricing_term": "on_demand",
+              "purchase_option": "not_applicable", "usage_quantity": "24",
+              "provider_options": windows},
+        headers=source,
+    )
+    assert added.status_code == 201, added.text
+    before = (await client.post(f"/api/v1/architectures/{arch_id}/calculate",
+                                headers=source)).json()
+
+    exported = (await client.get(f"/api/v1/admin/users/{source_id}/architectures/export",
+                                 headers=admin_headers)).json()
+    (entry,) = exported["architectures"]
+    assert entry["provider"] == "azure"
+    options = [s.get("provider_options") for s in entry["collections"][0]["sku_selections"]]
+    assert windows in options
+
+    target_id, target = await _named_user(client, admin_headers, "aztarget")
+    resp = await client.post(_url(target_id), json=exported, headers=admin_headers)
+    assert resp.json()["imported_count"] == 1, resp.json()
+    (copy,) = (await client.get("/api/v1/architectures?provider=azure", headers=target)).json()
+    after = (await client.post(f"/api/v1/architectures/{copy['id']}/calculate",
+                               headers=target)).json()
+    assert after["total_price"] == before["total_price"]
+    assert after["unpriceable"] == before["unpriceable"] == []
+
+
+@pytest.mark.asyncio
+async def test_import_checks_items_through_the_providers_adapter(client, admin_headers):
+    user_id, _headers = await _named_user(client, admin_headers, "gcpimport")
+    good = {
+        "name": "GCP ok", "provider": "gcp",
+        "collections": [{"ref": "c1", "type": "application_component", "name": "A",
+                         "region": "us-east1", "sku_selections": [{
+                             "service_code": "6F81-5844-456A", "sku": "BB77-5FDA-69D9",
+                             "pricing_term": "commitment_1yr",
+                             "purchase_option": "not_applicable", "usage_quantity": 24}]}],
+        "connectors": [],
+    }
+    missing = copy.deepcopy(good)
+    missing["name"] = "GCP missing"
+    missing["collections"][0]["sku_selections"][0]["sku"] = "0000-0000-0000"
+    wrong_region = copy.deepcopy(good)
+    wrong_region["name"] = "GCP wrong region"
+    wrong_region["collections"][0]["region"] = "us-east-1"
+    body = (await client.post(_url(user_id), json=_doc(good, missing, wrong_region),
+                              headers=admin_headers)).json()
+    assert [(r["name"], r["status"]) for r in body["results"]] == [
+        ("GCP ok", "success"), ("GCP missing", "failed"), ("GCP wrong region", "failed")]
+    assert body["results"][1]["error"].startswith("Service not found in pricing data:")
+    assert body["results"][2]["error"] == "Region not available in pricing data: us-east-1"

@@ -7,10 +7,15 @@ import {
   type CalculationDuration,
   type CatalogSKU,
   type CollectionType,
+  type ProviderCode,
   api,
 } from "../api/client";
+import { PROVIDER_LABELS, asProviderCode } from "../lib/providerPricing";
 import { ArchitectureDiagramPanel } from "../components/workspace/ArchitectureDiagramPanel";
-import { CollectionsPanel, type CollectionsPanelSelection } from "../components/workspace/CollectionsPanel";
+import {
+  CollectionsPanel,
+  type CollectionsPanelSelection,
+} from "../components/workspace/CollectionsPanel";
 import { ImportArchitectureDialog } from "../components/workspace/ImportArchitectureDialog";
 import { PopoutCanvasDialog } from "../components/workspace/PopoutCanvasDialog";
 import { PricingPanel } from "../components/workspace/PricingPanel";
@@ -93,7 +98,13 @@ function EmptyWorkspacePanels({ message }: { message: string }) {
  * delta-x in pixels; the caller decides which column that delta grows or shrinks (a handle
  * left of a column adds the delta to its width, a handle right of one subtracts it).
  */
-function ColumnResizeHandle({ onDrag, ariaLabel }: { onDrag: (deltaX: number) => void; ariaLabel: string }) {
+function ColumnResizeHandle({
+  onDrag,
+  ariaLabel,
+}: {
+  onDrag: (deltaX: number) => void;
+  ariaLabel: string;
+}) {
   const lastXRef = useRef(0);
 
   return (
@@ -170,9 +181,6 @@ function WorkspacePageInner() {
   );
 
   const providers = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
-  // 010-multi-region-support, FR-017: the region-selection prompt only ever offers regions the
-  // pricing dataset currently has data for.
-  const regions = useQuery({ queryKey: ["regions"], queryFn: api.listRegions });
   const architectures = useQuery({
     queryKey: ["architectures", selectedProvider],
     queryFn: () => api.listArchitectures(selectedProvider),
@@ -251,6 +259,23 @@ function WorkspacePageInner() {
   });
   const collections = useMemo(() => architecture.data?.collections ?? [], [architecture.data]);
   const connectors = useMemo(() => architecture.data?.connectors ?? [], [architecture.data]);
+  // 019 (FR-002, FR-006): the open architecture's provider picks the regions, catalog and
+  // editor fields; with none open, the selected provider does.
+  const pricingProvider: ProviderCode = asProviderCode(
+    architecture.data?.provider ?? selectedProvider,
+  );
+  // Opening an architecture (e.g. from a link) selects its provider in column 1.
+  const openedProvider = architecture.data?.provider;
+  const openedId = architecture.data?.id;
+  useEffect(() => {
+    if (openedProvider) setSelectedProvider(openedProvider);
+  }, [openedId, openedProvider]);
+  // 010-multi-region-support, FR-017: the region-selection prompt only ever offers regions the
+  // pricing dataset currently has data for — 019: the provider's own regions.
+  const regions = useQuery({
+    queryKey: ["regions", pricingProvider],
+    queryFn: () => api.listRegions(pricingProvider),
+  });
   const invalidateArchitecture = useCallback(
     () => queryClient.invalidateQueries({ queryKey: ["architecture", architectureId] }),
     [queryClient, architectureId],
@@ -260,7 +285,10 @@ function WorkspacePageInner() {
   // belongs to a Collection or a Data Connector — lets `ServiceConfigSelection`'s "existing"
   // case stay just an id; this is where it's resolved to the full object (research.md §6).
   const skuSelectionsById = useMemo(() => {
-    const map = new Map<string, { selection: (typeof collections)[number]["sku_selections"][number] }>();
+    const map = new Map<
+      string,
+      { selection: (typeof collections)[number]["sku_selections"][number] }
+    >();
     for (const c of collections) {
       for (const s of c.sku_selections) map.set(s.id, { selection: s });
     }
@@ -315,7 +343,8 @@ function WorkspacePageInner() {
       });
     for (const c of collections) for (const s of c.sku_selections) add(s, c.region);
     for (const conn of connectors) {
-      if (conn.sku_selection) add(conn.sku_selection, regionByCollectionId.get(conn.from_collection_id));
+      if (conn.sku_selection)
+        add(conn.sku_selection, regionByCollectionId.get(conn.from_collection_id));
     }
     return entries;
   }, [collections, connectors]);
@@ -329,9 +358,8 @@ function WorkspacePageInner() {
 
   const [pendingDeleteCollectionId, setPendingDeleteCollectionId] = useState<string | null>(null);
   const [pendingDeleteConnectorId, setPendingDeleteConnectorId] = useState<string | null>(null);
-  const [newCollectionType, setNewCollectionType] = useState<CollectionType>(
-    "application_component",
-  );
+  const [newCollectionType, setNewCollectionType] =
+    useState<CollectionType>("application_component");
   const [newCollectionName, setNewCollectionName] = useState("");
   // 010-multi-region-support, FR-001: shown before creating a new VPC or unattached
   // Application; skipped entirely when nesting an Application into a selected VPC (FR-001a).
@@ -539,7 +567,10 @@ function WorkspacePageInner() {
     try {
       await api.deleteSkuSelection(id);
       setSkuActionError(null);
-      if (serviceConfigSelection?.kind === "existing" && serviceConfigSelection.skuSelectionId === id) {
+      if (
+        serviceConfigSelection?.kind === "existing" &&
+        serviceConfigSelection.skuSelectionId === id
+      ) {
         setServiceConfigSelection(null);
       }
       invalidateArchitecture();
@@ -592,8 +623,7 @@ function WorkspacePageInner() {
   const architectureLoaded = Boolean(architectureId) && architecture.data?.id === architectureId;
 
   const calculate = useMutation({
-    mutationFn: (vars: CalculationRequestVars) =>
-      api.calculate(vars.architectureId, vars.duration),
+    mutationFn: (vars: CalculationRequestVars) => api.calculate(vars.architectureId, vars.duration),
     onMutate: (vars) => {
       setCalculationErrors((prev) => {
         const next = new Map(prev);
@@ -635,9 +665,7 @@ function WorkspacePageInner() {
       setResultEntries((prev) => new Map(prev).set(vars.architectureId, entry));
     },
     onError: (err, vars) =>
-      setCalculationErrors((prev) =>
-        new Map(prev).set(vars.architectureId, errorMessageOf(err)),
-      ),
+      setCalculationErrors((prev) => new Map(prev).set(vars.architectureId, errorMessageOf(err))),
     onSettled: (_data, _err, vars) => markInFlight(vars.architectureId, false),
   });
 
@@ -776,9 +804,10 @@ function WorkspacePageInner() {
   // this feature's own T001/T008) could never reproduce: it needs enough re-render churn in
   // a narrow enough window, which this object literal was manufacturing on nearly every
   // render regardless of cause.
-  const diagramSelection = useMemo<
-    { kind: "collection" | "connector" | "service"; id: string } | null
-  >(
+  const diagramSelection = useMemo<{
+    kind: "collection" | "connector" | "service";
+    id: string;
+  } | null>(
     () =>
       serviceConfigSelection?.kind === "existing"
         ? { kind: "service", id: serviceConfigSelection.skuSelectionId }
@@ -865,10 +894,9 @@ function WorkspacePageInner() {
             onDeleteConnector={setPendingDeleteConnectorId}
             onPickSku={pickSkuFromSearch}
             searchRegion={searchRegion}
+            provider={pricingProvider}
             regions={regions.data?.regions ?? []}
-            onUpdateCollectionRegion={(id, region) =>
-              updateCollectionRegion.mutate({ id, region })
-            }
+            onUpdateCollectionRegion={(id, region) => updateCollectionRegion.mutate({ id, region })}
             isUpdatingCollectionRegion={updateCollectionRegion.isPending}
             width={columnWidths.collections}
           />
@@ -887,6 +915,7 @@ function WorkspacePageInner() {
             actionError={skuActionError}
             onDismissActionError={() => setSkuActionError(null)}
             width={columnWidths.service}
+            provider={pricingProvider}
           />
 
           <ColumnResizeHandle
@@ -974,6 +1003,7 @@ function WorkspacePageInner() {
         open={regionDialogOpen}
         onOpenChange={setRegionDialogOpen}
         regions={regions.data?.regions ?? []}
+        providerName={PROVIDER_LABELS[pricingProvider]}
         onConfirm={(region) => createCollection.mutate({ region })}
         isSubmitting={createCollection.isPending}
       />

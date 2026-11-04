@@ -1,6 +1,6 @@
 # Vendored pipeline contracts
 
-Copied verbatim from `cloud-pricing-data-retrieval`, path `specs/003-pipeline-cloud-deployment/contracts/`, at commit `9f47f850b4b1ce3dd57cc861b7ca13b03c853801`:
+Copied verbatim from `cloud-pricing-data-retrieval`, path `specs/004-add-azure-gcp-pricing/contracts/` (manifest and storage layout 1.1), at commit `f72f163688ee181c3319d130654d4a7dd95cd6f3`:
 
 - `latest.schema.json`
 - `manifest.schema.json`
