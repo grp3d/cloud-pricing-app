@@ -123,8 +123,10 @@ def test_snapshot_stale_days_rejects_invalid(monkeypatch):
         _settings()
 
 
-def test_pricing_history_dir_defaults_to_persistent_user_folder():
+def test_pricing_history_dir_defaults_to_persistent_user_folder(monkeypatch):
     from pathlib import Path
+
+    monkeypatch.delenv("PRICING_HISTORY_DIR", raising=False)  # conftest isolates the tests
 
     assert _settings().pricing_history_dir == str(Path.home() / ".cloud-pricing" / "history")
 

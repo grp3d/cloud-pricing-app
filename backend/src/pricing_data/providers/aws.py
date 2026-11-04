@@ -20,8 +20,10 @@ from src.pricing_data.pricing import (
     lookup_reserved_price,
     resolve_units,
 )
-from src.pricing_data.providers.base import CatalogItem, ComparablePrice, PriceQuote
+from src.pricing_data.providers.base import CatalogItem, PriceQuote
+from src.pricing_data.providers.comparable import ComparableMixin, first_nonzero
 from src.pricing_data.snapshot import ActiveSnapshot
+from src.services.categories import service_key
 
 _RESERVED_TERMS = {"reserved_1yr", "reserved_3yr"}
 
@@ -39,7 +41,7 @@ def _item(row: dict) -> CatalogItem:
     )
 
 
-class AwsProvider:
+class AwsProvider(ComparableMixin):
     code = "aws"
     reports_price_types = False
 
@@ -116,10 +118,43 @@ class AwsProvider:
         return PriceQuote(unit=None, tiers=tiers)
 
     def service_key(self, item: CatalogItem) -> str:
-        return item.service_code
+        """`service_code|product_family` (research R9)."""
+        return service_key(item.service_code, item.product_family)
 
-    def comparable_prices(self, snapshot: ActiveSnapshot) -> list[ComparablePrice]:
-        raise NotImplementedError("comparable_prices arrives with Trends (T073)")
+    # Trends (research R10): on-demand `price_fact` rows per location partition, the first
+    # non-zero tier by numeric `begin_range`; service and family from `product_dim`.
+    comparable_tables = ("price_fact", "product_dim", "service_dim")
+
+    def _comparable_sql(self) -> str:
+        return f"""
+            WITH od AS (
+                SELECT region AS location, sku, price, unit, description,
+                    try_cast(begin_range AS DOUBLE) AS b
+                FROM price_fact WHERE term = 'OnDemand'
+            ),
+            cp AS (
+                SELECT location, sku, {first_nonzero("price", "b")} AS price,
+                    count(*) > 1 AS tiered, min(unit) AS unit,
+                    coalesce(arg_min(description, b) FILTER (WHERE price <> 0),
+                             min(description)) AS description
+                FROM od GROUP BY location, sku
+            ),
+            pd AS (
+                SELECT sku, any_value(service_code) AS service_code,
+                    any_value(product_family) AS product_family
+                FROM product_dim GROUP BY sku
+            ),
+            sd AS (
+                SELECT service_code, any_value(service_name) AS service_name
+                FROM service_dim GROUP BY service_code
+            )
+            SELECT cp.location, cp.sku AS item_key,
+                coalesce(pd.service_code, '') || '|' || coalesce(pd.product_family, '')
+                    AS service_key,
+                coalesce(sd.service_name, pd.service_code) AS service_name,
+                coalesce(cp.description, '') AS description, cp.unit, cp.price, cp.tiered
+            FROM cp LEFT JOIN pd USING (sku) LEFT JOIN sd USING (service_code)
+        """
 
 
 def _decimal(value: float | None) -> Decimal | None:

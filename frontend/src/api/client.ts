@@ -37,6 +37,16 @@ export type CatalogKind = components["schemas"]["CatalogKind"];
 export type PriceLineItem = components["schemas"]["PriceLineItem"];
 export type TierPart = components["schemas"]["TierPartOut"];
 export type PriceComponent = components["schemas"]["PriceComponentOut"];
+export type Preferences = components["schemas"]["Preferences"];
+export type PreferencesOut = components["schemas"]["PreferencesOut"];
+export type PreferencesPatch = components["schemas"]["PreferencesPatch"];
+export type WorkspacePreferences = components["schemas"]["WorkspacePreferences"];
+export type TrendsChartsPreferences = components["schemas"]["TrendsChartsPreferences"];
+export type TrendsMoversPreferences = components["schemas"]["TrendsMoversPreferences"];
+export type TrendSeriesResult = components["schemas"]["TrendSeriesResult"];
+export type TrendSeries = components["schemas"]["TrendSeriesOut"];
+export type SkusChangedPoint = components["schemas"]["SkusChangedPointOut"];
+export type TrendsCategory = TrendSeriesResult["category"];
 
 const BASE = "/api/v1";
 
@@ -137,6 +147,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listProviders: () => request<Provider[]>("/providers"),
+  /** 019 (contracts §8): SKUs Changed per provider. Each selection is `provider:region,…`
+   * (no regions means all). */
+  getTrendSeries: (select: string[], category: TrendsCategory, weeks = 52) => {
+    const qs = new URLSearchParams([
+      ...select.map((s) => ["select", s] as [string, string]),
+      ["category", category],
+      ["weeks", String(weeks)],
+    ]);
+    return request<TrendSeriesResult>(`/trends/series?${qs.toString()}`);
+  },
+  /** 019 (contracts §7): the caller's own preferences, or the empty defaults. */
+  getPreferences: () => request<PreferencesOut>("/me/preferences"),
+  /** Each section sent replaces that section; the full record comes back. */
+  patchPreferences: (patch: PreferencesPatch) =>
+    request<PreferencesOut>("/me/preferences", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
 
   // --- Identity/auth (012-user-accounts-sharing) ---
   getCurrentUser: () => request<CurrentUser>("/auth/me"),

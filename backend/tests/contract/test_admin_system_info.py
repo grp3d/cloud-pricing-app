@@ -159,3 +159,26 @@ async def test_a_failed_provider_shows_its_reason(client, admin_headers, tmp_pat
     assert providers["gcp"]["active_snapshot"] is None
     assert providers["gcp"]["reason"]
     assert providers["azure"]["status"] in {"current", "stale"}
+
+
+# --- 019 (T070, contracts §9): price history per provider ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_each_provider_has_a_history_block(client, admin_headers, tmp_path, monkeypatch):
+    from src.config import settings
+    from tests.helpers.history import build_trends_history
+
+    monkeypatch.setattr(settings, "pricing_history_dir", str(tmp_path / "history"))
+    build_trends_history(tmp_path / "history")
+    providers = (await client.get("/api/v1/admin/system-info",
+                                  headers=admin_headers)).json()["providers"]
+    assert providers["aws"]["history"] == {
+        "weeks_built": 4, "weeks_total": 4, "gaps": ["2026-09-28"], "backfill": "done",
+        "last_error": None, "last_built_at": providers["aws"]["history"]["last_built_at"],
+    }
+    assert providers["aws"]["history"]["last_built_at"]
+    assert providers["gcp"]["history"] == {
+        "weeks_built": 0, "weeks_total": 0, "gaps": [], "backfill": "pending",
+        "last_error": None, "last_built_at": None,
+    }

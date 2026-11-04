@@ -24,6 +24,7 @@ from src.models.schemas import (
     CacheOut,
     DeploymentOut,
     FailedRegionOut,
+    HistoryOut,
     IssueOut,
     LatestRunOut,
     ProviderSystemOut,
@@ -34,6 +35,7 @@ from src.models.schemas import (
 )
 from src.pricing_data import active_snapshot
 from src.pricing_data.active_snapshot import Issue, MonitorState
+from src.pricing_data.history.service import history_store, is_building
 from src.pricing_data.providers.registry import get_provider
 from src.pricing_data.snapshot import PROVIDER_NAMES, PROVIDERS
 
@@ -102,6 +104,21 @@ def _provider_out(code: str) -> ProviderSystemOut:
         rejected=RejectedOut(**asdict(state.rejected)) if state.rejected is not None else None,
         last_check_error=state.last_check_error,
         issues=[IssueOut(**asdict(i)) for i in sorted(state.issues, key=_issue_order)],
+        history=_history_out(code),
+    )
+
+
+def _history_out(code: str) -> HistoryOut:
+    """019 (contracts §9): the price history's progress, from its `state.json` only."""
+    state = history_store(code).state()
+    backfill = "running" if is_building(code) else state.get("backfill", "pending")
+    return HistoryOut(
+        weeks_built=int(state.get("weeks_built", 0)),
+        weeks_total=int(state.get("weeks_total", 0)),
+        gaps=list(state.get("gaps", [])),
+        backfill=backfill,
+        last_error=state.get("last_error"),
+        last_built_at=state.get("last_built_at"),
     )
 
 

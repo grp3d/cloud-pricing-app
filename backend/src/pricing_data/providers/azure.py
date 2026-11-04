@@ -24,14 +24,11 @@ from decimal import Decimal
 
 from src.pricing_data.duckdb_conn import connect
 from src.pricing_data.providers._sql import check_patterns, open_views
-from src.pricing_data.providers.base import (
-    CatalogItem,
-    ComparablePrice,
-    PriceQuote,
-    Tier,
-)
+from src.pricing_data.providers.base import CatalogItem, PriceQuote, Tier
+from src.pricing_data.providers.comparable import ComparableMixin, first_nonzero
 from src.pricing_data.providers.units import parse_azure_unit
 from src.pricing_data.snapshot import GLOBAL, ActiveSnapshot
+from src.services.categories import service_key
 
 _TABLES = ("price_item", "price_item_savings_plan")
 _WINDOWS = " Windows"
@@ -119,7 +116,7 @@ LIMIT ? OFFSET ?
 """
 
 
-class AzureProvider:
+class AzureProvider(ComparableMixin):
     code = "azure"
     reports_price_types = True
 
@@ -320,10 +317,28 @@ class AzureProvider:
             con.close()
 
     def service_key(self, item: CatalogItem) -> str:
-        raise NotImplementedError("service categories arrive with Trends (US2)")
+        """`service_family|service_name` (research R9)."""
+        return service_key(item.attributes.get("service_family"), item.service_name)
 
-    def comparable_prices(self, snapshot: ActiveSnapshot) -> list[ComparablePrice]:
-        raise NotImplementedError("comparable_prices arrives with Trends (US2)")
+    # Trends (research R10): `Consumption` meters per location (geographies left out), the
+    # first non-zero tier by `tier_minimum_units`, as published.
+    comparable_tables = ("price_item",)
+
+    def _comparable_sql(self) -> str:
+        return f"""
+            SELECT location, sku_id || '/' || meter_id AS item_key,
+                coalesce(min(service_family), '') || '|' || coalesce(min(service_name), '')
+                    AS service_key,
+                min(service_name) AS service_name,
+                concat_ws(' ', min(product_name), min(sku_name), min(meter_name))
+                    AS description,
+                min(unit_of_measure) AS unit,
+                {first_nonzero("unit_price", "tier_minimum_units")} AS price,
+                count(DISTINCT tier_minimum_units) > 1 AS tiered
+            FROM price_item
+            WHERE price_type = 'Consumption' AND location NOT LIKE '%-%'
+            GROUP BY location, sku_id, meter_id
+        """
 
 
 def _tier(start: float | None, price: float | None, multiplier: Decimal) -> Tier:

@@ -194,6 +194,13 @@ The metrics read only these small files:
 - Storing full weekly price lists: 52 × 3 providers of full lists on disk for no extra metric.
 - Storing aggregates in Postgres: Principle II forbids derived pricing values there.
 
+**Measured (T075a, 2026-11-04), local `file://` source**: the backfill of the local pipeline root (AWS: 24 dates, 7 ISO weeks, 2026-08-30 to 2026-10-05; Azure and GCP: one week each):
+
+- **Time and size**: AWS took 3.1 s. The result was 6 week pairs of 24 to 36 KB each, plus the newest price list (about 1,000,000 rows, 43 MB). DuckDB stayed within `DUCKDB_MEMORY_LIMIT` (512 MB) by spilling to a temporary folder under the history directory.
+- **Memory**: the whole backfill process peaked at about 1.2 GB RSS (Python, DuckDB and Parquet buffers). On the 2 GiB production instance, run the first backfill when the machine is quiet, or lower `DUCKDB_THREADS`.
+- **What the history shows**: 0 to 4 price changes per week, among 50,000 to 708,000 compared SKUs (the local dates cover different region sets), which confirms R11.
+- **S3**: an S3 backfill is not measured yet, because it needs the production bucket's credentials. It downloads only `price_fact`, `product_dim` and `service_dim`, about 204 of 271 MB per snapshot (R2), so 52 weeks is about 10 GB once, as estimated above.
+
 ## R11. Chart metric: SKUs Changed (the "0% median" finding)
 
 **Finding**: Measured on the local AWS us-west-2 snapshots from 2026-09-15 to 2026-10-05 (10 consecutive pairs, on-demand, first tier): about 122,000 SKUs compared per pair, **1 price change in total**, and 18 to 2,826 SKUs added or removed per pair. Any median of per-SKU % changes is 0%, and a chained median index would be a flat line. A median *price* per category mixes unrelated units ($/GB-month, $/request, $/hour) and moves with added and removed SKUs, so it measures catalog churn, not price changes.

@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
+from pathlib import Path
 from typing import Literal, Protocol
 
 from src.pricing_data.duration import UnitClassification
@@ -141,9 +142,11 @@ class ComparablePrice:
     location: str
     item_key: str
     service_key: str
+    service_name: str | None
     description: str
     unit: str | None
     price: Decimal | None  # on-demand, first non-zero tier; None or 0 are counted as excluded
+    tiered: bool = False  # compared on its first non-zero tier (the movers' tier note)
 
 
 class PricingProvider(Protocol):
@@ -199,5 +202,13 @@ class PricingProvider(Protocol):
     def service_key(self, item: CatalogItem) -> str:
         ...
 
+    # The tables `write_comparable_prices` reads (the backfill fetches only these).
+    comparable_tables: tuple[str, ...]
+
+    def write_comparable_prices(self, snapshot: ActiveSnapshot, out: Path) -> int:
+        """Write the snapshot's comparable price list as Parquet to `out`; returns its rows."""
+        ...
+
     def comparable_prices(self, snapshot: ActiveSnapshot) -> list[ComparablePrice]:
+        """The same list in memory (small snapshots and tests only)."""
         ...

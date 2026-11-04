@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # 019 (research R10): the derived price history for Trends. Persistent (not the temp folder)
     # and outside `pricing_cache_max_bytes`, so each historical snapshot is processed once, ever.
     pricing_history_dir: str = str(Path.home() / ".cloud-pricing" / "history")
+    # 019 (T075): build the price history at startup and after each snapshot switch. Off only
+    # where a process must never write it (e.g. a one-off script).
+    price_history_enabled: bool = True
 
     # 018 (research R3): fits DuckDB beside Postgres on a 2 GiB instance.
     duckdb_memory_limit: str = "512MB"

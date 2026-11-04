@@ -541,6 +541,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Preferences */
+        get: operations["read_preferences_api_v1_me_preferences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Preferences */
+        patch: operations["update_preferences_api_v1_me_preferences_patch"];
+        trace?: never;
+    };
+    "/api/v1/trends/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trend Series */
+        get: operations["trend_series_api_v1_trends_series_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -893,6 +928,19 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** ChartProviderSelection */
+        ChartProviderSelection: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /**
+             * Regions
+             * @default []
+             */
+            regions: string[];
+        };
         /** CheckUsernameOut */
         CheckUsernameOut: {
             /** Exists */
@@ -1109,6 +1157,27 @@ export interface components {
             /** Pricing Reason */
             pricing_reason?: string | null;
         };
+        /**
+         * HistoryOut
+         * @description 019 (contracts §9): one provider's price history in the Admin tab.
+         */
+        HistoryOut: {
+            /** Weeks Built */
+            weeks_built: number;
+            /** Weeks Total */
+            weeks_total: number;
+            /** Gaps */
+            gaps: string[];
+            /**
+             * Backfill
+             * @enum {string}
+             */
+            backfill: "pending" | "running" | "done" | "failed";
+            /** Last Error */
+            last_error: string | null;
+            /** Last Built At */
+            last_built_at: string | null;
+        };
         /** ImportResult */
         ImportResult: {
             /** Name */
@@ -1183,6 +1252,34 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+        };
+        /** Preferences */
+        Preferences: {
+            /**
+             * Migrated From Browser
+             * @default false
+             */
+            migrated_from_browser: boolean;
+            workspace?: components["schemas"]["WorkspacePreferences"] | null;
+            trends?: components["schemas"]["TrendsPreferences"] | null;
+        };
+        /** PreferencesOut */
+        PreferencesOut: {
+            /** Schema Version */
+            schema_version: number;
+            data: components["schemas"]["Preferences"];
+        };
+        /**
+         * PreferencesPatch
+         * @description Each section sent replaces that section; sections not sent are kept (research R12).
+         *     `trends.charts` and `trends.movers` are separate sections, so the two Resets never
+         *     overwrite each other. Sending a section as null clears it back to the defaults.
+         */
+        PreferencesPatch: {
+            /** Migrated From Browser */
+            migrated_from_browser?: boolean | null;
+            workspace?: components["schemas"]["WorkspacePreferences"] | null;
+            trends?: components["schemas"]["TrendsPreferences"] | null;
         };
         /**
          * PriceComponentOut
@@ -1273,6 +1370,7 @@ export interface components {
             last_check_error: string | null;
             /** Issues */
             issues: components["schemas"]["IssueOut"][];
+            history?: components["schemas"]["HistoryOut"] | null;
         };
         /**
          * PurchaseOption
@@ -1372,6 +1470,29 @@ export interface components {
             /** Collection Id */
             collection_id?: string | null;
         };
+        /** SkusChangedPointOut */
+        SkusChangedPointOut: {
+            /** Week */
+            week: string;
+            /** From Snapshot */
+            from_snapshot: string;
+            /** To Snapshot */
+            to_snapshot: string;
+            /** Increased */
+            increased: number | null;
+            /** Decreased */
+            decreased: number | null;
+            /** Increased Pct */
+            increased_pct: number | null;
+            /** Decreased Pct */
+            decreased_pct: number | null;
+            /** Compared */
+            compared: number | null;
+            /** Excluded */
+            excluded: number | null;
+            /** Gap */
+            gap: boolean;
+        };
         /** SnapshotCheckStartedOut */
         SnapshotCheckStartedOut: {
             /** Started */
@@ -1448,6 +1569,89 @@ export interface components {
             /** Cost */
             cost: string;
         };
+        /** TrendSeriesOut */
+        TrendSeriesOut: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /** Regions */
+            regions: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "building" | "not_enough_history" | "provider_unavailable";
+            /** Reason */
+            reason?: string | null;
+            /** Weeks Built */
+            weeks_built: number;
+            /** Weeks Total */
+            weeks_total: number;
+            /** Points */
+            points: components["schemas"]["SkusChangedPointOut"][];
+        };
+        /** TrendSeriesResult */
+        TrendSeriesResult: {
+            /**
+             * Metric
+             * @default skus_changed
+             * @constant
+             */
+            metric: "skus_changed";
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "all" | "compute" | "storage" | "database" | "networking";
+            /** Series */
+            series: components["schemas"]["TrendSeriesOut"][];
+        };
+        /** TrendsChartsPreferences */
+        TrendsChartsPreferences: {
+            /**
+             * Providers
+             * @default []
+             */
+            providers: components["schemas"]["ChartProviderSelection"][];
+            /**
+             * Category
+             * @default all
+             * @enum {string}
+             */
+            category: "all" | "compute" | "storage" | "database" | "networking";
+        };
+        /** TrendsMoversPreferences */
+        TrendsMoversPreferences: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /**
+             * Category
+             * @default all
+             * @enum {string}
+             */
+            category: "all" | "compute" | "storage" | "database" | "networking";
+            /**
+             * Regions
+             * @default []
+             */
+            regions: string[];
+            /**
+             * Period Weeks
+             * @default 52
+             * @enum {integer}
+             */
+            period_weeks: 1 | 4 | 13 | 52;
+        };
+        /** TrendsPreferences */
+        TrendsPreferences: {
+            charts?: components["schemas"]["TrendsChartsPreferences"] | null;
+            movers?: components["schemas"]["TrendsMoversPreferences"] | null;
+        };
         /** UnpriceableItem */
         UnpriceableItem: {
             /**
@@ -1479,6 +1683,19 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WorkspacePreferences */
+        WorkspacePreferences: {
+            /** Column Widths */
+            column_widths?: {
+                [key: string]: number;
+            } | null;
+            /** Collapsed */
+            collapsed?: {
+                [key: string]: boolean;
+            } | null;
+            /** Last Provider */
+            last_provider?: ("aws" | "gcp" | "azure") | null;
         };
     };
     responses: never;
@@ -2631,6 +2848,107 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_preferences_api_v1_me_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_preferences_api_v1_me_preferences_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferencesPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trend_series_api_v1_trends_series_get: {
+        parameters: {
+            query: {
+                select: string[];
+                category?: "all" | "compute" | "storage" | "database" | "networking";
+                weeks?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendSeriesResult"];
+                };
             };
             /** @description Validation Error */
             422: {

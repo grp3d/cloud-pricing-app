@@ -7,8 +7,7 @@ import { IdentityMenu } from "./IdentityMenu";
 
 /**
  * Top-level tab bar (012-user-accounts-sharing, spec FR-001-003): "Cloud Pricing" (the
- * existing workspace, active by default), "Trends" (visibly present but permanently disabled
- * — out of scope this feature), and "Admin" (shown only for the current identity's admin
+ * existing workspace, active by default), "Trends" (019: the Trends page), and "Admin" (shown only for the current identity's admin
  * status, from `GET /auth/me`). The person icon (FR-014) lives here too, since it must stay
  * visible regardless of which tab is active — a new top-level shell above `WorkspacePage`,
  * which previously had no chrome of its own (research.md §8).
@@ -28,9 +27,14 @@ export function TopTabs() {
             </Button>
           )}
         </NavLink>
-        <Button variant="ghost" size="sm" disabled aria-label="Trends (coming soon)">
-          Trends
-        </Button>
+        {/* 019 (FR-010): the Trends page. */}
+        <NavLink to="/trends">
+          {({ isActive }) => (
+            <Button asChild variant={isActive ? "secondary" : "ghost"} size="sm">
+              <span>Trends</span>
+            </Button>
+          )}
+        </NavLink>
         {isAdmin && (
           <NavLink to="/admin">
             {({ isActive }) => (

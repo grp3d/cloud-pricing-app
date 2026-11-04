@@ -186,6 +186,9 @@ def startup_cleanup(cache_dir: Path) -> None:
         return
     for tmp in cache_dir.glob("*/*.tmp-*"):
         shutil.rmtree(tmp, ignore_errors=True)
+    # 019: a price-history backfill's temporary copy (history/source.py).
+    for tmp in cache_dir.glob("history-*"):
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # --- Clean-up (FR-011, SC-006) ------------------------------------------------------------------

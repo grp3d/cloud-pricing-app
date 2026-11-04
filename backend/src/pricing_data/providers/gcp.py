@@ -21,13 +21,14 @@ from decimal import Decimal
 from src.pricing_data.providers._sql import check_patterns, open_views
 from src.pricing_data.providers.base import (
     CatalogItem,
-    ComparablePrice,
     PriceComponent,
     PriceQuote,
     Tier,
 )
+from src.pricing_data.providers.comparable import ComparableMixin, first_nonzero
 from src.pricing_data.providers.units import parse_gcp_unit
 from src.pricing_data.snapshot import GLOBAL, ActiveSnapshot
+from src.services.categories import service_key
 
 _TABLES = ("service", "sku", "sku_price", "sku_price_tier")
 
@@ -96,7 +97,7 @@ LIMIT ? OFFSET ?
 """
 
 
-class GcpProvider:
+class GcpProvider(ComparableMixin):
     code = "gcp"
     reports_price_types = True
 
@@ -225,10 +226,45 @@ class GcpProvider:
             con.close()
 
     def service_key(self, item: CatalogItem) -> str:
-        raise NotImplementedError("service categories arrive with Trends (US2)")
+        """Taxonomy levels 1 and 2 after `GCP` (research R9)."""
+        levels = (item.product_family or "").split(" > ")
+        return service_key(levels[0] if levels else "", levels[1] if len(levels) > 1 else "")
 
-    def comparable_prices(self, snapshot: ActiveSnapshot) -> list[ComparablePrice]:
-        raise NotImplementedError("comparable_prices arrives with Trends (US2)")
+    # Trends (research R10): each SKU's `Default` price per location, the first non-zero tier
+    # by `start_amount`, as published (`list_price`).
+    comparable_tables = ("service", "sku", "sku_price", "sku_price_tier")
+
+    def _comparable_sql(self) -> str:
+        return f"""
+            WITH d AS (
+                SELECT location, sku_id, consumption_model, unit FROM sku_price
+                WHERE consumption_model_description = 'Default'
+            ),
+            t AS (
+                SELECT t.location, t.sku_id, t.start_amount, t.list_price, d.unit
+                FROM sku_price_tier t JOIN d USING (location, sku_id, consumption_model)
+            ),
+            s AS (
+                SELECT location, sku_id, any_value(service_id) AS service_id,
+                    any_value(display_name) AS display_name,
+                    any_value(product_taxonomy) AS tax
+                FROM sku GROUP BY location, sku_id
+            ),
+            svc AS (
+                SELECT service_id, any_value(display_name) AS name FROM service
+                GROUP BY service_id
+            )
+            SELECT t.location, t.sku_id AS item_key,
+                coalesce(any_value(s.tax)[2], '') || '|' || coalesce(any_value(s.tax)[3], '')
+                    AS service_key,
+                any_value(svc.name) AS service_name,
+                coalesce(any_value(s.display_name), '') AS description,
+                min(t.unit) AS unit,
+                {first_nonzero("t.list_price", "t.start_amount")} AS price,
+                count(*) > 1 AS tiered
+            FROM t LEFT JOIN s USING (location, sku_id) LEFT JOIN svc USING (service_id)
+            GROUP BY t.location, t.sku_id
+        """
 
 
 def _sku_quote(con, region: str, sku_id: str, model: tuple[str, str]) -> PriceQuote | None:

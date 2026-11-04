@@ -27,6 +27,10 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 # PRICING_DATA_URI explicitly; locally it defaults to the fixture so no network is ever needed.
 PRICING_FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures" / "pricing_parquet"
 os.environ.setdefault("PRICING_DATA_URI", f"file://{PRICING_FIXTURE_ROOT}")
+# 019: the derived price history never goes to the developer's own ~/.cloud-pricing.
+import tempfile  # noqa: E402
+
+os.environ.setdefault("PRICING_HISTORY_DIR", tempfile.mkdtemp(prefix="cloud-pricing-history-"))
 
 from src.db.session import get_session  # noqa: E402
 from src.main import app  # noqa: E402

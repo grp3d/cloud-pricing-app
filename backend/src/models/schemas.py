@@ -11,7 +11,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 
 class ORMBase(BaseModel):
@@ -666,6 +666,7 @@ class ProviderSystemOut(BaseModel):
     rejected: RejectedOut | None
     last_check_error: str | None
     issues: list[IssueOut]
+    history: HistoryOut | None = None
 
 
 class SystemInfoOut(BaseModel):
@@ -686,3 +687,116 @@ class SystemInfoOut(BaseModel):
 
 class SnapshotCheckStartedOut(BaseModel):
     started: bool
+
+
+# --- User preferences (019, data-model §1, contracts §7, research R12) -----------------------
+
+ColumnKey = Literal["col1", "col2", "col3", "col4"]
+TrendsCategory = Literal["all", "compute", "storage", "database", "networking"]
+
+
+class _Strict(BaseModel):
+    """Unknown keys are rejected (data-model §1): new preferences extend these models."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class WorkspacePreferences(_Strict):
+    column_widths: dict[ColumnKey, int] | None = None
+    collapsed: dict[ColumnKey, bool] | None = None
+    last_provider: ProviderCode | None = None
+
+    @field_validator("column_widths")
+    @classmethod
+    def _positive_widths(cls, widths: dict[str, int] | None) -> dict[str, int] | None:
+        if widths and any(w <= 0 for w in widths.values()):
+            raise ValueError("column widths must be positive")
+        return widths
+
+
+class ChartProviderSelection(_Strict):
+    provider: ProviderCode
+    # Empty means all of the provider's regions.
+    regions: list[Annotated[str, StringConstraints(min_length=1, max_length=64)]] = []
+
+
+class TrendsChartsPreferences(_Strict):
+    providers: list[ChartProviderSelection] = []
+    category: TrendsCategory = "all"
+
+
+class TrendsMoversPreferences(_Strict):
+    provider: ProviderCode
+    category: TrendsCategory = "all"
+    regions: list[Annotated[str, StringConstraints(min_length=1, max_length=64)]] = []
+    period_weeks: Literal[1, 4, 13, 52] = 52
+
+
+class TrendsPreferences(_Strict):
+    charts: TrendsChartsPreferences | None = None
+    movers: TrendsMoversPreferences | None = None
+
+
+class Preferences(_Strict):
+    migrated_from_browser: bool = False
+    workspace: WorkspacePreferences | None = None
+    trends: TrendsPreferences | None = None
+
+
+class PreferencesOut(BaseModel):
+    schema_version: int
+    data: Preferences
+
+
+class PreferencesPatch(_Strict):
+    """Each section sent replaces that section; sections not sent are kept (research R12).
+    `trends.charts` and `trends.movers` are separate sections, so the two Resets never
+    overwrite each other. Sending a section as null clears it back to the defaults."""
+
+    migrated_from_browser: bool | None = None
+    workspace: WorkspacePreferences | None = None
+    trends: TrendsPreferences | None = None
+
+
+# --- Trends (019, contracts §8) ----------------------------------------------------------------
+
+
+class SkusChangedPointOut(BaseModel):
+    week: str
+    from_snapshot: str
+    to_snapshot: str
+    # Null when nothing was compared that week ("no data"), never 0.
+    increased: int | None
+    decreased: int | None
+    increased_pct: float | None
+    decreased_pct: float | None
+    compared: int | None
+    excluded: int | None
+    gap: bool
+
+
+class TrendSeriesOut(BaseModel):
+    provider: ProviderCode
+    regions: list[str]
+    status: Literal["ok", "building", "not_enough_history", "provider_unavailable"]
+    reason: str | None = None
+    weeks_built: int
+    weeks_total: int
+    points: list[SkusChangedPointOut]
+
+
+class TrendSeriesResult(BaseModel):
+    metric: Literal["skus_changed"] = "skus_changed"
+    category: TrendsCategory
+    series: list[TrendSeriesOut]
+
+
+class HistoryOut(BaseModel):
+    """019 (contracts §9): one provider's price history in the Admin tab."""
+
+    weeks_built: int
+    weeks_total: int
+    gaps: list[str]
+    backfill: Literal["pending", "running", "done", "failed"]
+    last_error: str | None
+    last_built_at: str | None

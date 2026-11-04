@@ -315,6 +315,16 @@ def state_for(provider: str) -> MonitorState:
         raise ValueError(f"unknown provider {provider!r}") from None
 
 
+_switch_hook: Callable[[str], None] | None = None
+
+
+def set_switch_hook(hook: Callable[[str], None] | None) -> None:
+    """019 (T075): called with the provider code after its active snapshot switches (the app
+    starts the price history update there). Set by the app at startup; never in tests."""
+    global _switch_hook
+    _switch_hook = hook
+
+
 def set_analysis_hook(hook: AnalysisHook | None) -> None:
     global _analysis_hook
     _analysis_hook = hook
@@ -477,7 +487,14 @@ def run_check(*, at_startup: bool = False, provider: str | None = None) -> Check
             )
             _log_transitions(code, results[code], first=at_startup or not was_initialized)
         _post_check(store, results)
-        return results[provider or PROVIDER]
+    if _switch_hook is not None:
+        for code, result in results.items():
+            if result.switched:
+                try:
+                    _switch_hook(code)
+                except Exception:  # noqa: BLE001 — history never stops pricing
+                    logger.exception("price history update could not start", provider=code)
+    return results[provider or PROVIDER]
 
 
 def check_in_progress() -> bool:
