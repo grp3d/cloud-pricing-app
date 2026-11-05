@@ -6,6 +6,10 @@
  *   queued twice keeps only its newest value.
  * - A failed save never reaches the caller: it stays queued and is retried with backoff, so the
  *   change still applies for the session (FR-025).
+ * - Workspace settings saved in the browser by earlier versions are moved to the account once,
+ *   on the first successful load where `migrated_from_browser` is false (FR-024). Until then
+ *   they fill the gaps under the account's values (`effectiveWorkspace`); after, they are
+ *   ignored.
  */
 import { useSyncExternalStore } from "react";
 
@@ -18,6 +22,7 @@ import type {
   WorkspacePreferences,
 } from "../api/client";
 import { api } from "../api/client";
+import { readBrowserWorkspace } from "./browserPrefs";
 
 export type SectionValues = {
   migrated_from_browser: boolean;
@@ -36,6 +41,8 @@ export interface StoreOptions {
   /** First retry delay; each later one doubles, up to `maxDelayMs`. */
   baseDelayMs?: number;
   maxDelayMs?: number;
+  /** Workspace settings an earlier version saved in this browser (moved once, FR-024). */
+  readBrowser?: () => WorkspacePreferences | null;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = { migrated_from_browser: false };
@@ -74,6 +81,34 @@ function patchBody(pending: Map<Section, unknown>): PreferencesPatch {
   return body;
 }
 
+/** The workspace settings in use: the account's, with the browser's old values under them
+ * until they have been moved (FR-024). */
+export function effectiveWorkspace(
+  prefs: Preferences,
+  readBrowser: () => WorkspacePreferences | null,
+): WorkspacePreferences {
+  const own = prefs.workspace ?? {};
+  if (prefs.migrated_from_browser) return own;
+  const browser = readBrowser();
+  if (!browser) return own;
+  return mergeWorkspace(browser, own);
+}
+
+/** `over` wins per column; a section missing from both stays missing. */
+function mergeWorkspace(
+  under: WorkspacePreferences,
+  over: WorkspacePreferences,
+): WorkspacePreferences {
+  const out: WorkspacePreferences = { ...under, ...over };
+  if (under.column_widths || over.column_widths) {
+    out.column_widths = { ...under.column_widths, ...over.column_widths };
+  }
+  if (under.collapsed || over.collapsed) {
+    out.collapsed = { ...under.collapsed, ...over.collapsed };
+  }
+  return out;
+}
+
 export class PreferencesStore {
   private prefs: Preferences = DEFAULT_PREFERENCES;
   private loaded = false;
@@ -85,6 +120,7 @@ export class PreferencesStore {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly baseDelayMs: number;
   private readonly maxDelayMs: number;
+  readonly readBrowser: () => WorkspacePreferences | null;
 
   constructor(
     private readonly transport: PreferencesTransport,
@@ -92,6 +128,7 @@ export class PreferencesStore {
   ) {
     this.baseDelayMs = options.baseDelayMs ?? 1000;
     this.maxDelayMs = options.maxDelayMs ?? 60_000;
+    this.readBrowser = options.readBrowser ?? (() => null);
   }
 
   get current(): Preferences {
@@ -123,7 +160,8 @@ export class PreferencesStore {
         }
         this.loaded = true;
         this.set(prefs);
-        return prefs;
+        if (!prefs.migrated_from_browser) this.migrateFromBrowser();
+        return this.prefs;
       })
       .catch(() => {
         this.loading = null;
@@ -134,10 +172,26 @@ export class PreferencesStore {
 
   /** Apply now, save in the background. Never throws (FR-025). */
   patchSection<S extends Section>(section: S, value: SectionValues[S]): void {
-    this.set(withSection(this.prefs, section, value));
-    this.pending.delete(section); // keep queue order by last change
-    this.pending.set(section, value);
+    this.queue(section, value); // keeps queue order by last change
     void this.flush();
+  }
+
+  /** Move the browser's old workspace settings to the account, once (FR-024). The account's
+   * own values win; the flag is set even when the browser has nothing to move. */
+  private migrateFromBrowser(): void {
+    const browser = this.readBrowser();
+    if (browser) {
+      const merged = mergeWorkspace(browser, this.prefs.workspace ?? {});
+      this.queue("workspace", merged);
+    }
+    this.queue("migrated_from_browser", true);
+    void this.flush();
+  }
+
+  private queue<S extends Section>(section: S, value: SectionValues[S]): void {
+    this.set(withSection(this.prefs, section, value));
+    this.pending.delete(section);
+    this.pending.set(section, value);
   }
 
   /** Sections waiting to be saved (for tests and diagnostics). */
@@ -175,10 +229,10 @@ export class PreferencesStore {
   }
 }
 
-export const preferencesStore = new PreferencesStore({
-  get: api.getPreferences,
-  patch: api.patchPreferences,
-});
+export const preferencesStore = new PreferencesStore(
+  { get: api.getPreferences, patch: api.patchPreferences },
+  { readBrowser: readBrowserWorkspace },
+);
 
 /** The current preferences (re-rendering on change) and the section setter. Starts the load
  * on first use. */

@@ -19,6 +19,9 @@ refuses to start**, and the error names the setting.
 | `DUCKDB_THREADS` | integer ≥ 1 | `2` | Threads for each pricing query. |
 | `AWS_PRICING_REGION` | string | `us-east-1` | Legacy single-region default. Pricing is per collection region, except for the Price Change comparison, which reprices earlier selections in this region. |
 | `SNAPSHOT_CHECK_INTERVAL_SECONDS` | integer ≥ 10 | `300` | How often the background check looks for a newer snapshot, or a newer revision of the active one. It also re-runs the icon-coverage analysis when the active snapshot changes. |
+| `SNAPSHOT_STALE_DAYS` | integer ≥ 1 | `14` | A provider whose active snapshot is older than this many days is shown as `stale` (two missed weekly runs by default). A stale provider stays active. |
+| `PRICING_HISTORY_DIR` | path | `~/.cloud-pricing/history` | The derived price history the Trends page reads, one folder per provider (week-pair comparisons plus the newest comparable price list). Kept on persistent disk and not counted in `PRICING_CACHE_MAX_BYTES`, so each historical snapshot is processed once, ever. Safe to delete: it is rebuilt. See [Trends price history](#trends-price-history). |
+| `PRICE_HISTORY_ENABLED` | boolean | `true` | Build the price history at startup and after each snapshot switch. Turn it off only for a process that must never write it. |
 | `ACTIVE_SNAPSHOT_DATE` | date (`YYYY-MM-DD`) or unset | unset | Pins the pricing snapshot every lookup uses, e.g. to roll back from bad upstream data. That date's manifest must exist and be `succeeded`, or the server won't start. |
 | `CORS_ALLOWED_ORIGINS` | JSON list of strings | `["http://localhost:5173"]` | Browser origins allowed to call the API. |
 | `CATALOG_SEARCH_DEFAULT_LIMIT` | integer ≥ 1 | `50` | Catalog search page size when a request doesn't specify one. Must not exceed the maximum. |
@@ -65,6 +68,24 @@ same in a local folder and in S3, so switching between them means changing `PRIC
   invalid, a checksum fails — the current snapshot stays in use and the Admin tab says why.
 - **No snapshot yet**: the server starts, login and saved architectures work, and pricing requests
   return "pricing data unavailable" until one appears.
+- **Providers**: the same rules apply to each provider's own folder (`aws/`, `gcp/`, `azure/`) in
+  the same root. A provider is enabled only when it has a usable snapshot. One provider's missing
+  or rejected snapshot disables only that provider (the error names it), never the others.
+
+### Trends price history
+
+The Trends page reads a history derived from the weekly snapshots, kept in
+`PRICING_HISTORY_DIR`. Each ISO week is represented by its newest snapshot, and each pair of
+consecutive weeks is compared once (a missing week is a gap the pair spans). The history is
+built at startup and after each snapshot switch, resumes if interrupted, and rebuilds only the
+weeks around a re-published snapshot. While it builds, the page shows the weeks built so far.
+
+- **Memory**: the first build of a provider with a year of snapshots is the heaviest job the
+  app runs. It spills to disk past `DUCKDB_MEMORY_LIMIT`, but on a 2 GiB instance run it when
+  the app is quiet, or lower `DUCKDB_THREADS`.
+- **S3 sources**: only the tables the comparison needs are downloaded, checked against the
+  manifest, into a temporary `history-*` folder in `PRICING_CACHE_DIR`, and deleted once that
+  week is processed. They are never kept as cached snapshots.
 
 ### Converting the old layout
 

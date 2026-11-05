@@ -41,7 +41,7 @@ COPY alembic.ini ./
 COPY src ./src
 
 RUN useradd --system --uid 10001 --home /app app \
-    && mkdir -p /run/app /var/lib/app/pricing-cache /tls \
+    && mkdir -p /run/app /var/lib/app/pricing-cache /var/lib/app/pricing-history /tls \
     && chown -R app:app /run/app /var/lib/app /tls
 USER app
 

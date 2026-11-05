@@ -496,6 +496,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/connectors/{connector_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Connector
+         * @description Soft delete (FR-015).
+         */
+        delete: operations["delete_connector_api_v1_connectors__connector_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Connector
+         * @description Change how the connector is drawn (019, contracts §6). Visual only: `from` and `to`,
+         *     and so the priced direction, never change (FR-030).
+         */
+        patch: operations["update_connector_api_v1_connectors__connector_id__patch"];
+        trace?: never;
+    };
     "/api/v1/connectors/{connector_id}/sku-selection": {
         parameters: {
             query?: never;
@@ -516,26 +541,6 @@ export interface paths {
          */
         post: operations["attach_connector_sku_api_v1_connectors__connector_id__sku_selection_post"];
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/connectors/{connector_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete Connector
-         * @description Soft delete (FR-015).
-         */
-        delete: operations["delete_connector_api_v1_connectors__connector_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -568,6 +573,23 @@ export interface paths {
         };
         /** Trend Series */
         get: operations["trend_series_api_v1_trends_series_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trends/movers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trend Movers */
+        get: operations["trend_movers_api_v1_trends_movers_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1025,6 +1047,17 @@ export interface components {
             from_ref: string;
             /** To Ref */
             to_ref: string;
+            /**
+             * Arrow Style
+             * @default one_way
+             * @enum {string}
+             */
+            arrow_style: "none" | "one_way" | "two_way" | "one_to_many" | "many_to_one";
+            /**
+             * Arrow Reversed
+             * @default false
+             */
+            arrow_reversed: boolean;
             sku_selection?: components["schemas"]["SKUSelectionDefinition"] | null;
         };
         /** CurrentUserOut */
@@ -1053,6 +1086,17 @@ export interface components {
              * Format: uuid
              */
             to_collection_id: string;
+            /**
+             * Arrow Style
+             * @default none
+             * @enum {string}
+             */
+            arrow_style: "none" | "one_way" | "two_way" | "one_to_many" | "many_to_one";
+            /**
+             * Arrow Reversed
+             * @default false
+             */
+            arrow_reversed: boolean;
         };
         /** DataConnectorOut */
         DataConnectorOut: {
@@ -1071,7 +1115,28 @@ export interface components {
              * Format: uuid
              */
             to_collection_id: string;
+            /**
+             * Arrow Style
+             * @default none
+             * @enum {string}
+             */
+            arrow_style: "none" | "one_way" | "two_way" | "one_to_many" | "many_to_one";
+            /**
+             * Arrow Reversed
+             * @default false
+             */
+            arrow_reversed: boolean;
             sku_selection?: components["schemas"]["SKUSelectionOut"] | null;
+        };
+        /**
+         * DataConnectorUpdate
+         * @description 019 (contracts §6): `PATCH /connectors/{id}`; only the fields sent change.
+         */
+        DataConnectorUpdate: {
+            /** Arrow Style */
+            arrow_style?: ("none" | "one_way" | "two_way" | "one_to_many" | "many_to_one") | null;
+            /** Arrow Reversed */
+            arrow_reversed?: boolean | null;
         };
         /** DeploymentOut */
         DeploymentOut: {
@@ -1252,6 +1317,69 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+        };
+        /** MoverOut */
+        MoverOut: {
+            /** Service Name */
+            service_name: string;
+            /** Description */
+            description: string;
+            /** Region */
+            region: string;
+            /** Unit */
+            unit: string;
+            /** Start Price */
+            start_price: string;
+            /** End Price */
+            end_price: string;
+            /** Change Pct */
+            change_pct: number;
+            /** Tier Note */
+            tier_note?: string | null;
+        };
+        /**
+         * MoversOut
+         * @description 019 (contracts §8): the biggest movers for one provider, category, regions and period.
+         *     `status` and `reason` (added to the contract) say why the lists are empty when there is no
+         *     usable history: the same values as a chart series.
+         */
+        MoversOut: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "all" | "compute" | "storage" | "database" | "networking";
+            /** Regions */
+            regions: string[];
+            /**
+             * Period Weeks
+             * @enum {integer}
+             */
+            period_weeks: 1 | 4 | 13 | 52;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "building" | "not_enough_history" | "provider_unavailable";
+            /** Reason */
+            reason?: string | null;
+            /** From Snapshot */
+            from_snapshot: string | null;
+            /** To Snapshot */
+            to_snapshot: string | null;
+            /** Weeks Available */
+            weeks_available: number;
+            /** Increases */
+            increases: components["schemas"]["MoverOut"][];
+            /** Decreases */
+            decreases: components["schemas"]["MoverOut"][];
+            /** Message */
+            message?: string | null;
         };
         /** Preferences */
         Preferences: {
@@ -2792,6 +2920,74 @@ export interface operations {
             };
         };
     };
+    delete_connector_api_v1_connectors__connector_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                connector_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_connector_api_v1_connectors__connector_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                connector_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataConnectorUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataConnectorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     attach_connector_sku_api_v1_connectors__connector_id__sku_selection_post: {
         parameters: {
             query?: never;
@@ -2817,37 +3013,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SKUSelectionOut"];
                 };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_connector_api_v1_connectors__connector_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                connector_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -2948,6 +3113,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrendSeriesResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trend_movers_api_v1_trends_movers_get: {
+        parameters: {
+            query: {
+                provider: "aws" | "gcp" | "azure";
+                category?: "all" | "compute" | "storage" | "database" | "networking";
+                regions?: string;
+                period_weeks?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoversOut"];
                 };
             };
             /** @description Validation Error */

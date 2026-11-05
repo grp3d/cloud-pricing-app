@@ -193,17 +193,17 @@
 
 ### Tests for User Story 3 (write first, confirm they fail)
 
-- [ ] T083 [P] [US3] Add movers cases to `backend/tests/unit/test_trends_metrics.py`: start price is before the first change in the window and end price after the last; changed-and-back items are dropped; items removed before the end are dropped; uncategorized services appear only under "all categories"; a global-only SKU is one entry (location `global`) when two regions are selected; ties by absolute price change then name; the same SKU in two regions gives two entries; `weeks_available` when history is shorter than the period; tiered items carry `tier_note` (FR-016 to FR-019)
-- [ ] T084 [P] [US3] Add `GET /trends/movers` cases to `backend/tests/contract/test_trends.py`: query `provider`, `category`, `regions`, `period_weeks` in {1, 4, 13, 52} (others → 422); prices as published decimal strings; `change_pct` to 2 decimals; `message` when both lists are empty (contracts §8)
+- [X] T083 [P] [US3] Add movers cases to `backend/tests/unit/test_trends_metrics.py`: start price is before the first change in the window and end price after the last; changed-and-back items are dropped; items removed before the end are dropped; uncategorized services appear only under "all categories"; a global-only SKU is one entry (location `global`) when two regions are selected; ties by absolute price change then name; the same SKU in two regions gives two entries; `weeks_available` when history is shorter than the period; tiered items carry `tier_note` (FR-016 to FR-019)
+- [X] T084 [P] [US3] Add `GET /trends/movers` cases to `backend/tests/contract/test_trends.py`: query `provider`, `category`, `regions`, `period_weeks` in {1, 4, 13, 52} (others → 422); prices as published decimal strings; `change_pct` to 2 decimals; `message` when both lists are empty (contracts §8)
 
 ### Implementation for User Story 3
 
-- [ ] T085 [US3] Implement movers in `backend/src/pricing_data/history/metrics.py` (makes T083 pass)
-- [ ] T086 [US3] Add `GET /trends/movers` and its response models to `backend/src/api/trends.py` and `backend/src/models/schemas.py` (makes T084 pass)
-- [ ] T087 [US3] Build `frontend/src/components/trends/MoversPanel.tsx` (provider, category, regions, period selectors; "Largest increases" and "Largest decreases" lists showing service, SKU description, region, start and end price, unit, % change; empty message; "weeks compared" note) and place it on the right of `frontend/src/pages/TrendsPage.tsx`
-- [ ] T088 [US3] Wire the movers selections to `trends.movers` in `frontend/src/lib/preferences.ts`, with a Reset restoring the first available provider, all categories, all regions and 52 weeks, without touching the charts section (FR-020)
-- [ ] T089 [P] [US3] Add `frontend/tests/unit/MoversPanel.test.tsx`: list rendering, empty message, Reset independence
-- [ ] T090 [US3] Check SC-004 against the local pipeline root: time from opening Trends to chart and both lists rendered with the defaults is under 3 seconds; record it in `specs/019-gcp-azure-providers-trends/checklists/validation.md`
+- [X] T085 [US3] Implement movers in `backend/src/pricing_data/history/metrics.py` (makes T083 pass)
+- [X] T086 [US3] Add `GET /trends/movers` and its response models to `backend/src/api/trends.py` and `backend/src/models/schemas.py` (makes T084 pass)
+- [X] T087 [US3] Build `frontend/src/components/trends/MoversPanel.tsx` (provider, category, regions, period selectors; "Largest increases" and "Largest decreases" lists showing service, SKU description, region, start and end price, unit, % change; empty message; "weeks compared" note) and place it on the right of `frontend/src/pages/TrendsPage.tsx`
+- [X] T088 [US3] Wire the movers selections to `trends.movers` in `frontend/src/lib/preferences.ts`, with a Reset restoring the first available provider, all categories, all regions and 52 weeks, without touching the charts section (FR-020)
+- [X] T089 [P] [US3] Add `frontend/tests/unit/MoversPanel.test.tsx`: list rendering, empty message, Reset independence
+- [X] T090 [US3] Check SC-004 against the local pipeline root: time from opening Trends to chart and both lists rendered with the defaults is under 3 seconds; record it in `specs/019-gcp-azure-providers-trends/checklists/validation.md`
 
 **Checkpoint**: The whole Trends page works.
 
@@ -217,14 +217,14 @@
 
 ### Tests for User Story 4 rest (write first, confirm they fail)
 
-- [ ] T091 [P] [US4] Add migration and stale-value cases to `frontend/tests/unit/preferences.test.ts`: with `migrated_from_browser: false`, existing `columnWidths` and `columnCollapse` browser values are sent once and the flag is set; with the flag set, browser values are ignored; a stored provider or region that is no longer available is dropped and the cleaned value saved (FR-023, FR-024, data-model §1)
-- [ ] T092 [P] [US4] Update `frontend/tests/unit/columnCollapse.test.ts` (and add a column widths test if none exists) for the preferences-backed behavior
+- [X] T091 [P] [US4] Add migration and stale-value cases to `frontend/tests/unit/preferences.test.ts`: with `migrated_from_browser: false`, existing `columnWidths` and `columnCollapse` browser values are sent once and the flag is set; with the flag set, browser values are ignored; a stored provider or region that is no longer available is dropped and the cleaned value saved (FR-023, FR-024, data-model §1)
+- [X] T092 [P] [US4] Update `frontend/tests/unit/columnCollapse.test.ts` (and add a column widths test if none exists) for the preferences-backed behavior
 
 ### Implementation for User Story 4 rest
 
-- [ ] T093 [US4] Back `frontend/src/lib/columnWidths.ts` and `frontend/src/lib/columnCollapse.ts` with the `workspace` preferences section, keeping their current exported API; implement the one-time browser migration in `frontend/src/lib/preferences.ts` (makes T091, T092 pass)
-- [ ] T094 [US4] Save and restore `workspace.last_provider` for `selectedProvider` in `frontend/src/pages/WorkspacePage.tsx`, falling back to `aws` when the stored provider is inactive
-- [ ] T095 [US4] Run quickstart section E in two browsers and record the results in the validation checklist
+- [X] T093 [US4] Back `frontend/src/lib/columnWidths.ts` and `frontend/src/lib/columnCollapse.ts` with the `workspace` preferences section, keeping their current exported API; implement the one-time browser migration in `frontend/src/lib/preferences.ts` (makes T091, T092 pass)
+- [X] T094 [US4] Save and restore `workspace.last_provider` for `selectedProvider` in `frontend/src/pages/WorkspacePage.tsx`, falling back to `aws` when the stored provider is inactive
+- [X] T095 [US4] Run quickstart section E in two browsers and record the results in the validation checklist
 
 **Checkpoint**: All general preferences follow the user; per-architecture settings stay in the browser (FR-023).
 
@@ -238,14 +238,14 @@
 
 ### Tests for User Story 5 arrows (write first, confirm they fail)
 
-- [ ] T096 [P] [US5] Extend `backend/tests/contract/test_connectors.py`: create and patch `arrow_style` and `arrow_reversed`; invalid style → 422; a connector without a data transfer selection accepts a style; reversing doesn't change `from`/`to` or the calculated total (FR-026, FR-028 to FR-030)
-- [ ] T097 [P] [US5] Extend `backend/tests/unit/test_architecture_transfer.py`: arrow fields round-trip through export, import and copy; older files import with `none` / false (research R15)
+- [X] T096 [P] [US5] Extend `backend/tests/contract/test_connectors.py`: create and patch `arrow_style` and `arrow_reversed`; invalid style → 422; a connector without a data transfer selection accepts a style; reversing doesn't change `from`/`to` or the calculated total (FR-026, FR-028 to FR-030)
+- [X] T097 [P] [US5] Extend `backend/tests/unit/test_architecture_transfer.py`: arrow fields round-trip through export, import and copy; older files import with `none` / false (research R15)
 
 ### Implementation for User Story 5 arrows
 
-- [ ] T098 [US5] Add `arrow_style` and `arrow_reversed` to the connector schemas in `backend/src/models/schemas.py`, `backend/src/api/connectors.py` and `backend/src/services/architecture_service.py`, and carry them through `backend/src/services/architecture_transfer.py` and `architecture_import.py` (makes T096, T097 pass)
-- [ ] T099 [US5] Regenerate API types; add an arrow style picker (2 clicks or fewer) and a Reverse action to `frontend/src/components/DataConnectorPanel.tsx`, and draw the markers with React Flow's built-in arrow markers in `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx` (SC-007)
-- [ ] T100 [P] [US5] Add `frontend/tests/unit/connectorArrows.test.tsx`: style to marker mapping, reverse swaps marker ends only
+- [X] T098 [US5] Add `arrow_style` and `arrow_reversed` to the connector schemas in `backend/src/models/schemas.py`, `backend/src/api/connectors.py` and `backend/src/services/architecture_service.py`, and carry them through `backend/src/services/architecture_transfer.py` and `architecture_import.py` (makes T096, T097 pass)
+- [X] T099 [US5] Regenerate API types; add an arrow style picker (2 clicks or fewer) and a Reverse action to `frontend/src/components/DataConnectorPanel.tsx`, and draw the markers with React Flow's built-in arrow markers in `frontend/src/components/workspace/ArchitectureDiagramPanel.tsx` (SC-007)
+- [X] T100 [P] [US5] Add `frontend/tests/unit/connectorArrows.test.tsx`: style to marker mapping, reverse swaps marker ends only
 
 **Checkpoint**: Arrow styles ship even if branching connectors are cut.
 
@@ -258,6 +258,8 @@
 **Independent Test**: Make a connector one-to-many, add a third box, calculate (transfer priced once), delete a branch box (connector becomes one-way), reload, export and import (quickstart F2–F4).
 
 **Note**: This phase can move to a later release on its own (spec Assumptions). If cut, leave `connector_branches` in migration 0006 unused and hide `one_to_many` / `many_to_one` in the UI.
+
+**Status: deferred to a later release** (user decision, 2026-11-05). T101 to T108 stay open. `connector_branches` is unused, and the editor offers only None, One-way and Two-way. The API still accepts `one_to_many` and `many_to_one` (drawn like one-way on a two-box connector).
 
 ### Tests for User Story 5 branches (write first, confirm they fail)
 
@@ -279,10 +281,10 @@
 
 ## Phase 10: Polish & Cross-Cutting Concerns
 
-- [ ] T109 [P] Update the top-level `README.md` and `backend/README` sections (if present) for three providers, the Trends page, `SNAPSHOT_STALE_DAYS` and `PRICING_HISTORY_DIR`
-- [ ] T110 [P] Write release notes for v0.0.2 in `specs/019-gcp-azure-providers-trends/release-notes.md`: AWS tier fix and its effect on existing totals, GCP and Azure disabled in production until pipeline 004 Part C (C2 onward) is done (research R16), Trends counts, preferences migration
-- [ ] T111 Run the full quickstart (sections A to F) and fix anything that fails
-- [ ] T112 Run `uv run ruff check .` and `uv run ruff format --check .` in `backend/`, and `npm run lint` (if configured), `npm run build`, `npm test` and `npm run check-api-types` in `frontend/`
+- [X] T109 [P] Update the top-level `README.md` and `backend/README` sections (if present) for three providers, the Trends page, `SNAPSHOT_STALE_DAYS` and `PRICING_HISTORY_DIR`
+- [X] T110 [P] Write release notes for v0.0.2 in `specs/019-gcp-azure-providers-trends/release-notes.md`: AWS tier fix and its effect on existing totals, GCP and Azure disabled in production until pipeline 004 Part C (C2 onward) is done (research R16), Trends counts, preferences migration
+- [X] T111 Run the full quickstart (sections A to F) and fix anything that fails
+- [X] T112 Run `uv run ruff check .` and `uv run ruff format --check .` in `backend/`, and `npm run lint` (if configured), `npm run build`, `npm test` and `npm run check-api-types` in `frontend/`
 
 ---
 
@@ -398,3 +400,28 @@ T068 test_trends.py (contract)
   - **History builds run only in the app's lifespan** (startup backfill and after each switch), never in tests. The new setting `PRICE_HISTORY_ENABLED` (default true) turns them off. The tests point `PRICING_HISTORY_DIR` at a temporary folder (`tests/conftest.py`).
   - **Empty stored chart providers mean the defaults** (every active provider, all regions). Reset stores `{providers: [], category: "all"}`.
   - **Existing test changed**: `tests/unit/test_settings.py::test_pricing_history_dir_defaults_to_persistent_user_folder` clears `PRICING_HISTORY_DIR`, which the conftest now sets for isolation.
+- **US3 and US4 rest (T083 to T095), 2026-11-04**:
+  - **The movers period is calendar weeks back from the newest snapshot.** The window holds every week pair that ends after that start, so a pair spanning a gap at the edge counts. `weeks_available` is the weeks the window covers, at most the period.
+  - **A mover's end price is its price in the newest price list kept with the history**, not only its last recorded change. An item that is gone, or has no valid price at the end, is dropped. That covers "removed before the end" without a removed-items file.
+  - **Ties** are ranked by the size of the price change, then service name, SKU description and region.
+  - **`MoversOut` gains `status`, `reason` and `period_weeks`** beyond contracts §8, with the same statuses as a chart series, so the page can say why the lists are empty (building, not enough history, provider unavailable). `from_snapshot` and `to_snapshot` are null when there is no history.
+  - **`period_weeks` is checked in the handler**, because a `Literal[1, 4, 13, 52]` query parameter doesn't accept the query string `"13"`.
+  - **Prices are shown without trailing zeros** (`0.1`, not `0.10`), using the same decimal formatting as the rest of the comparable prices.
+  - **Movers Reset clears the section** (`trends.movers: null`), and the page then shows the defaults (first available provider, all categories, all regions, 52 weeks).
+  - **Column widths and collapsed columns map to `col1` to `col4` in column order**: provider, collections, service, pricing (no collapsed state for pricing).
+  - **The one-time move runs on the first successful load where `migrated_from_browser` is false.** It sends the browser's old values with the account's own values winning per column, and sets the flag even when there is nothing to move. Until then the old browser values fill the gaps under the account's. The old browser keys are left in place, never written again.
+  - **A stored last provider that is no longer active falls back to AWS and is cleared.** Opening an architecture still selects its provider without saving it; only picking a provider in column 1 saves it.
+  - **Existing tests changed**: `preferences.test.ts` "applies a section patch at once…" now starts with `migrated_from_browser: true`, because a false flag now also sends the move. `columnWidths.test.ts` and `columnCollapse.test.ts` were rewritten for the account-backed behavior (T092). The `ChartSelectors.test.tsx` TrendsPage Reset test now finds the Reset button inside the charts section, as the page has two.
+  - **T095 ran at API level** with two sign-in sessions for the same user, not in two real browsers; the page side is covered by unit tests (validation checklist, section E).
+- **US5 arrows (T096 to T100), 2026-11-05**:
+  - **`none` is a plain line** (user decision, 2026-11-05). FR-026 calls `none` "today's appearance", but since 010 every connector has had an arrowhead at its `to` end. To keep existing diagrams as they were, **migration 0008** (`6c3e9a1b5f08`) sets connectors still at `none` (and not reversed) to `one_way`. New connectors start as plain lines. Downgrade leaves the styles as they are.
+  - **An export file without arrow fields imports as `one_way`**, for the same reason: it comes from before 019, when every connector had an arrowhead. Every new export writes `arrow_style` explicitly, so `none` round-trips.
+  - **`PATCH /connectors/{id}` is new** (contracts §6 named it as changed). It takes only `arrow_style` and `arrow_reversed`, with unknown fields rejected. `arrow_reversed` must be a real boolean.
+  - **The picker is in the connector section of `CollectionsPanel`**, not `DataConnectorPanel.tsx`, which nothing renders. One click once the connector is selected (SC-007). Reverse is disabled for `none` and `two_way`. The change applies to the cached architecture at once and is restored from the server on failure.
+  - **Reversed arrows are a start marker on the same `from` → `to` path**, so routing, bends and side handles are unchanged. Branching styles (`one_to_many`, `many_to_one`) aren't offered in the picker until branches exist (phase 9).
+  - **Existing tests changed**: none. `test_migration_0008.py` is new.
+- **Polish (T109 to T112), 2026-11-05**:
+  - **Phase 9 (branching connectors, T101 to T108) is deferred** to a later release (user decision). Those tasks stay open.
+  - **The production stack now keeps the Trends history on a volume.** Without it, `PRICING_HISTORY_DIR` defaulted to the container's home folder, so every container restart would rebuild the whole history from S3. `compose.yaml` sets `PRICING_HISTORY_DIR=/var/lib/app/pricing-history` on a new `pricing-history` volume, and the Dockerfile creates that folder owned by `app`, like the cache folder. It is rebuilt on a new instance. Not run in Docker here (no Docker on this machine); the compose file was parsed and checked.
+  - **`docs/configuration.md` gains the three new settings and a "Trends price history" section**, besides the README updates T109 named.
+  - **T112, `ruff format --check` fails on 151 backend files**, 71 of them never touched by this feature: the backend has never been formatted with `ruff format`, and CI doesn't run it (CI runs `ruff check src/ scripts/ tests/`, which passes). Left as it is: reformatting the whole backend is a separate change. Every other T112 check passes: ruff check, lint (0 errors, the same 7 warnings), build, 351 frontend tests, 897 backend tests, and the API types (regenerated from the app's schema, since `check-api-types` needs a running server).

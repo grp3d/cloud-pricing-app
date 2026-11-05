@@ -82,6 +82,8 @@ class ConnectorSpec:
     from_ref: str
     to_ref: str
     sku_selection: SKUSelectionSpec | None = None
+    arrow_style: str = "none"
+    arrow_reversed: bool = False
 
 
 def build_architecture(
@@ -137,6 +139,8 @@ def build_architecture(
                 architecture=architecture,
                 from_collection_id=ref_to_id[spec.from_ref],
                 to_collection_id=ref_to_id[spec.to_ref],
+                arrow_style=spec.arrow_style,
+                arrow_reversed=spec.arrow_reversed,
             )
         )
         if spec.sku_selection is not None:
@@ -197,6 +201,8 @@ def specs_from_definition(
         ConnectorSpec(
             from_ref=c.from_ref,
             to_ref=c.to_ref,
+            arrow_style=c.arrow_style,
+            arrow_reversed=c.arrow_reversed,
             sku_selection=_selection(c.sku_selection) if c.sku_selection is not None else None,
         )
         for c in definition.connectors
@@ -258,6 +264,8 @@ def serialize_architecture(architecture: Architecture) -> ArchitectureDefinition
         ConnectorDefinition(
             from_ref=refs[c.from_collection_id],
             to_ref=refs[c.to_collection_id],
+            arrow_style=c.arrow_style or "none",
+            arrow_reversed=bool(c.arrow_reversed),
             sku_selection=(
                 _selection_definition(c.sku_selection) if c.sku_selection is not None else None
             ),

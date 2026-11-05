@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -133,6 +133,7 @@ vi.mock("../../src/api/client", async (original) => {
         category: "storage",
         series: [],
       })),
+      getTrendMovers: vi.fn(async () => null),
     },
   };
 });
@@ -149,7 +150,9 @@ describe("TrendsPage Reset (019, FR-020)", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: /Reset/ }));
+    const charts = (await screen.findByRole("heading", { name: "SKUs changed per week" }))
+      .parentElement!.parentElement!;
+    fireEvent.click(await within(charts).findByRole("button", { name: /Reset/ }));
     await waitFor(() => expect(patchSection).toHaveBeenCalled());
     expect(patchSection.mock.calls.map((c) => c[0])).toEqual(["trends.charts"]);
     expect(patchSection).toHaveBeenCalledWith("trends.charts", CHARTS_DEFAULTS);

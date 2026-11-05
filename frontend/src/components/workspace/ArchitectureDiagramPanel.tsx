@@ -7,7 +7,6 @@ import {
   Controls,
   EdgeLabelRenderer,
   Handle,
-  MarkerType,
   NodeResizeControl,
   Panel,
   Position,
@@ -34,6 +33,7 @@ import { createPortal } from "react-dom";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
 
 import { type Collection, type DataConnector } from "../../api/client";
+import { connectorMarkers } from "../../lib/connectorArrows";
 import { useMeasuredHeight } from "../../hooks/useMeasuredHeight";
 import { decideNestingChange } from "../../pages/dropTargetDetection";
 import { updateOrderedSelection } from "../../pages/connectorSelection";
@@ -829,6 +829,7 @@ function OffsetEdge({
   targetY,
   sourcePosition,
   targetPosition,
+  markerStart,
   markerEnd,
   style,
   label,
@@ -982,6 +983,7 @@ function OffsetEdge({
         <BaseEdge
           id={id}
           path={path}
+          markerStart={markerStart}
           markerEnd={markerEnd}
           style={style}
           label={label}
@@ -1020,6 +1022,7 @@ function OffsetEdge({
         <BaseEdge
           id={id}
           path={path}
+          markerStart={markerStart}
           markerEnd={markerEnd}
           style={style}
           label={label}
@@ -1044,6 +1047,7 @@ function OffsetEdge({
       <BaseEdge
         id={id}
         path={defaultPath}
+        markerStart={markerStart}
         markerEnd={markerEnd}
         style={style}
         label={label}
@@ -1683,11 +1687,9 @@ export function ArchitectureDiagramPanel({
         // inline style object, which `BaseEdge` does support) instead of a styled element.
         label: conn.sku_selection ? dataTransferLabel ?? conn.sku_selection.sku : undefined,
         labelStyle: { fontSize: "var(--text-2xs)", textDecoration: isSelected ? "underline" : "none" },
-        // 010-multi-region-support, spec FR-009: a directional arrow pointing from "from" to
-        // "to" — `OffsetEdge` already forwards `markerEnd` to `<BaseEdge>` (it just never had a
-        // value before this). `width`/`height` 3x React Flow's own default (12.5) per live user
-        // request — the default read as too small against this diagram's box sizes.
-        markerEnd: { type: MarkerType.ArrowClosed, width: 37.5, height: 37.5 },
+        // 019 (FR-026, FR-028): the connector's arrow style and direction (010 drew every
+        // connector with an arrowhead at "to"; migration 0008 keeps that look as `one_way`).
+        ...connectorMarkers(conn.arrow_style, conn.arrow_reversed),
       };
     });
     const offsets = edgeOffsetIndex(rawEdges);

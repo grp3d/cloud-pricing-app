@@ -45,6 +45,8 @@ export type TrendsChartsPreferences = components["schemas"]["TrendsChartsPrefere
 export type TrendsMoversPreferences = components["schemas"]["TrendsMoversPreferences"];
 export type TrendSeriesResult = components["schemas"]["TrendSeriesResult"];
 export type TrendSeries = components["schemas"]["TrendSeriesOut"];
+export type Movers = components["schemas"]["MoversOut"];
+export type Mover = components["schemas"]["MoverOut"];
 export type SkusChangedPoint = components["schemas"]["SkusChangedPointOut"];
 export type TrendsCategory = TrendSeriesResult["category"];
 
@@ -156,6 +158,22 @@ export const api = {
       ["weeks", String(weeks)],
     ]);
     return request<TrendSeriesResult>(`/trends/series?${qs.toString()}`);
+  },
+  /** 019 (contracts §8): the 3 largest % increases and decreases for one provider, category,
+   * regions (none means all) and period. */
+  getTrendMovers: (params: {
+    provider: ProviderCode;
+    category: TrendsCategory;
+    regions: string[];
+    period_weeks: number;
+  }) => {
+    const qs = new URLSearchParams({
+      provider: params.provider,
+      category: params.category,
+      regions: params.regions.join(","),
+      period_weeks: String(params.period_weeks),
+    });
+    return request<Movers>(`/trends/movers?${qs.toString()}`);
   },
   /** 019 (contracts §7): the caller's own preferences, or the empty defaults. */
   getPreferences: () => request<PreferencesOut>("/me/preferences"),
@@ -348,6 +366,15 @@ export const api = {
         from_collection_id: fromCollectionId,
         to_collection_id: toCollectionId,
       }),
+    }),
+  /** 019 (contracts §6): change how a connector is drawn; only the fields sent change. */
+  updateConnector: (
+    id: string,
+    body: { arrow_style?: DataConnector["arrow_style"]; arrow_reversed?: boolean },
+  ) =>
+    request<DataConnector>(`/connectors/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
   deleteConnector: (id: string) => request<void>(`/connectors/${id}`, { method: "DELETE" }),
   attachConnectorSku: (

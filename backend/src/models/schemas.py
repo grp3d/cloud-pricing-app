@@ -11,7 +11,14 @@ from decimal import Decimal
 from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StringConstraints,
+    field_validator,
+)
 
 
 class ORMBase(BaseModel):
@@ -264,15 +271,33 @@ class CollectionUpdate(BaseModel):
 # --- Data Connector ------------------------------------------------------------------------
 
 
+# 019 (FR-026, data-model §5): how a connector's line is drawn. Visual only: pricing always
+# uses `from` → `to`.
+ArrowStyle = Literal["none", "one_way", "two_way", "one_to_many", "many_to_one"]
+
+
 class DataConnectorCreate(BaseModel):
     from_collection_id: uuid.UUID
     to_collection_id: uuid.UUID
+    arrow_style: ArrowStyle = "none"
+    arrow_reversed: StrictBool = False
+
+
+class DataConnectorUpdate(BaseModel):
+    """019 (contracts §6): `PATCH /connectors/{id}`; only the fields sent change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    arrow_style: ArrowStyle | None = None
+    arrow_reversed: StrictBool | None = None
 
 
 class DataConnectorOut(ORMBase):
     id: uuid.UUID
     from_collection_id: uuid.UUID
     to_collection_id: uuid.UUID
+    arrow_style: ArrowStyle = "none"
+    arrow_reversed: bool = False
     sku_selection: SKUSelectionOut | None = None
 
 
@@ -518,6 +543,10 @@ class ConnectorDefinition(BaseModel):
 
     from_ref: str = Field(min_length=1)
     to_ref: str = Field(min_length=1)
+    # 019 (research R15): optional. A file from before 019 has none, and every connector was
+    # drawn with an arrowhead then, so it imports as `one_way` (as migration 0008 does).
+    arrow_style: ArrowStyle = "one_way"
+    arrow_reversed: bool = False
     sku_selection: SKUSelectionDefinition | None = None
 
 
@@ -775,10 +804,13 @@ class SkusChangedPointOut(BaseModel):
     gap: bool
 
 
+TrendStatus = Literal["ok", "building", "not_enough_history", "provider_unavailable"]
+
+
 class TrendSeriesOut(BaseModel):
     provider: ProviderCode
     regions: list[str]
-    status: Literal["ok", "building", "not_enough_history", "provider_unavailable"]
+    status: TrendStatus
     reason: str | None = None
     weeks_built: int
     weeks_total: int
@@ -789,6 +821,37 @@ class TrendSeriesResult(BaseModel):
     metric: Literal["skus_changed"] = "skus_changed"
     category: TrendsCategory
     series: list[TrendSeriesOut]
+
+
+class MoverOut(BaseModel):
+    service_name: str
+    description: str
+    region: str
+    unit: str
+    # Decimal strings exactly as published (FR-019).
+    start_price: str
+    end_price: str
+    change_pct: float  # rounded to 2 decimal places
+    tier_note: str | None = None
+
+
+class MoversOut(BaseModel):
+    """019 (contracts §8): the biggest movers for one provider, category, regions and period.
+    `status` and `reason` (added to the contract) say why the lists are empty when there is no
+    usable history: the same values as a chart series."""
+
+    provider: ProviderCode
+    category: TrendsCategory
+    regions: list[str]
+    period_weeks: Literal[1, 4, 13, 52]
+    status: TrendStatus
+    reason: str | None = None
+    from_snapshot: str | None
+    to_snapshot: str | None
+    weeks_available: int
+    increases: list[MoverOut]
+    decreases: list[MoverOut]
+    message: str | None = None
 
 
 class HistoryOut(BaseModel):

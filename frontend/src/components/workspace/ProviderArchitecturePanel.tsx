@@ -1,8 +1,7 @@
 import { PanelLeftClose, PanelLeftOpen, Plus, Cloud, Users, Download } from "lucide-react";
-import { useState } from "react";
 
 import type { ArchitectureSummary, Provider } from "../../api/client";
-import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
+import { useColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
 import { providerHint } from "../../lib/providerPricing";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
@@ -79,14 +78,11 @@ export function ProviderArchitecturePanel({
   onToggleArchitecturePublic,
   onOpenImportDialog,
 }: ProviderArchitecturePanelProps) {
-  const [expanded, setExpanded] = useState(() => !readColumnCollapsed().provider);
+  // 019 (FR-023): saved to the user's account, so it follows them to any device.
+  const expanded = !useColumnCollapsed().provider;
 
   function toggleExpanded() {
-    setExpanded((v) => {
-      const next = !v;
-      writeColumnCollapsed("provider", !next);
-      return next;
-    });
+    writeColumnCollapsed("provider", expanded);
   }
 
   return (
@@ -316,7 +312,7 @@ export function ProviderArchitecturePanel({
                 variant="outline"
                 size="icon-sm"
                 aria-label="New Architecture"
-                onClick={() => setExpanded(true)}
+                onClick={() => writeColumnCollapsed("provider", false)}
               >
                 <Plus />
               </Button>

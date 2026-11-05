@@ -1,9 +1,8 @@
 import { PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
-import { useState } from "react";
 
 import type { ProviderCode, SKUSelection } from "../../api/client";
 import type { ServiceConfigSelection } from "../../lib/serviceConfigSelection";
-import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
+import { useColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { ErrorMessage } from "../ErrorMessage";
@@ -48,16 +47,12 @@ export function ServiceConfigPanel({
   width,
   provider = "aws",
 }: ServiceConfigPanelProps) {
-  // 009-ui-fixes-next-iteration follow-up: collapsed/expanded state now survives a reload —
-  // see `CollectionsPanel.tsx`'s identical comment for the mechanism.
-  const [expanded, setExpanded] = useState(() => !readColumnCollapsed().service);
+  // 009 follow-up: collapsed/expanded state survives a reload; 019 (FR-023): it is saved to
+  // the user's account, so it follows them to any device.
+  const expanded = !useColumnCollapsed().service;
 
   function toggleExpanded() {
-    setExpanded((v) => {
-      const next = !v;
-      writeColumnCollapsed("service", !next);
-      return next;
-    });
+    writeColumnCollapsed("service", expanded);
   }
 
   // A stored `skuSelectionId` whose SKUSelection no longer exists (e.g. removed from another

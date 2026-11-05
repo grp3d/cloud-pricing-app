@@ -4,9 +4,11 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
+  type ArchitectureDetail,
   type CalculationDuration,
   type CatalogSKU,
   type CollectionType,
+  type DataConnector,
   type ProviderCode,
   api,
 } from "../api/client";
@@ -34,8 +36,10 @@ import {
   DEFAULT_WIDTHS,
   MIN_WIDTH,
   readColumnWidths,
+  useColumnWidths,
   writeColumnWidth,
 } from "../lib/columnWidths";
+import { usePreferences } from "../lib/preferences";
 import {
   decideBaselineUpdate,
   pricedContentsEqual,
@@ -158,29 +162,48 @@ function WorkspacePageInner() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // --- Column widths (US4, FR-012/013): read once on mount, one localStorage write per
-  // resize (T020 — the read/write half of columnWidths.ts). ---
-  const [columnWidths, setColumnWidths] = useState<Record<ColumnId, number>>(() => ({
-    ...DEFAULT_WIDTHS,
-    ...readColumnWidths(),
-  }));
+  // --- Column widths (US4, FR-012/013): saved to the user's account since 019 (FR-023), each
+  // resize applied at once and saved in the background (columnWidths.ts). ---
+  const storedWidths = useColumnWidths();
+  const columnWidths: Record<ColumnId, number> = { ...DEFAULT_WIDTHS, ...storedWidths };
   const resizeColumn = useCallback((id: ColumnId, deltaX: number) => {
-    setColumnWidths((prev) => {
-      const next = Math.max(MIN_WIDTH, prev[id] + deltaX);
-      if (next === prev[id]) return prev;
-      writeColumnWidth(id, next);
-      return { ...prev, [id]: next };
-    });
+    const current = readColumnWidths()[id] ?? DEFAULT_WIDTHS[id];
+    const next = Math.max(MIN_WIDTH, current + deltaX);
+    if (next !== current) writeColumnWidth(id, next);
   }, []);
 
   // --- Column 1: providers + Architectures ---
-  const [selectedProvider, setSelectedProvider] = useState("aws");
+  const providers = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
+  // 019 (FR-023): the last provider picked is saved to the account and restored on any
+  // device; a stored provider that is no longer active falls back to AWS and is cleared.
+  const [prefs, patchSection, prefsLoaded] = usePreferences();
+  const storedProvider = prefs.workspace?.last_provider ?? null;
+  const storedActive =
+    storedProvider !== null &&
+    (!providers.data || providers.data.some((p) => p.code === storedProvider && p.active));
+  const [chosenProvider, setSelectedProvider] = useState<string | null>(null);
+  const selectedProvider = chosenProvider ?? (storedActive ? storedProvider : "aws");
+  useEffect(() => {
+    if (prefsLoaded && providers.isSuccess && storedProvider !== null && !storedActive) {
+      patchSection("workspace", { ...prefs.workspace, last_provider: null });
+    }
+  }, [
+    prefsLoaded,
+    providers.isSuccess,
+    storedProvider,
+    storedActive,
+    prefs.workspace,
+    patchSection,
+  ]);
+  function selectProvider(code: string) {
+    setSelectedProvider(code);
+    patchSection("workspace", { ...prefs.workspace, last_provider: asProviderCode(code) });
+  }
   const [newArchitectureName, setNewArchitectureName] = useState("");
   const [pendingDeleteArchitectureId, setPendingDeleteArchitectureId] = useState<string | null>(
     null,
   );
 
-  const providers = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
   const architectures = useQuery({
     queryKey: ["architectures", selectedProvider],
     queryFn: () => api.listArchitectures(selectedProvider),
@@ -487,6 +510,31 @@ function WorkspacePageInner() {
     },
   });
 
+  // 019 (FR-026, FR-028): arrow style and direction, applied to the cached architecture at
+  // once so the diagram redraws without waiting; a failure restores it from the server.
+  const updateConnectorArrow = useMutation({
+    mutationFn: ({
+      id,
+      change,
+    }: {
+      id: string;
+      change: { arrow_style?: DataConnector["arrow_style"]; arrow_reversed?: boolean };
+    }) => api.updateConnector(id, change),
+    onMutate: ({ id, change }) => {
+      queryClient.setQueryData<ArchitectureDetail>(["architecture", architectureId], (old) =>
+        old
+          ? {
+              ...old,
+              connectors: old.connectors.map((c) => (c.id === id ? { ...c, ...change } : c)),
+            }
+          : old,
+      );
+    },
+    onSuccess: () => setCollectionActionError(null),
+    onError: (err) => setCollectionActionError(errorMessageOf(err)),
+    onSettled: () => invalidateArchitecture(),
+  });
+
   const deleteConnector = useMutation({
     mutationFn: (id: string) => api.deleteConnector(id),
     onSuccess: () => {
@@ -766,6 +814,8 @@ function WorkspacePageInner() {
           attachedSkuSummary: selectedConnector.sku_selection
             ? `${selectedConnector.sku_selection.service_code} / ${selectedConnector.sku_selection.sku}`
             : null,
+          arrowStyle: selectedConnector.arrow_style,
+          arrowReversed: selectedConnector.arrow_reversed,
         }
       : null;
 
@@ -824,7 +874,7 @@ function WorkspacePageInner() {
       <ProviderArchitecturePanel
         providers={providers.data ?? []}
         selectedProvider={selectedProvider}
-        onSelectProvider={setSelectedProvider}
+        onSelectProvider={selectProvider}
         architectures={architectures.data ?? []}
         architecturesLoading={architectures.isLoading}
         architecturesError={architectures.isError ? errorMessageOf(architectures.error) : null}
@@ -892,6 +942,7 @@ function WorkspacePageInner() {
             selection={collectionsPanelSelection}
             onDeleteCollection={setPendingDeleteCollectionId}
             onDeleteConnector={setPendingDeleteConnectorId}
+            onUpdateConnectorArrow={(id, change) => updateConnectorArrow.mutate({ id, change })}
             onPickSku={pickSkuFromSearch}
             searchRegion={searchRegion}
             provider={pricingProvider}

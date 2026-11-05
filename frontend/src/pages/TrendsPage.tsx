@@ -4,21 +4,25 @@ import { useEffect, useMemo } from "react";
 import { type ProviderCode, type Region, api } from "../api/client";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { ChartSelectors } from "../components/trends/ChartSelectors";
+import { MoversPanel } from "../components/trends/MoversPanel";
 import { TrendsChartPanel } from "../components/trends/TrendsChartPanel";
 import { usePreferences } from "../lib/preferences";
 import {
   CHARTS_DEFAULTS,
   type ChartSelection,
+  type MoversSelection,
+  moversNeedCleaning,
   needsCleaning,
   resolveChartSelection,
+  resolveMoversSelection,
   selectParams,
 } from "../lib/trends";
 
 /**
  * The Trends page (019, FR-010): the charts section on the left (SKUs Changed per provider,
- * US2) and the biggest movers on the right (US3). Selections are saved to the user's
- * preferences (`trends.charts`), restored on any device, and cleaned of providers or regions
- * no longer available.
+ * US2) and the biggest movers on the right (US3). Each section's selections are saved to the
+ * user's preferences (`trends.charts`, `trends.movers`), restored on any device, and cleaned of
+ * providers or regions no longer available. Each Reset touches only its own section (FR-020).
  */
 export function TrendsPage() {
   const providers = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
@@ -57,6 +61,19 @@ export function TrendsPage() {
     }
   }, [prefsLoaded, providers.isSuccess, regionsReady, stored, selection, patchSection]);
 
+  const storedMovers = prefs.trends?.movers;
+  const moversSelection = resolveMoversSelection(storedMovers, providers.data ?? [], regionCodes);
+  useEffect(() => {
+    if (
+      prefsLoaded &&
+      providers.isSuccess &&
+      regionsReady &&
+      moversNeedCleaning(storedMovers, moversSelection)
+    ) {
+      patchSection("trends.movers", moversSelection);
+    }
+  }, [prefsLoaded, providers.isSuccess, regionsReady, storedMovers, moversSelection, patchSection]);
+
   const select = selectParams(selection);
   const series = useQuery({
     queryKey: ["trends", "series", select, selection.category],
@@ -69,6 +86,10 @@ export function TrendsPage() {
 
   function change(next: ChartSelection) {
     patchSection("trends.charts", next);
+  }
+
+  function changeMovers(next: MoversSelection) {
+    patchSection("trends.movers", next);
   }
 
   return (
@@ -110,7 +131,22 @@ export function TrendsPage() {
         <h2 id="trends-movers" className="text-xs font-semibold">
           Biggest movers
         </h2>
-        <p className="text-2xs text-muted-foreground">Coming in the next step of this feature.</p>
+        <p className="text-2xs text-muted-foreground">
+          The 3 largest on-demand list price increases and decreases, as a % of the price at the
+          start of the period. Each region is a separate entry.
+        </p>
+        {providers.isSuccess && !moversSelection && (
+          <p className="text-2xs text-muted-foreground">No provider has pricing data.</p>
+        )}
+        {moversSelection && (
+          <MoversPanel
+            providers={active}
+            regionsByProvider={regionsByProvider}
+            selection={moversSelection}
+            onChange={changeMovers}
+            onReset={() => patchSection("trends.movers", null)}
+          />
+        )}
       </section>
     </div>
   );

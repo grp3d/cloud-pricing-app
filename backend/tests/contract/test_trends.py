@@ -1,4 +1,4 @@
-"""GET /trends/series (019, T068, contracts §8)."""
+"""GET /trends/series and GET /trends/movers (019, T068, T084, contracts §8)."""
 
 from __future__ import annotations
 
@@ -112,3 +112,81 @@ async def test_bad_queries_are_422(client, auth_headers, params):
 @pytest.mark.asyncio
 async def test_requires_an_identity(client):
     assert (await client.get(URL, params={"select": "aws:"})).status_code == 401
+
+
+# --- GET /trends/movers (T084) --------------------------------------------------------------
+
+MOVERS = "/api/v1/trends/movers"
+
+
+async def _movers(client, headers, **params):
+    return await client.get(MOVERS, params=params, headers=headers)
+
+
+@pytest.mark.asyncio
+async def test_movers_response_shape(client, auth_headers, aws_history):
+    resp = await _movers(client, auth_headers, provider="aws")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert {k: body[k] for k in ("provider", "category", "regions", "period_weeks", "status",
+                                 "from_snapshot", "to_snapshot", "weeks_available",
+                                 "message")} == {
+        "provider": "aws", "category": "all", "regions": [], "period_weeks": 52, "status": "ok",
+        "from_snapshot": "2026-09-07 r1", "to_snapshot": "2026-10-12 r1", "weeks_available": 5,
+        "message": None,
+    }
+    rise = body["increases"][0]
+    # Prices are decimal strings as published; % change to 2 decimal places.
+    assert {k: rise[k] for k in ("region", "start_price", "end_price", "change_pct",
+                                 "tier_note")} == {
+        "region": "us-east-1", "start_price": "0.1", "end_price": "0.11", "change_pct": 10.0,
+        "tier_note": None,
+    }
+    assert rise["service_name"] and rise["description"] and rise["unit"]
+    assert [m["change_pct"] for m in body["increases"]] == [10.0, 8.33]
+    assert [m["change_pct"] for m in body["decreases"]] == [-10.0, -5.56]
+    assert body["decreases"][1]["tier_note"] == "Compared on the first non-zero tier"
+
+
+@pytest.mark.asyncio
+async def test_movers_filters(client, auth_headers, aws_history):
+    body = (await _movers(client, auth_headers, provider="aws", regions="us-west-2",
+                          period_weeks=13)).json()
+    assert body["regions"] == ["us-west-2"]
+    assert [m["region"] for m in body["increases"]] == ["us-west-2"]
+    week = (await _movers(client, auth_headers, provider="aws", period_weeks=1)).json()
+    assert (week["from_snapshot"], week["weeks_available"]) == ("2026-10-05 r1", 1)
+    # The TIER SKU is AWSDataTransfer, seeded as networking.
+    net = (await _movers(client, auth_headers, provider="aws", category="networking")).json()
+    assert [m["change_pct"] for m in net["decreases"]] == [-5.56] and net["increases"] == []
+
+
+@pytest.mark.asyncio
+async def test_movers_message_when_nothing_changed(client, auth_headers, aws_history):
+    body = (await _movers(client, auth_headers, provider="aws", category="database")).json()
+    assert (body["increases"], body["decreases"]) == ([], [])
+    assert body["message"] == "No price changes in this period"
+
+
+@pytest.mark.asyncio
+async def test_movers_without_history(client, auth_headers, history_dir):
+    history_store("gcp").update_state(backfill="done", weeks_built=0, weeks_total=0)
+    body = (await _movers(client, auth_headers, provider="gcp")).json()
+    assert (body["status"], body["weeks_available"], body["from_snapshot"]) == (
+        "not_enough_history", 0, None)
+    assert body["message"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "params",
+    [{}, {"provider": "oracle"}, {"provider": "aws", "period_weeks": 2},
+     {"provider": "aws", "period_weeks": 0}, {"provider": "aws", "category": "food"}],
+)
+async def test_bad_movers_queries_are_422(client, auth_headers, params):
+    assert (await _movers(client, auth_headers, **params)).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_movers_requires_an_identity(client):
+    assert (await client.get(MOVERS, params={"provider": "aws"})).status_code == 401

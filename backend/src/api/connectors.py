@@ -1,4 +1,4 @@
-"""Data Connector endpoints (spec FR-008, FR-009, FR-015)."""
+"""Data Connector endpoints (spec FR-008, FR-009, FR-015; 019 arrows FR-026, FR-028 to FR-030)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from src.models.orm import DataConnector, SKUSelection
 from src.models.schemas import (
     DataConnectorCreate,
     DataConnectorOut,
+    DataConnectorUpdate,
     SKUSelectionCreate,
     SKUSelectionOut,
 )
@@ -53,8 +54,26 @@ async def create_connector(
         architecture_id=architecture.id,
         from_collection_id=body.from_collection_id,
         to_collection_id=body.to_collection_id,
+        arrow_style=body.arrow_style,
+        arrow_reversed=body.arrow_reversed,
     )
     session.add(connector)
+    await session.commit()
+    await session.refresh(connector, attribute_names=["sku_selection"])
+    return connector
+
+
+@router.patch("/connectors/{connector_id}", response_model=DataConnectorOut)
+async def update_connector(
+    connector_id: uuid.UUID, body: DataConnectorUpdate, session: DbSession, user: CurrentUser
+) -> DataConnector:
+    """Change how the connector is drawn (019, contracts §6). Visual only: `from` and `to`,
+    and so the priced direction, never change (FR-030)."""
+    connector = await get_owned_connector(connector_id, session, user)
+    if body.arrow_style is not None:
+        connector.arrow_style = body.arrow_style
+    if body.arrow_reversed is not None:
+        connector.arrow_reversed = body.arrow_reversed
     await session.commit()
     await session.refresh(connector, attribute_names=["sku_selection"])
     return connector
