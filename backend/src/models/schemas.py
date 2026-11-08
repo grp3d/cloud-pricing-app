@@ -18,7 +18,10 @@ from pydantic import (
     StrictBool,
     StringConstraints,
     field_validator,
+    model_validator,
 )
+
+from src.pricing_data.providers.base import OPTION_PROVIDERS
 
 
 class ORMBase(BaseModel):
@@ -233,6 +236,11 @@ class SKUSelectionOut(ORMBase):
     # Empty / null when the provider doesn't report them (AWS) or the item isn't found.
     price_types: list[PricingTerm] = []
     kind: CatalogKind | None = None
+    # 020 (contracts/api.md §2, research R7): the provider's display name of the selection's
+    # service (e.g. "Compute Engine"), resolved read-only at response time like
+    # `product_family` and never stored — the GCP / Azure fallback tile shows it. `None` when
+    # the item isn't in the active snapshot, and always for AWS, whose icons never need it.
+    service_name: str | None = None
 
 
 # --- Collection --------------------------------------------------------------------------
@@ -483,6 +491,11 @@ class SnapshotSelection(BaseModel):
     pricing_term: PricingTerm
     purchase_option: PurchaseOption
     usage_quantity: Decimal = Field(gt=0)
+    # 020 (data-model §2): the region the selection was priced in (its box's, or a connector's
+    # "from" box's). Missing or null → `AWS_PRICING_REGION`, the v0.0.2 behaviour.
+    region: str | None = None
+    # 020: the selection's provider-specific options, validated against the request's provider.
+    provider_options: ProviderOptions | None = None
 
 
 class CalculateSnapshotRequest(BaseModel):
@@ -495,6 +508,21 @@ class CalculateSnapshotRequest(BaseModel):
     # raised explicitly in the endpoint (src/api/calculate.py), matching the
     # `EmptyCatalogFilterError` convention already used for catalog search.
     selections: list[SnapshotSelection]
+    # 020 (contracts/api.md §1): the architecture's provider. Missing → `aws`, as elsewhere.
+    provider: ProviderCode | None = None
+
+    @model_validator(mode="after")
+    def _options_match_provider(self) -> CalculateSnapshotRequest:
+        """Each selection's options must belong to the request's provider (422 otherwise), the
+        same rule selection create and update apply."""
+        provider = self.provider or "aws"
+        for selection in self.selections:
+            options = selection.provider_options
+            if options is not None and OPTION_PROVIDERS.get(options.kind) != provider:
+                raise ValueError(
+                    f"{options.kind!r} options don't apply to a {provider} architecture"
+                )
+        return self
 
 
 # --- Architecture export/import file (014-architecture-templates-import-export) --------------

@@ -159,3 +159,66 @@ def test_transient_collection_uses_the_configured_pricing_region(monkeypatch):
     monkeypatch.setattr(price_calculation.settings, "aws_pricing_region", "eu-west-1")
     architecture = build_transient_architecture([_selection()])
     assert architecture.collections[0].region == "eu-west-1"
+
+
+# --- 020 (T002, research R2, data-model §2): provider, regions and options -------------------
+
+GCP_OPTIONS = {"kind": "gcp_machine", "version": 1, "vcpus": 4, "memory_gib": "16",
+               "ram_sku": "5B01-D157-A097"}
+
+
+def test_transient_architecture_takes_the_requested_provider():
+    assert build_transient_architecture([_selection()], provider="gcp").provider == "gcp"
+
+
+def test_transient_architecture_defaults_to_aws_without_a_provider():
+    assert build_transient_architecture([_selection()]).provider == "aws"
+    assert build_transient_architecture([_selection()], provider=None).provider == "aws"
+
+
+def test_selections_are_grouped_into_one_collection_per_region():
+    architecture = build_transient_architecture(
+        [
+            _selection(sku="A", region="us-east1"),
+            _selection(sku="B", region="europe-west1"),
+            _selection(sku="C", region="us-east1"),
+        ],
+        provider="gcp",
+    )
+    by_region = {c.region: [s.sku for s in c.sku_selections] for c in architecture.collections}
+    assert by_region == {"us-east1": ["A", "C"], "europe-west1": ["B"]}
+    for collection in architecture.collections:
+        assert all(s.collection_id == collection.id for s in collection.sku_selections)
+
+
+def test_a_missing_or_null_region_uses_the_configured_pricing_region(monkeypatch):
+    monkeypatch.setattr(price_calculation.settings, "aws_pricing_region", "eu-west-1")
+    architecture = build_transient_architecture(
+        [_selection(sku="A"), _selection(sku="B", region=None), _selection(sku="C",
+                                                                           region="us-west-2")]
+    )
+    by_region = {c.region: [s.sku for s in c.sku_selections] for c in architecture.collections}
+    assert by_region == {"eu-west-1": ["A", "B"], "us-west-2": ["C"]}
+
+
+def test_provider_options_are_copied_onto_each_selection_as_a_plain_dict():
+    architecture = build_transient_architecture(
+        [
+            _selection(sku="CORE", region="us-east1", provider_options=GCP_OPTIONS),
+            _selection(sku="DISK", region="us-east1"),
+        ],
+        provider="gcp",
+    )
+    built = {s.sku: s for s in architecture.collections[0].sku_selections}
+    options = built["CORE"].provider_options
+    assert isinstance(options, dict)
+    assert options["kind"] == "gcp_machine"
+    assert options["vcpus"] == 4
+    assert Decimal(str(options["memory_gib"])) == Decimal("16")
+    assert options["ram_sku"] == "5B01-D157-A097"
+    assert built["DISK"].provider_options is None
+
+
+def test_empty_selections_still_raise_with_a_provider():
+    with pytest.raises(EmptySnapshotError):
+        build_transient_architecture([], provider="azure")

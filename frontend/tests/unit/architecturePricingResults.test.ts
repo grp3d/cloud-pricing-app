@@ -171,6 +171,7 @@ describe("applyCalculationSuccess", () => {
     });
     expect(out.entry.priceChange).toBeNull();
     expect(out.newBaseline).toEqual({
+      version: 2,
       total: "12.00",
       duration: "1_month",
       selections: [selection],
@@ -236,5 +237,114 @@ describe("applyCalculationSuccess", () => {
     expect(out.entry.pricedContents).toEqual(requested);
     expect(out.entry.calculatedAt).toBe(now);
     expect(out.entry.version).toBe(1);
+  });
+});
+
+// --- 020 (T010, data-model §3/§4) -----------------------------------------------------------
+
+describe("stored results with provider options (020)", () => {
+  beforeEach(() => localStorage.clear());
+
+  const gcpPriced: PricedContentsEntry = {
+    ...selection,
+    service_code: "6F81-5844-456A",
+    region: "us-east1",
+    provider_options: {
+      kind: "gcp_machine",
+      version: 1,
+      vcpus: 4,
+      memory_gib: "16",
+      ram_sku: "RAM",
+    },
+  };
+
+  it("reads entries whose priced contents have provider_options", () => {
+    writePricingResult("A", entry({ pricedContents: [gcpPriced] }));
+    expect(readPricingResult("A")?.pricedContents).toEqual([gcpPriced]);
+  });
+
+  it("reads legacy entries whose priced contents have no provider_options", () => {
+    writePricingResult("A", entry({ pricedContents: [priced] }));
+    expect(readPricingResult("A")?.pricedContents).toEqual([priced]);
+  });
+
+  it("drops entries whose priced contents are unreadable", () => {
+    for (const bad of [
+      [null],
+      ["x"],
+      [{ ...priced, sku: 3 }],
+      [{ ...priced, region: 4 }],
+      [{ ...priced, provider_options: "gcp" }],
+    ]) {
+      localStorage.setItem(
+        "cloud-pricing-result-A",
+        JSON.stringify({ ...entry(), pricedContents: bad }),
+      );
+      expect(readPricingResult("A")).toBeNull();
+    }
+  });
+
+  it("round-trips the Price Change 'not available' flag", () => {
+    writePricingResult("A", entry({ priceChangeUnavailable: true }));
+    expect(readPricingResult("A")?.priceChangeUnavailable).toBe(true);
+  });
+});
+
+describe("applyCalculationSuccess for 020 outcomes", () => {
+  const now = "2026-11-06T00:00:00.000Z";
+
+  it("stores every new baseline as version 2 with regions and options", () => {
+    const v2: PriceChangeSelection = { ...selection, region: "us-east-1", provider_options: null };
+    const out = applyCalculationSuccess({
+      entries: new Map(),
+      vars: vars({ priceChangeSelections: [v2] }),
+      result: result("15"),
+      decision: "direct",
+      comparisonTotal: "10",
+      previousEntry: undefined,
+      now,
+    });
+    expect(out.newBaseline).toEqual({
+      version: 2,
+      total: "15",
+      duration: "1_month",
+      selections: [v2],
+    });
+    expect(out.entry.priceChangeUnavailable).toBeUndefined();
+  });
+
+  it("marks Price Change not available and still stores a version 2 baseline", () => {
+    const out = applyCalculationSuccess({
+      entries: new Map(),
+      vars: vars({ duration: "1_year" }),
+      result: result("120"),
+      decision: "unavailable",
+      comparisonTotal: null,
+      previousEntry: entry({ priceChange: "3" }),
+      now,
+    });
+    expect(out.entry.priceChange).toBeNull();
+    expect(out.entry.priceChangeUnavailable).toBe(true);
+    expect(out.newBaseline).toEqual({
+      version: 2,
+      total: "120",
+      duration: "1_year",
+      selections: [selection],
+    });
+  });
+
+  it("carries the 'not available' state forward on an unchanged recalculation", () => {
+    const out = applyCalculationSuccess({
+      entries: new Map(),
+      vars: vars(),
+      result: result("120"),
+      decision: "unchanged",
+      comparisonTotal: null,
+      previousEntry: entry({ priceChangeUnavailable: true }),
+      now,
+    });
+    expect(out.entry.priceChange).toBeNull();
+    expect(out.entry.priceChangeUnavailable).toBe(true);
+    expect(out.newBaseline).toBeNull();
   });
 });

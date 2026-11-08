@@ -333,22 +333,6 @@ function WorkspacePageInner() {
     return map;
   }, [skuSelectionsById]);
 
-  // Every SKU Selection's pricing inputs, in `priceChange.ts`'s comparison shape (US5,
-  // FR-015/016) — the same flat set `skuSelectionsById` above indexes, just re-shaped and
-  // stripped of ids (a Price Change baseline is a value, not a set of live-row references,
-  // data-model.md).
-  const currentPriceChangeSelections = useMemo<PriceChangeSelection[]>(
-    () =>
-      Array.from(skuSelectionsById.values(), ({ selection: s }) => ({
-        service_code: s.service_code,
-        sku: s.sku,
-        pricing_term: s.pricing_term,
-        purchase_option: s.purchase_option,
-        usage_quantity: s.usage_quantity,
-      })),
-    [skuSelectionsById],
-  );
-
   // 015-canvas-service-icons, FR-018a (data-model.md §4): the same pricing inputs plus the
   // region each is priced in — a Collection's own region, or a Connector's "from" Collection's
   // — compared against a stored result's to flag it as out of date.
@@ -363,6 +347,8 @@ function WorkspacePageInner() {
         purchase_option: s.purchase_option,
         usage_quantity: s.usage_quantity,
         region: region ?? null,
+        // 020 (research R1): GCP vCPUs/memory and Azure OS change the price too.
+        provider_options: s.provider_options ?? null,
       });
     for (const c of collections) for (const s of c.sku_selections) add(s, c.region);
     for (const conn of connectors) {
@@ -371,6 +357,12 @@ function WorkspacePageInner() {
     }
     return entries;
   }, [collections, connectors]);
+
+  // Every SKU Selection's pricing inputs, in `priceChange.ts`'s comparison shape (US5,
+  // FR-015/016) — a Price Change baseline is a value, not a set of live-row references
+  // (data-model.md). 020 (data-model §3): the same entries as above, so a version 2 baseline
+  // carries each selection's region and options and the Duration-switch re-pricing can use them.
+  const currentPriceChangeSelections: PriceChangeSelection[] = currentPricedContents;
 
   // --- Selection state shared across columns 2-4 ---
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
@@ -684,17 +676,21 @@ function WorkspacePageInner() {
         prior: vars.prior,
         currentSelections: vars.priceChangeSelections,
         newDuration: vars.duration,
+        provider: vars.provider,
       });
       // "direct": compare directly against the stored baseline's own total. "duration_
       // adjusted" (content AND Duration both changed, FR-016a) and "duration_only" (Duration
       // alone changed, 009 FR-002/003) both need the comparison total repriced from the
       // *prior* selections at the *new* Duration through the real calculation, never a
-      // scaled estimate.
+      // scaled estimate. 020 (research R2): the re-pricing carries the provider and each prior
+      // selection's region and options. "unavailable" (a legacy GCP/Azure baseline, FR-005)
+      // makes no snapshot call at all.
       const comparisonTotal =
         decision === "direct"
           ? vars.prior!.total
           : decision === "duration_adjusted" || decision === "duration_only"
-            ? (await api.calculateSnapshot(vars.duration, vars.prior!.selections)).total_price
+            ? (await api.calculateSnapshot(vars.duration, vars.prior!.selections, vars.provider))
+                .total_price
             : null;
       const { entry, newBaseline } = applyCalculationSuccess({
         entries: resultEntriesRef.current,
@@ -732,10 +728,12 @@ function WorkspacePageInner() {
         pricedContents: currentPricedContents,
         priceChangeSelections: currentPriceChangeSelections,
         prior: readPriorCalculation(architectureId),
+        provider: pricingProvider,
       });
     },
     [
       architectureId,
+      pricingProvider,
       mutateCalculation,
       currentPricedContents,
       currentPriceChangeSelections,
@@ -977,6 +975,7 @@ function WorkspacePageInner() {
           <div className="min-w-0 flex-1 p-2">
             <ArchitectureDiagramPanel
               architectureId={architectureId!}
+              provider={pricingProvider}
               collections={collections}
               connectors={connectors}
               ownHeights={ownHeights}
@@ -1020,6 +1019,7 @@ function WorkspacePageInner() {
             onRetry={() => startCalculation(calculationDuration)}
             width={columnWidths.pricing}
             priceChange={activeEntry?.priceChange ?? null}
+            priceChangeUnavailable={activeEntry?.priceChangeUnavailable === true}
             skuAttributesById={skuAttributesById}
             isOutOfDate={isOutOfDate && !isActiveCalculating}
           />
@@ -1064,6 +1064,7 @@ function WorkspacePageInner() {
           open={popoutOpen}
           onOpenChange={setPopoutOpen}
           architectureId={architectureId!}
+          provider={pricingProvider}
           collections={collections}
           connectors={connectors}
           onCreateConnector={(from, to) => createConnector.mutate({ from, to })}

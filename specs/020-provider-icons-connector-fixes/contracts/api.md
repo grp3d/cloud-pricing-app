@@ -57,6 +57,8 @@ Every response that returns `SKUSelectionOut` gains:
 These are the architecture detail, collection and connector payloads.
 
 - `service_name` is a string, or null when the SKU isn't in the active snapshot.
+- It is always null for AWS. AWS's catalog lookup has no service name, and AWS icons never need
+  one, so the AWS query is left unchanged (FR-012).
 - It is read-only and never accepted on create or update.
 
 ## Not changed

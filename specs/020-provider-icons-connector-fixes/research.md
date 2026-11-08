@@ -178,12 +178,16 @@ white background and no transparency. The Azure one is transparent.
 - Add `service_name: str | None` to `SKUSelectionOut`, resolved at response time like
   `product_family` (additive, never stored).
 - The fallback tile is the same 60 × 60 px button as an icon:
-  - a 20 px provider logo on a small white rounded badge, so the GCP logo's white background
+  - a 14 px provider logo on a 16 px white rounded badge, so the GCP logo's white background
     looks intended in both themes
-  - below it, the service name in the theme's text colour, at most three lines, cut with an
-    ellipsis
-  - the tooltip and accessible name unchanged, so the full name is still on hover
-- Name source, in order: the service name, then the item's summary, then the service code.
+  - below it, the service name in the theme's text colour, 10 px on 12 px lines, at most three
+    lines, cut with an ellipsis. (First built with a 20 px logo and 11 px text: the end-to-end
+    screenshots showed the third line cut in half, as only 30 px were left for the name.)
+  - the tooltip and accessible name start with the full name, then the usual lines (service
+    code, SKU), so hovering shows the whole name. (First built unchanged, which showed only the
+    service code: found by the end-to-end test of FR-009.)
+- Name source, in order: the service name, then the product family, then the service code. (The
+  selection response has no summary.)
 - Reuse the existing logo files rather than adding new ones.
 
 **Alternatives considered.**

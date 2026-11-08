@@ -14,7 +14,7 @@ No database changes. Nothing new is stored in Postgres, and there is no migratio
 
 | Field | Type | Notes |
 |---|---|---|
-| `service_name` | string or null | The provider's display name of the selection's service, e.g. "Compute Engine", "Virtual Machines". Null when the SKU isn't found in the active snapshot. |
+| `service_name` | string or null | The provider's display name of the selection's service, e.g. "Compute Engine", "Virtual Machines". Null when the SKU isn't found in the active snapshot, and always null for AWS (AWS icons never use it). |
 
 ## 2. Snapshot selection (`POST /catalog/calculate-snapshot` request)
 
@@ -100,7 +100,7 @@ There is one generated TypeScript module per provider. They are written by
 | Export | Shape | Notes |
 |---|---|---|
 | `<P>_SERVICE_ICON_BY_ID` | `Record<service_id, iconStem>` | One icon per service. |
-| `<P>_SERVICE_ICON_OVERRIDES` | `Record<service_id, Array<{ match: string; icon: iconStem }>>` | Ordered, first match wins. GCP `match` is a taxonomy prefix (e.g. `GCP > Compute > GCE > Persistent Disk`). Azure `match` is a case-insensitive product-name pattern (e.g. `Managed Disks`). FR-008a. |
+| `<P>_SERVICE_ICON_OVERRIDES` | `Record<service_id, Array<{ match: string; icon: iconStem }>>` | Ordered, first match wins. GCP `match` is a taxonomy prefix of the product family, which starts below "GCP" (e.g. `Compute > Persistent Disk`). Azure `match` is a case-insensitive product-name pattern (e.g. `Managed Disks`). FR-008a. |
 
 `<P>` is `GCP` or `AZURE`. Icon stems name files in `frontend/src/assets/<p>-icons/`.
 
@@ -110,6 +110,7 @@ There is one generated TypeScript module per provider. They are written by
 2. its service's icon
 3. the **fallback tile**: the provider logo plus a name
 
-The name comes from, in order: `service_name`, then `attributes`/summary, then `service_code`.
+The name comes from, in order: `service_name`, then `product_family`, then `service_code`. (A
+selection carries no catalog summary, so the product family is the second choice.)
 
 AWS keeps `resolveAwsServiceIcon` and its generated module unchanged.

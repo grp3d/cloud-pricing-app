@@ -300,51 +300,57 @@ def calculate_architecture_price(
     )
 
 
-def build_transient_architecture(selections: Sequence[SnapshotSelection]) -> Architecture:
+def build_transient_architecture(
+    selections: Sequence[SnapshotSelection], provider: str | None = None
+) -> Architecture:
     """Construct a transient (never `session.add()`-ed, never committed) Architecture/
     Collection/SKUSelection object graph from an ad-hoc list of selections
     (008-ui-updates-corrections, US5, research.md §5) — so `calculate_architecture_price()`
     above can price them via the exact same code path every persisted-Architecture
     calculation uses, with no estimate/approximation (Constitution Principle I).
 
-    Every selection is placed in one throwaway Collection — `calculate_architecture_price`
-    only cares about the flat set of selections across all of an architecture's Collections,
-    never about grouping, so a single Collection is sufficient. Raises `EmptySnapshotError`
-    for an empty `selections` list (data-model.md's validation rule) before constructing
-    anything.
+    020 (research R2, data-model §2): the architecture takes `provider` (missing → `aws`), and
+    the selections are grouped into one throwaway Collection per distinct region, so each is
+    priced in its own region with its own `provider_options`. A selection with no region uses
+    `AWS_PRICING_REGION` (016, FR-025), which is the v0.0.2 behaviour for older clients.
+    Raises `EmptySnapshotError` for an empty `selections` list (data-model.md's validation
+    rule) before constructing anything.
     """
     if not selections:
         raise EmptySnapshotError("selections must contain at least one entry")
 
-    # 010-multi-region-support: `SnapshotSelection` carries no region (it's a plain prior-
-    # pricing-input value, data-model.md — no collection to inherit one from), so this
-    # synthetic Collection is pinned to the app's former single global pricing region rather
-    # than left unset, preserving this endpoint's exact prior behavior (spec Assumptions: the
-    # Price Change mechanism is out of scope for this feature). Out of scope for this feature:
-    # a genuinely multi-region-aware snapshot recalculation would need `SnapshotSelection` to
-    # carry its own region. 016-canvas-icon-layout, FR-025: that region is the
-    # `AWS_PRICING_REGION` setting (default `us-east-1`), no longer a literal here.
-    collection = Collection(
-        id=uuid.uuid4(),
-        type="application_component",
-        name="snapshot",
-        region=settings.aws_pricing_region,
-    )
-    collection.sku_selections = [
-        SKUSelection(
-            id=uuid.uuid4(),
-            collection_id=collection.id,
-            service_code=s.service_code,
-            sku=s.sku,
-            pricing_term=s.pricing_term.value,
-            purchase_option=s.purchase_option.value,
-            usage_quantity=Decimal(s.usage_quantity),
+    collections: dict[str, Collection] = {}
+    for s in selections:
+        region = s.region or settings.aws_pricing_region
+        collection = collections.get(region)
+        if collection is None:
+            collection = Collection(
+                id=uuid.uuid4(),
+                type="application_component",
+                name="snapshot",
+                region=region,
+            )
+            collection.sku_selections = []
+            collections[region] = collection
+        collection.sku_selections.append(
+            SKUSelection(
+                id=uuid.uuid4(),
+                collection_id=collection.id,
+                service_code=s.service_code,
+                sku=s.sku,
+                pricing_term=s.pricing_term.value,
+                purchase_option=s.purchase_option.value,
+                usage_quantity=Decimal(s.usage_quantity),
+                provider_options=(
+                    None
+                    if s.provider_options is None
+                    else s.provider_options.model_dump(mode="json")
+                ),
+            )
         )
-        for s in selections
-    ]
 
-    architecture = Architecture(id=uuid.uuid4(), name="snapshot")
-    architecture.collections = [collection]
+    architecture = Architecture(id=uuid.uuid4(), name="snapshot", provider=provider or "aws")
+    architecture.collections = list(collections.values())
     architecture.connectors = []
     return architecture
 

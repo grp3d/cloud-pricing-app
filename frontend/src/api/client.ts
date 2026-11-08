@@ -401,9 +401,18 @@ export const api = {
   // 008-ui-updates-corrections, US5, FR-016a: prices an ad-hoc set of selections (the
   // Prior Calculation's own stored selections) at a new Duration, with no persisted
   // Architecture involved — used only for the duration-adjusted Price Change comparison.
-  calculateSnapshot: (duration: CalculationDuration, selections: SnapshotSelection[]) =>
+  /** 020 (contracts/api.md §1): `provider` and each selection's `region` and
+   *  `provider_options` let the backend re-price the previous contents with their real
+   *  settings. */
+  calculateSnapshot: (
+    duration: CalculationDuration,
+    selections: SnapshotSelection[],
+    provider?: ProviderCode,
+  ) =>
     request<CalculationResult>("/catalog/calculate-snapshot", {
       method: "POST",
-      body: JSON.stringify({ duration, selections }),
+      body: JSON.stringify(
+        provider ? { duration, selections, provider } : { duration, selections },
+      ),
     }),
 };

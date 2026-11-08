@@ -855,6 +855,8 @@ export interface components {
             duration: components["schemas"]["CalculationDuration"];
             /** Selections */
             selections: components["schemas"]["SnapshotSelection"][];
+            /** Provider */
+            provider?: ("aws" | "gcp" | "azure") | null;
         };
         /**
          * CalculationDuration
@@ -1586,6 +1588,8 @@ export interface components {
              */
             price_types: components["schemas"]["PricingTerm"][];
             kind?: components["schemas"]["CatalogKind"] | null;
+            /** Service Name */
+            service_name?: string | null;
         };
         /** SKUSelectionUpdate */
         SKUSelectionUpdate: {
@@ -1641,6 +1645,10 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: number | string;
+            /** Region */
+            region?: string | null;
+            /** Provider Options */
+            provider_options?: (components["schemas"]["GcpMachineOptions-Input"] | components["schemas"]["AzureVmOptions"]) | null;
         };
         /** SourceOut */
         SourceOut: {

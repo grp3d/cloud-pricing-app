@@ -345,6 +345,7 @@ def _apply(out: SKUSelectionOut, selection: SKUSelection, units: dict, details: 
     if resolved is not None:
         out.attributes = resolved.attributes
         out.product_family = resolved.product_family
+        out.service_name = resolved.service_name
         out.price_types = [PricingTerm(t) for t in resolved.price_types]
         out.kind = CatalogKind(resolved.kind) if resolved.kind else None
 

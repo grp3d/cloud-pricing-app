@@ -32,7 +32,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { createPortal } from "react-dom";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
 
-import { type Collection, type DataConnector } from "../../api/client";
+import { type Collection, type DataConnector, type ProviderCode } from "../../api/client";
 import { connectorMarkers } from "../../lib/connectorArrows";
 import { useMeasuredHeight } from "../../hooks/useMeasuredHeight";
 import { decideNestingChange } from "../../pages/dropTargetDetection";
@@ -45,7 +45,7 @@ import {
 } from "../../pages/nodeLayout";
 import { edgeOffsetIndex } from "../../lib/edgeOffset";
 import { awsDataTransferLabel } from "../../lib/awsDataTransfer";
-import { resolveAwsServiceIcon } from "../../lib/awsServiceIcons";
+import { resolveServiceIcon } from "../../lib/serviceIcons";
 import {
   findVisibleSlot,
   flowGridPlacer,
@@ -122,6 +122,7 @@ function ServiceIconButton({
   onSelectService,
   position,
   onDrop,
+  provider,
 }: {
   selection: Collection["sku_selections"][number];
   isSelected: boolean;
@@ -131,9 +132,16 @@ function ServiceIconButton({
   /** 016-canvas-icon-layout, FR-004–FR-005: called when a drag ends, with the pointer's screen
    * position — the canvas decides where the icon (or service) goes. */
   onDrop?: (selectionId: string, clientX: number, clientY: number) => void;
+  /** 020 (FR-006): the architecture's provider picks the icon set; AWS when absent. */
+  provider: ProviderCode;
 }) {
-  const icon = resolveAwsServiceIcon(selection.service_code, selection.product_family);
-  const popupLines = buildServicePopupLines(selection);
+  const icon = resolveServiceIcon(provider, selection);
+  // 020 (FR-009): a fallback tile cuts its name to three lines, so hovering shows it in full,
+  // above the usual lines (whose first is only the service's code).
+  const popupLines =
+    icon.kind === "fallback"
+      ? [icon.name, ...buildServicePopupLines(selection)]
+      : buildServicePopupLines(selection);
   const zoom = useStore((state) => state.transform[2]);
   // Pointer-driven drag (research.md §8). A press that moves no more than DRAG_THRESHOLD screen
   // px is still a click (FR-007); beyond that, a floating copy follows the pointer (rendered
@@ -189,7 +197,9 @@ function ServiceIconButton({
             onSelectService(selection.id);
           }}
         >
-          {icon.lightUrl === icon.darkUrl ? (
+          {icon.kind === "fallback" ? (
+            <FallbackServiceTile name={icon.name} logoUrl={icon.logoUrl} />
+          ) : icon.lightUrl === icon.darkUrl ? (
             <img src={icon.lightUrl} alt="" draggable={false} className="size-[60px]" />
           ) : (
             <>
@@ -212,7 +222,7 @@ function ServiceIconButton({
       {ghost &&
         createPortal(
           <img
-            src={icon.lightUrl}
+            src={icon.kind === "fallback" ? icon.logoUrl : icon.lightUrl}
             alt=""
             aria-hidden
             className="pointer-events-none fixed z-[1000] rounded-sm opacity-80 shadow-lg"
@@ -237,6 +247,27 @@ function ServiceIconButton({
   );
 }
 
+/** 020 (FR-009, research R7): a GCP or Azure service with no icon of its own — the provider's
+ * logo (14px, on a small white badge so the GCP logo's white background looks intended in both
+ * themes) above the service's name, cut to three lines, in the same 60px tile an icon uses.
+ * Sized so three whole lines fit: 1px border + 2px padding each side, a 16px badge, a 1px gap,
+ * then 3 × 12px lines = 59px. The button's tooltip and accessible name carry the full name. */
+function FallbackServiceTile({ name, logoUrl }: { name: string; logoUrl: string }) {
+  return (
+    <span className="flex size-[60px] flex-col items-center gap-px overflow-hidden rounded-sm border border-border bg-card p-0.5">
+      <span className="flex size-[16px] shrink-0 items-center justify-center rounded-sm bg-white">
+        <img src={logoUrl} alt="" draggable={false} className="size-[14px] object-contain" />
+      </span>
+      <span
+        data-testid="fallback-service-name"
+        className="line-clamp-3 w-full break-words text-center text-[10px] leading-[12px] text-foreground"
+      >
+        {name}
+      </span>
+    </span>
+  );
+}
+
 /** Shared service-list rendering for both node types (004, FR-015). Each listed service is
  * independently clickable (007-ui-overhaul-shadcn, FR-014) — `stopPropagation` keeps that click
  * from also being interpreted as a click on the containing box (which selects the Collection as
@@ -255,6 +286,7 @@ export function ServiceList({
   innerWidth,
   savedPositions,
   onIconDrop,
+  provider = "aws",
 }: {
   skuSelections: Collection["sku_selections"];
   selectedServiceId?: string;
@@ -273,6 +305,8 @@ export function ServiceList({
   savedPositions?: IconPositions;
   /** 016-canvas-icon-layout, FR-004: reports an icon drag's drop point to the canvas. */
   onIconDrop?: (selectionId: string, clientX: number, clientY: number) => void;
+  /** 020 (FR-006): the architecture's provider; AWS when absent. */
+  provider?: ProviderCode;
 }) {
   const positions = useMemo(
     () =>
@@ -298,6 +332,7 @@ export function ServiceList({
           onSelectService={onSelectService}
           position={positions[s.id]}
           onDrop={onIconDrop}
+          provider={provider}
         />
       ))}
     </div>
@@ -540,6 +575,8 @@ interface ApplicationComponentNodeData {
   /** 016-canvas-icon-layout, FR-006: this Architecture's hand-placed icon positions. */
   savedPositions: IconPositions;
   onIconDrop: (selectionId: string, clientX: number, clientY: number) => void;
+  /** 020: the architecture's provider, for the service icons. */
+  provider: ProviderCode;
 }
 
 /** Custom node type for an Application Component (spec FR-007, 005, 006). See prior features'
@@ -572,6 +609,7 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
     boxWidth,
     savedPositions,
     onIconDrop,
+    provider,
   } = data as unknown as ApplicationComponentNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
@@ -601,6 +639,7 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
             innerWidth={innerWidthOf(boxWidth)}
             savedPositions={savedPositions}
             onIconDrop={onIconDrop}
+            provider={provider}
           />
         </div>
       </div>
@@ -634,6 +673,8 @@ interface VpcNodeData {
   /** 016-canvas-icon-layout, FR-006: this Architecture's hand-placed icon positions. */
   savedPositions: IconPositions;
   onIconDrop: (selectionId: string, clientX: number, clientY: number) => void;
+  /** 020: the architecture's provider, for the service icons. */
+  provider: ProviderCode;
 }
 
 /** Custom node type for a VPC (002-006). 007 adds the same per-service click targets; 008
@@ -654,6 +695,7 @@ function VpcNode({ data, selected }: NodeProps) {
     boxWidth,
     savedPositions,
     onIconDrop,
+    provider,
   } = data as unknown as VpcNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
@@ -685,6 +727,7 @@ function VpcNode({ data, selected }: NodeProps) {
             innerWidth={innerWidthOf(boxWidth)}
             savedPositions={savedPositions}
             onIconDrop={onIconDrop}
+            provider={provider}
           />
         </div>
       </div>
@@ -1189,6 +1232,9 @@ export interface ArchitectureDiagramPanelProps {
    * every pre-existing caller (just column 4 itself) keeps working without a prop; only
    * `PopoutCanvasDialog` passes a different value. */
   instanceId?: string;
+  /** 020 (FR-006): the architecture's provider, which picks the service icons. Defaults to
+   * `"aws"`, so AWS diagrams render exactly as before. */
+  provider?: ProviderCode;
 }
 
 /**
@@ -1220,6 +1266,7 @@ export function ArchitectureDiagramPanel({
   onRefresh,
   onOpenPopout,
   instanceId = "main",
+  provider = "aws",
 }: ArchitectureDiagramPanelProps) {
   const { getIntersectingNodes, getNodes, screenToFlowPosition } = useReactFlow();
 
@@ -1568,6 +1615,7 @@ export function ArchitectureDiagramPanel({
           savedPositions: iconLayout,
           onIconDrop: (selectionId: string, x: number, y: number) =>
             void onIconDrop(selectionId, c.id, x, y),
+          provider,
         },
         style: { width: finalWidth, height: finalHeight },
       });
@@ -1605,6 +1653,7 @@ export function ArchitectureDiagramPanel({
             savedPositions: iconLayout,
             onIconDrop: (selectionId: string, x: number, y: number) =>
               void onIconDrop(selectionId, child.id, x, y),
+            provider,
           },
           style: { width: childFinalWidth, height: childFinalHeight },
         });
@@ -1621,6 +1670,7 @@ export function ArchitectureDiagramPanel({
     selectedServiceId,
     iconLayout,
     onIconDrop,
+    provider,
   ]);
 
   // 009-ui-fixes-next-iteration, US4, FR-010: multiple Connectors between the same pair of

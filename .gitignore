@@ -13,6 +13,9 @@ __pycache__/
 node_modules/
 dist/
 *.tsbuildinfo
+# Playwright end-to-end runs (frontend/e2e/)
+test-results/
+playwright-report/
 
 # Universal
 .DS_Store

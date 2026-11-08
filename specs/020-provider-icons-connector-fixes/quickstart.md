@@ -11,6 +11,11 @@
 - Automated checks:
   - backend: `cd backend && uv run pytest`, then `uv run ruff check`
   - frontend: `cd frontend && npm test`, then `npm run build`, then `npm run lint`
+  - end-to-end (A, B, C1–C7 and D in headless Chromium): `cd frontend && npm run test:e2e`. It
+    starts its own backend (port 8100, a fresh `cloud_pricing_e2e` database, the committed
+    pricing fixture) and frontend (port 5199). First time only: `npx playwright install chromium`.
+    Screenshots of each canvas in light and dark theme are in the HTML report
+    (`npx playwright show-report`).
 
 ## A. Price Change (User Story 1)
 
@@ -85,6 +90,7 @@ Use a GCP architecture with one box in `us-east1`, holding one Compute Engine N2
    `cd backend && uv run python scripts/generate_provider_service_icon_map.py --provider gcp --icons ../../images-web/gcp_architecture_icons`,
    then the same with `--provider azure` and the Azure folder. Expected:
    - the report's "categorized services without an icon" list is empty for both (SC-003)
+   - no `WARNING` lines (every override matches at least one product)
    - re-running produces no file changes
 
 ## D. Regression

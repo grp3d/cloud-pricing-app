@@ -169,3 +169,26 @@ describe("PricingPanel line detail (019)", () => {
     expect(screen.queryByRole("list", { name: "Price components" })).toBeNull();
   });
 });
+
+describe("PricingPanel Price Change not available (020, FR-005)", () => {
+  const NOTE = "Not available: previous calculation from prior version is unreliable";
+
+  it("shows the note in muted text instead of a figure", () => {
+    renderPanel({ priceChange: null, priceChangeUnavailable: true });
+    const note = screen.getByText(NOTE);
+    expect(note).toHaveClass("text-muted-foreground");
+    expect(screen.queryByText(/Price Change: [+-]?\$/)).toBeNull();
+  });
+
+  it("sits where the Price Change line goes, right below the total", () => {
+    renderPanel({ priceChangeUnavailable: true });
+    const total = screen.getByText(/^Total:/);
+    expect(total.nextElementSibling).toBe(screen.getByText(NOTE));
+  });
+
+  it("shows no note otherwise", () => {
+    renderPanel({ priceChange: "5" });
+    expect(screen.queryByText(NOTE)).toBeNull();
+    expect(screen.getByText(/Price Change:/)).toBeInTheDocument();
+  });
+});

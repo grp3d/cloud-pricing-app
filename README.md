@@ -13,12 +13,14 @@ priced is shown as such, never estimated.
 What it does today:
 
 - **Architecture canvas**: nested collections (application components inside VPCs), connectors
-  for data transfer between them (plain, one-way or two-way arrows, reversible), service icons,
+  for data transfer between them (plain, one-way or two-way arrows, reversible), each provider's
+  own service icons (a labelled provider tile for GCP and Azure services without one),
   drag-and-drop layout.
 - **AWS, GCP and Azure pricing**: catalog search across services and regions, unit-aware pricing
   over a chosen duration, graduated (tiered) prices, reserved-term upfront and recurring costs,
-  per-region totals. Each provider is enabled when it has a usable pricing snapshot, and one
-  provider's missing data never affects the others.
+  per-region totals, and the Price Change since the last calculation. Each provider is enabled
+  when it has a usable pricing snapshot, and one provider's missing data never affects the
+  others.
 - **Trends**: per provider, how many SKUs' list prices went up or down each week over the last
   52 weeks, by category and region, and the biggest % price increases and decreases over a
   chosen period.

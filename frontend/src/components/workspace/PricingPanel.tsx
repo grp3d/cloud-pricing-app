@@ -117,6 +117,10 @@ export interface PricingPanelProps {
    * Calculate must leave whatever was last shown untouched, so this prop simply doesn't
    * change on those calculates rather than the panel re-deriving anything). */
   priceChange: string | null;
+  /** 020 (FR-005): Price Change can't be worked out for this calculation (a baseline stored by
+   * v0.0.2 on a GCP or Azure architecture, then a Duration switch) — shown as a muted note in
+   * the Price Change line's place instead of a figure. */
+  priceChangeUnavailable?: boolean;
   /** 009-ui-fixes-next-iteration, US9, FR-028: each SKU Selection's `attributes`, by id —
    * `CalculationResult.line_items` doesn't carry `attributes` itself (contracts/api.md §2:
    * response shape unchanged), so `WorkspacePage` re-shapes its own `skuSelectionsById` map
@@ -143,6 +147,7 @@ export function PricingPanel({
   onRetry,
   width,
   priceChange,
+  priceChangeUnavailable = false,
   skuAttributesById,
   isOutOfDate,
 }: PricingPanelProps) {
@@ -182,7 +187,13 @@ export function PricingPanel({
             Total: {formatPrice(calculation.total_price)} {calculation.currency}
           </h3>
 
-          {priceChange !== null && <PriceChangeIndicator amount={priceChange} />}
+          {priceChangeUnavailable ? (
+            <p className="text-2xs text-muted-foreground">
+              Not available: previous calculation from prior version is unreliable
+            </p>
+          ) : (
+            priceChange !== null && <PriceChangeIndicator amount={priceChange} />
+          )}
 
           {calculation.warnings.map((w) => (
             <p
