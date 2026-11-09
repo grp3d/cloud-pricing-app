@@ -241,6 +241,11 @@ class SKUSelectionOut(ORMBase):
     # `product_family` and never stored — the GCP / Azure fallback tile shows it. `None` when
     # the item isn't in the active snapshot, and always for AWS, whose icons never need it.
     service_name: str | None = None
+    # 021 (US7, FR-044): the item's own description, as the catalog search shows it (e.g.
+    # "Multi-Region HNS Nearline Class A Operations"), resolved at response time like
+    # `service_name` and never stored. `None` when the item isn't in the active snapshot, and
+    # for AWS, whose readable details come from `attributes`.
+    summary: str | None = None
 
 
 # --- Collection --------------------------------------------------------------------------
@@ -336,9 +341,28 @@ class ArchitectureDetailOut(ORMBase):
 
 
 class ArchitectureUpdate(BaseModel):
-    """Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020)."""
+    """Owner-only update: the public/private toggle (012-user-accounts-sharing, spec FR-020)
+    and, from 021 (US6, FR-043), the name. Only the fields sent change; at least one is
+    required."""
 
-    is_public: bool
+    is_public: bool | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("name must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> ArchitectureUpdate:
+        if self.is_public is None and self.name is None:
+            raise ValueError("send is_public, name, or both")
+        return self
 
 
 class ImportableArchitectureOut(BaseModel):
@@ -758,10 +782,25 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+InspectorTab = Literal["pricing", "service"]
+
+
+class InspectorArrangement(_Strict):
+    """The workspace inspector's tab layout (021, data-model §1). All fields are required when
+    the arrangement is sent; `upper` and `front` are both kept in either mode so a split ->
+    merge -> split round trip restores the previous split."""
+
+    mode: Literal["merged", "split"]
+    upper: InspectorTab
+    front: InspectorTab
+    split: float = Field(ge=0.2, le=0.8)
+
+
 class WorkspacePreferences(_Strict):
     column_widths: dict[ColumnKey, int] | None = None
     collapsed: dict[ColumnKey, bool] | None = None
     last_provider: ProviderCode | None = None
+    inspector: InspectorArrangement | None = None
 
     @field_validator("column_widths")
     @classmethod

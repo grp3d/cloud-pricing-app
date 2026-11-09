@@ -2,8 +2,8 @@
  * Collapsed columns (009-ui-fixes-next-iteration follow-up), saved to the user's account since
  * 019 (FR-023): the `workspace.collapsed` preferences section, keys `col1` to `col3`. Values an
  * earlier version saved in this browser are used until they are moved to the account, once
- * (FR-024, `preferences.ts`). Column 4 (the diagram) and column 5 (pricing) have no collapsed
- * state, so there are only three ids here.
+ * (FR-024, `preferences.ts`). 021: the sidebar (`col2`) and the inspector (`col4`, newly
+ * collapsible) are the two collapsible zones; `col1` and `col3` are no longer read.
  */
 import type { ColumnKey } from "./browserPrefs";
 import {
@@ -13,12 +13,14 @@ import {
   usePreferences,
 } from "./preferences";
 
-export type CollapsibleColumnId = "provider" | "collections" | "service";
+export type CollapsibleColumnId = "collections" | "inspector";
 
 const KEYS: Record<CollapsibleColumnId, ColumnKey> = {
-  provider: "col1",
+  // col1 (the removed Column 1, 021) is no longer read; a stored value is left in place.
   collections: "col2",
-  service: "col3",
+  // col3 (the removed Service Editor column, 021) is no longer read either.
+  // 021: the inspector collapses to a rail (FR-010), stored under col4.
+  inspector: "col4",
 };
 
 /** The stored collapsed flags; a column with no stored flag is left out (expanded). */

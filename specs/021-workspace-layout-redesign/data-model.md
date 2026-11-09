@@ -76,7 +76,7 @@ palette.
 | `--card`, `--popover` | white `oklch(100% 0 0)` | zinc-900 |
 | `--card-foreground`, `--popover-foreground` | zinc-900 | zinc-50 |
 | `--muted`, `--secondary`, `--accent` | zinc-100 `oklch(96.7% 0.001 286.375)` | zinc-800 `oklch(27.4% 0.006 286.033)` |
-| `--muted-foreground` | zinc-500 `oklch(55.2% 0.016 285.938)` | zinc-400 `oklch(70.5% 0.015 286.067)` |
+| `--muted-foreground` | zinc-600 `oklch(44.2% 0.017 285.786)` (zinc-500 is 4.4:1 on zinc-100, under AA; changed during implementation) | zinc-400 `oklch(70.5% 0.015 286.067)` |
 | `--secondary-foreground`, `--accent-foreground` | zinc-900 | zinc-50 |
 | `--border` (dividers, box outlines) | zinc-200 `oklch(92% 0.004 286.32)` | zinc-800 |
 | `--input` (form control boundaries) | zinc-500 | zinc-500 |
@@ -90,10 +90,12 @@ palette.
 **Contrast pairs asserted by the theme test (FR-031, research R8)**, in each theme:
 - 4.5:1 or more:
   - `foreground` on `background`, `card` and `muted`;
-  - `muted-foreground` on `background` and `card`;
+  - `muted-foreground` on `background`, `card`, `muted` and `sidebar`;
   - `primary-foreground` on `primary`;
   - `sidebar-foreground` on `sidebar`.
-- 3:1 or more: `ring` on `background` and `card`; `input` on `background` and `card`.
+- 3:1 or more: `ring` on `background`, `card` and `sidebar`; `input` on `background` and
+  `card`. Selection outlines on the canvas use `--ring` (not `--primary`), because dark
+  mode's blue-600 is under 3:1 on zinc-950 while blue-500 passes.
 - `--border` is decorative (dividers and box outlines that are not a control's only
   boundary), so it is not held to 3:1.
 

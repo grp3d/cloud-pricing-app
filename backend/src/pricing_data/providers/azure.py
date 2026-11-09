@@ -382,13 +382,28 @@ def _os_meter(con, region: str, row: dict, os: str | None) -> list[dict]:
     )
 
 
+def _summary(*parts: str | None) -> str:
+    """The product, SKU and meter names joined, leaving out any word an earlier part already
+    has (021 US7): "Premium SSD Managed Disks" + "P10 LRS" + "P10 LRS Disk" reads "Premium SSD
+    Managed Disks P10 LRS Disk", not "… P10 LRS P10 LRS Disk". Repeats within one part stay."""
+    seen: set[str] = set()
+    words: list[str] = []
+    for part in parts:
+        if not part:
+            continue
+        part_words = part.split()
+        words.extend(w for w in part_words if w.casefold() not in seen)
+        seen.update(w.casefold() for w in part_words)
+    return " ".join(words)
+
+
 def _item(row: dict) -> CatalogItem:
     price_types = ["on_demand"]
     for flag, term in (("r1", "reserved_1yr"), ("r3", "reserved_3yr"),
                        ("sp1", "savings_plan_1yr"), ("sp3", "savings_plan_3yr")):
         if row[flag]:
             price_types.append(term)
-    summary = " ".join(x for x in (row["product_name"], row["sku_name"], row["meter_name"]) if x)
+    summary = _summary(row["product_name"], row["sku_name"], row["meter_name"])
     attributes = {
         "service_family": row["service_family"] or "",
         "product_name": row["product_name"] or "",

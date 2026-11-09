@@ -1,10 +1,11 @@
-import { PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 import type { ProviderCode, SKUSelection } from "../../api/client";
 import type { ServiceConfigSelection } from "../../lib/serviceConfigSelection";
-import { useColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
+import { serviceLabel } from "../../lib/serviceLabel";
+import { summarizeAttributes } from "../../lib/skuDetail";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { Separator } from "../ui/separator";
 import { ErrorMessage } from "../ErrorMessage";
 import { PricingInputsForm, type PricingInputs } from "../PricingInputsForm";
 import { SkuDetail } from "../SkuDetail";
@@ -15,14 +16,14 @@ export interface ServiceConfigPanelProps {
    * (it already has the fetched Architecture data; this panel stays a simple consumer). */
   resolvedExisting: SKUSelection | null;
   onSubmitNew: (inputs: PricingInputs) => void;
-  onSubmitExisting: (skuSelectionId: string, inputs: PricingInputs) => void;
+  /** Resolves to `false` when the save failed (021 US5: Save then stays dark blue). */
+  onSubmitExisting: (
+    skuSelectionId: string,
+    inputs: PricingInputs,
+  ) => void | boolean | Promise<void | boolean>;
   onRemoveExisting: (skuSelectionId: string) => void;
   actionError: string | null;
   onDismissActionError: () => void;
-  /** Expanded-state width in pixels (FR-012/013, 008-ui-updates-corrections) — draggable
-   * and persisted by `WorkspacePage`; ignored while collapsed, which always uses the rail
-   * width below. */
-  width: number;
   /** 019 (FR-005a): the architecture's provider picks the editor's provider fields. */
   provider?: ProviderCode;
 }
@@ -33,8 +34,10 @@ export interface ServiceConfigPanelProps {
  * panel to zero width when nothing was selected (the resulting sideways content-shift on
  * every service selection/deselection was itself the correction this feature makes, per
  * spec User Story 2's "Why this priority"). When no service is selected, only the panel's
- * own chrome (header, collapse control, border) renders — no service content. Collapsible
- * to an icon rail (FR-006), mirroring `ProviderArchitecturePanel.tsx`'s 007 pattern exactly.
+ * own chrome (header, collapse control, border) renders — no service content.
+ *
+ * 021 (FR-013, FR-018): the inspector's Service tab body. The inspector owns the width and
+ * the collapse; with nothing selected this shows "Select a service on the canvas".
  */
 export function ServiceConfigPanel({
   selection,
@@ -44,17 +47,8 @@ export function ServiceConfigPanel({
   onRemoveExisting,
   actionError,
   onDismissActionError,
-  width,
   provider = "aws",
 }: ServiceConfigPanelProps) {
-  // 009 follow-up: collapsed/expanded state survives a reload; 019 (FR-023): it is saved to
-  // the user's account, so it follows them to any device.
-  const expanded = !useColumnCollapsed().service;
-
-  function toggleExpanded() {
-    writeColumnCollapsed("service", expanded);
-  }
-
   // A stored `skuSelectionId` whose SKUSelection no longer exists (e.g. removed from another
   // tab) — treat as nothing selected rather than rendering broken content; `WorkspacePage`
   // also clears the selection once this happens (see its removal handler).
@@ -77,65 +71,72 @@ export function ServiceConfigPanel({
   const item =
     selection?.kind === "new" ? selection.catalogSku : hasContent ? resolvedExisting! : undefined;
 
-  return (
-    <aside
-      className="flex h-full min-w-0 shrink-0 flex-col gap-3 overflow-hidden border-r border-border p-2 transition-[width]"
-      style={{ width: expanded ? width : 56 }}
-    >
-      <div className={`flex items-center ${expanded ? "justify-between" : "justify-center"}`}>
-        {expanded && <h2 className="text-2xs font-semibold">Service Editor</h2>}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={expanded ? "Collapse panel" : "Expand panel"}
-              onClick={toggleExpanded}
-            >
-              {expanded ? <PanelLeftClose /> : <PanelLeftOpen />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{expanded ? "Collapse" : "Expand"}</TooltipContent>
-        </Tooltip>
-      </div>
+  // 021 US7 (FR-046): a readable heading (the service's name and description), with the codes
+  // muted below it. AWS has no provider name on a saved service, so its heading is the service
+  // code and its identifying details, as on the canvas.
+  const label = hasContent
+    ? serviceLabel(selection!.kind === "new" ? selection!.catalogSku : resolvedExisting!)
+    : null;
+  const description =
+    label && (label.description ?? (summarizeAttributes(attributes ?? {}) || null));
+  // GCP's saved items carry little beyond their location, so its category path is listed too.
+  const productFamily = item && "product_family" in item ? item.product_family : null;
+  const detailAttributes =
+    provider === "gcp" && productFamily ? { category: productFamily, ...attributes } : attributes;
 
-      {expanded && !hasContent && (
-        <p className="text-2xs text-muted-foreground">
-          Select a service on the diagram, or add one from column 2, to configure it here.
-        </p>
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      {!hasContent && (
+        <div className="flex flex-col gap-1 p-3 text-2xs text-muted-foreground">
+          <p className="text-xs font-medium text-foreground">Select a service on the canvas</p>
+          <p>Or pick one in the Architecture Editor's service search to add it.</p>
+        </div>
       )}
 
-      {expanded && hasContent && (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
-          <div className="flex items-center justify-between">
-            <h3 className="text-2xs font-semibold">
-              {selection!.kind === "new"
-                ? `${selection!.catalogSku.service_name} — ${selection!.catalogSku.summary}`
-                : `${resolvedExisting!.service_code} / ${resolvedExisting!.sku}`}
-            </h3>
-            {selection!.kind === "existing" && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Remove this service"
-                onClick={() => onRemoveExisting(resolvedExisting!.id)}
-              >
-                <Trash2 />
-              </Button>
-            )}
+      {/* 021 US8 (FR-049): the heading (name, description, codes) and the delete button stay
+          pinned above a divider; the details and the form scroll on their own. */}
+      {hasContent && (
+        <>
+          <div data-testid="service-pinned" className="flex shrink-0 flex-col gap-2 px-3 pt-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <h3 className="text-xs font-semibold break-words">
+                  {label!.name}
+                  {description && (
+                    <span className="block font-normal text-foreground">{description}</span>
+                  )}
+                </h3>
+                <p className="text-2xs break-all text-muted-foreground">{label!.codes}</p>
+              </div>
+              {selection!.kind === "existing" && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Remove this service"
+                  onClick={() => onRemoveExisting(resolvedExisting!.id)}
+                >
+                  <Trash2 />
+                </Button>
+              )}
+            </div>
+            <Separator />
           </div>
 
-          {actionError && (
-            <ErrorMessage
-              message={actionError}
-              onRetry={onDismissActionError}
-              retryLabel="Dismiss"
-            />
-          )}
+          <div
+            data-testid="service-scroll"
+            className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3"
+          >
+            {actionError && (
+              <ErrorMessage
+                message={actionError}
+                onRetry={onDismissActionError}
+                retryLabel="Dismiss"
+              />
+            )}
 
-          <SkuDetail attributes={attributes!} />
+            <SkuDetail attributes={detailAttributes!} />
 
-          {/* Live user report (regression): editing one service's usage quantity was landing
+            {/* Live user report (regression): editing one service's usage quantity was landing
               on a *different* service instead. Root cause — `PricingInputsForm`'s `term`/
               `purchaseOption`/`quantity` are seeded via `useState(initial?.field ?? default)`,
               which only runs once, on mount. Neither usage below ever had a `key`, so
@@ -149,36 +150,37 @@ export function ServiceConfigPanel({
               `key` forces React to unmount/remount with fresh `useState` initializers whenever
               the underlying service identity actually changes, the standard fix for exactly
               this "state needs to reset when an identity prop changes" case. */}
-          {selection!.kind === "new" ? (
-            <PricingInputsForm
-              key={`new-${selection!.catalogSku.service_code}-${selection!.catalogSku.sku}`}
-              onSubmit={onSubmitNew}
-              unit={unit}
-              provider={provider}
-              priceTypes={item?.price_types}
-              kind={item?.kind}
-              attributes={attributes}
-            />
-          ) : (
-            <PricingInputsForm
-              key={resolvedExisting!.id}
-              submitLabel="Save"
-              initial={{
-                pricing_term: resolvedExisting!.pricing_term,
-                purchase_option: resolvedExisting!.purchase_option,
-                usage_quantity: resolvedExisting!.usage_quantity,
-                provider_options: resolvedExisting!.provider_options ?? null,
-              }}
-              unit={unit}
-              provider={provider}
-              priceTypes={item?.price_types}
-              kind={item?.kind}
-              attributes={attributes}
-              onSubmit={(inputs) => onSubmitExisting(resolvedExisting!.id, inputs)}
-            />
-          )}
-        </div>
+            {selection!.kind === "new" ? (
+              <PricingInputsForm
+                key={`new-${selection!.catalogSku.service_code}-${selection!.catalogSku.sku}`}
+                onSubmit={onSubmitNew}
+                unit={unit}
+                provider={provider}
+                priceTypes={item?.price_types}
+                kind={item?.kind}
+                attributes={attributes}
+              />
+            ) : (
+              <PricingInputsForm
+                key={resolvedExisting!.id}
+                submitLabel="Save"
+                initial={{
+                  pricing_term: resolvedExisting!.pricing_term,
+                  purchase_option: resolvedExisting!.purchase_option,
+                  usage_quantity: resolvedExisting!.usage_quantity,
+                  provider_options: resolvedExisting!.provider_options ?? null,
+                }}
+                unit={unit}
+                provider={provider}
+                priceTypes={item?.price_types}
+                kind={item?.kind}
+                attributes={attributes}
+                onSubmit={(inputs) => onSubmitExisting(resolvedExisting!.id, inputs)}
+              />
+            )}
+          </div>
+        </>
       )}
-    </aside>
+    </div>
   );
 }

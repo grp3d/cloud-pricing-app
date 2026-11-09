@@ -94,3 +94,32 @@ one architecture in each of AWS, GCP and Azure.
 Calculation, Price Change (020 A/B), icons (020 C), pop-out canvas, export and import (020
 D), connectors and arrow styles, sharing, saved column widths for the sidebar and inspector.
 The existing e2e specs cover the first five; check the rest by hand once.
+
+## Results (2026-11-08, `/speckit-implement`)
+
+**Automated, all passing:**
+- Backend: 937 passed, 13 skipped (`uv run pytest -q`); `ruff check` clean. The new contract
+  tests cover the `inspector` preference (5 cases) and `?provider=` on Import (3 cases).
+- Frontend: `npm run lint` (7 warnings, all from before 021), `npm run build`, and 507 unit
+  tests (48 files), including `theme.contrast.test.ts` (40 contrast checks in light and dark).
+- API types: regenerated, and regenerating again gives no change.
+- Browser: 16 passed, 1 skipped (`npm run test:e2e`). The three 020 specs pass with only
+  `e2e/helpers.ts` changed (SC-009). The new `e2e/layout.spec.ts` automates:
+  - **A:** every step except 4's public/private toggle (covered by the unit tests).
+  - **B:** all steps except 4, the calculation that finishes after a selection.
+  - **C:** all steps except the second browser profile in 6 (the reload is checked).
+  - **D:** steps 1 and 4, with light and dark screenshots of the workspace, Trends and Admin
+    in the report.
+
+**Checked by looking at the screenshots:** zinc greys with one blue accent in both themes;
+1px canvas boxes; at 1280px all three zones fit and the canvas is about 576px inside its
+padding.
+
+**Still to check by hand:**
+- D2: tabbing through every control. Focus rings are in place app-wide through `index.css`,
+  but no one has walked them.
+- D3: a selected connector in blue, with each arrow style.
+- D5: macOS "Reduce motion" on. The e2e emulates it for the screenshots only.
+- C6: the same user on another browser profile.
+- E: export, import and sharing by hand (the export/import and pop-out regressions are
+  automated).

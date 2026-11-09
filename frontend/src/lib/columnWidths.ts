@@ -4,9 +4,10 @@
  * order. Widths an earlier version saved in this browser are used until they are moved to the
  * account, once (FR-024, `preferences.ts`).
  *
- * Column 4 (the diagram) already has its own independent height-resize handle and grows to
- * fill remaining width by default, so it isn't a *fixed* width preference the way the other
- * four columns are — there's no `"diagram"` entry here.
+ * 021 (FR-010, FR-011): the workspace has three zones; only the two side zones have widths.
+ * The Architecture Editor sidebar keeps `col2`, and the inspector takes over the Price
+ * Summary's `col4`, so saved widths carry over. `col1` and `col3` (the removed columns) are no
+ * longer read. The canvas fills the rest, so it has no entry here.
  */
 import type { ColumnKey } from "./browserPrefs";
 import {
@@ -16,23 +17,23 @@ import {
   usePreferences,
 } from "./preferences";
 
-export type ColumnId = "provider" | "collections" | "service" | "pricing";
+export type ColumnId = "collections" | "inspector";
 
 const KEYS: Record<ColumnId, ColumnKey> = {
-  provider: "col1",
+  // col1 (the removed Column 1, 021) is no longer read; a stored value is left in place.
   collections: "col2",
-  service: "col3",
-  pricing: "col4",
+  // col3 (the removed Service Editor column, 021) is no longer read either.
+  // 021: the inspector (Pricing and Service tabs) takes over the Price Summary's key, so a
+  // saved Price Summary width carries over (FR-011).
+  inspector: "col4",
 };
 
 /** Each column's width before this feature introduced dragging (007's hardcoded Tailwind
  * `w-64`/`w-80`/`w-72`/`w-72` classes) — used by `WorkspacePage.tsx` as the starting width
  * for a user who has never stored a preference. */
 export const DEFAULT_WIDTHS: Record<ColumnId, number> = {
-  provider: 256,
   collections: 320,
-  service: 288,
-  pricing: 288,
+  inspector: 360,
 };
 
 /** No column may be dragged narrower than its own collapsed-rail width (research.md §9) —

@@ -13,6 +13,7 @@
 
 import type { SKUSelection } from "../api/client";
 import { awsDataTransferLabel } from "./awsDataTransfer";
+import { serviceLabel } from "./serviceLabel";
 import { summarizeAttributes } from "./skuDetail";
 
 /** Attributes shown on their own labeled line, in this order, when the SKU has them (016,
@@ -37,12 +38,20 @@ export const POPUP_ATTRIBUTE_KEYS = [
 
 /** The pop-up's lines, in order: service code; `Sku:`; the data-transfer region pair (data
  * transfer only, 015 FR-010); the identifying-detail summary (minus anything shown on its own
- * line); `UsageType:`; then one `key: value` line per present `POPUP_ATTRIBUTE_KEYS` entry. */
+ * line); `UsageType:`; then one `key: value` line per present `POPUP_ATTRIBUTE_KEYS` entry.
+ *
+ * 021 US7 (FR-045): a service with a readable name or description (GCP, Azure) starts with its
+ * name, then its description, then "service_code / sku" (`servicePopupCodesLine`, shown muted)
+ * in place of the first two lines. AWS is unchanged. */
 export function buildServicePopupLines(
-  selection: Pick<SKUSelection, "service_code" | "sku" | "attributes">,
+  selection: Pick<SKUSelection, "service_code" | "sku" | "attributes"> &
+    Partial<Pick<SKUSelection, "service_name" | "summary">>,
 ): string[] {
   const { service_code, sku, attributes } = selection;
-  const lines = [service_code, `Sku: ${sku}`];
+  const label = serviceLabel(selection);
+  const lines = label.readable
+    ? [label.name, ...(label.description ? [label.description] : []), label.codes]
+    : [service_code, `Sku: ${sku}`];
 
   const regionPair = awsDataTransferLabel(service_code, attributes);
   if (regionPair) lines.push(regionPair);
@@ -55,6 +64,16 @@ export function buildServicePopupLines(
     if (attributes[key]) lines.push(`${key}: ${attributes[key]}`);
   }
   return lines;
+}
+
+/** 021 US7: the line of a readable pop-up that holds the codes, so it can be shown muted;
+ * `null` for AWS, whose pop-up leads with its codes as before. */
+export function servicePopupCodesLine(
+  selection: Pick<SKUSelection, "service_code" | "sku"> &
+    Partial<Pick<SKUSelection, "service_name" | "summary">>,
+): string | null {
+  const label = serviceLabel(selection);
+  return label.readable ? label.codes : null;
 }
 
 /** The icon's accessible name — the same content as the pop-up, on one line (FR-012). */

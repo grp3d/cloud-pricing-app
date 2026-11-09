@@ -80,6 +80,14 @@ export function regionLabel(r: { code: string; display_name?: string | null }): 
   return r.display_name && r.display_name !== r.code ? `${r.code} — ${r.display_name}` : r.code;
 }
 
+/** 021 (contracts/ui.md): the exact name of each provider group's Import action, written out
+ * so "a"/"an" is always right. */
+export const IMPORT_ARCHITECTURE_LABELS: Record<ProviderCode, string> = {
+  aws: "Import an AWS architecture",
+  gcp: "Import a GCP architecture",
+  azure: "Import an Azure architecture",
+};
+
 export const PROVIDER_LABELS: Record<ProviderCode, string> = {
   aws: "AWS",
   gcp: "GCP",

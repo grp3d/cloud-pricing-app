@@ -228,10 +228,11 @@ describe("ServiceList provider icons (020)", () => {
     expect(name).toHaveClass("line-clamp-3", "break-words", "text-foreground");
     const button = screen.getByRole("button");
     expect(button.querySelector(".size-\\[60px\\]")).not.toBeNull();
-    // FR-009: the full name first (the tile cuts it), then the usual lines.
-    expect(button).toHaveAccessibleName(
-      [gcpMarketplace.service_name, ...buildServicePopupLines(gcpMarketplace)].join(", "),
-    );
+    // FR-009: the full name first (the tile cuts it), then the usual lines. 021 US7: those
+    // lines now start with the name themselves, so it isn't repeated.
+    const lines = buildServicePopupLines(gcpMarketplace);
+    expect(lines[0]).toBe(gcpMarketplace.service_name);
+    expect(button).toHaveAccessibleName(lines.join(", "));
   });
 
   it("gives each fallback tile its own name", () => {

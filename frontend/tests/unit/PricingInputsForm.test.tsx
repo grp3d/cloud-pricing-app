@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { PricingInputsForm } from "../../src/components/PricingInputsForm";
+import { defaultPricingInputs } from "../../src/lib/pricingInputs";
 
 describe("PricingInputsForm", () => {
   it("submits on_demand with not_applicable purchase option by default", () => {
@@ -58,5 +59,80 @@ describe("PricingInputsForm", () => {
       purchase_option: "no_upfront",
       usage_quantity: "1",
     });
+  });
+});
+
+describe("defaultPricingInputs (021 US5, FR-037)", () => {
+  it.each([
+    ["aws", undefined, undefined],
+    ["azure", "vm", undefined],
+    ["gcp", "vm", { ram_sku: "RAM-1" }],
+    ["gcp", null, undefined],
+  ] as const)("matches an untouched %s form (kind %s)", (provider, kind, attributes) => {
+    const onSubmit = vi.fn();
+    render(
+      <PricingInputsForm
+        onSubmit={onSubmit}
+        provider={provider}
+        kind={kind}
+        attributes={attributes}
+      />,
+    );
+    fireEvent.click(screen.getByText("Add"));
+    expect(onSubmit).toHaveBeenCalledWith(defaultPricingInputs({ provider, kind, attributes }));
+  });
+
+  it("gives an Azure VM Linux and a GCP machine 4 vCPUs and 16 GiB", () => {
+    expect(defaultPricingInputs({ provider: "azure", kind: "vm" }).provider_options).toEqual({
+      kind: "azure_vm",
+      version: 1,
+      os: "linux",
+    });
+    expect(
+      defaultPricingInputs({ provider: "gcp", kind: "vm", attributes: { ram_sku: "R" } })
+        .provider_options,
+    ).toEqual({ kind: "gcp_machine", version: 1, vcpus: 4, memory_gib: "16", ram_sku: "R" });
+  });
+});
+
+describe("Save button colour (021 US5, FR-039)", () => {
+  const initial = {
+    pricing_term: "on_demand" as const,
+    purchase_option: "not_applicable" as const,
+    usage_quantity: "730",
+  };
+  const save = () => screen.getByRole("button", { name: /Save/ });
+  const quantity = () => screen.getByLabelText(/Usage quantity/);
+
+  it("is light blue until a field changes, then dark blue", () => {
+    render(<PricingInputsForm submitLabel="Save" initial={initial} onSubmit={vi.fn()} />);
+    expect(save()).toHaveAttribute("data-variant", "soft");
+    fireEvent.change(quantity(), { target: { value: "100" } });
+    expect(save()).toHaveAttribute("data-variant", "default");
+    fireEvent.change(quantity(), { target: { value: "730" } });
+    expect(save()).toHaveAttribute("data-variant", "soft");
+  });
+
+  it("is clickable while light blue", () => {
+    const onSubmit = vi.fn();
+    render(<PricingInputsForm submitLabel="Save" initial={initial} onSubmit={onSubmit} />);
+    fireEvent.click(save());
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("turns light blue after a successful save, and stays dark after a failed one", async () => {
+    const onSubmit = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    render(<PricingInputsForm submitLabel="Save" initial={initial} onSubmit={onSubmit} />);
+    fireEvent.change(quantity(), { target: { value: "100" } });
+    fireEvent.click(save());
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(save()).toHaveAttribute("data-variant", "default");
+    fireEvent.click(save());
+    await vi.waitFor(() => expect(save()).toHaveAttribute("data-variant", "soft"));
+  });
+
+  it("an Add form is always the primary style", () => {
+    render(<PricingInputsForm onSubmit={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /Add/ })).toHaveAttribute("data-variant", "default");
   });
 });

@@ -91,7 +91,7 @@ export function ChartSelectors({
       <label className="flex flex-col gap-0.5 font-medium">
         Category
         <select
-          className="rounded border border-border bg-background px-1.5 py-1 text-2xs font-normal"
+          className="rounded-md border border-input bg-background px-1.5 py-1 text-2xs font-normal"
           value={selection.category}
           onChange={(e) => onChange({ ...selection, category: e.target.value as TrendsCategory })}
         >

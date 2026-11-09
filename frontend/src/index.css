@@ -17,6 +17,14 @@
   --text-2xs: 0.6875rem; /* 11px — one step below text-xs */
   --text-3xs: 0.625rem; /* 10px — two steps below text-xs */
   --text-4xs: 0.5625rem; /* 9px — three steps below text-xs */
+  --color-header: var(--header);
+  --color-header-foreground: var(--header-foreground);
+  --color-header-muted-foreground: var(--header-muted-foreground);
+  --color-header-accent: var(--header-accent);
+  --color-header-border: var(--header-border);
+  --color-header-ring: var(--header-ring);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-foreground: var(--primary-soft-foreground);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -59,87 +67,112 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* 008-ui-updates-corrections (US6, FR-019, research.md §10): every token below is
-   regenerated from Radix UI's "sky" 12-step scale (https://www.radix-ui.com/colors, `sky`/
-   `skyDark`), converted to OKLCH — replacing 007's neutral (chroma-0) scale. Every token
-   *name* is unchanged, so no component code changes; only these values did. Step usage
-   follows Radix's own documented convention (1-2 app/subtle background, 3-5 UI-element
-   background, 6 subtle border, 7-8 UI-element border/focus ring, 9-10 solid/vivid, 11
-   low-contrast text, 12 high-contrast text) — `--destructive` is intentionally left
-   untouched (a distinct semantic error color, not part of the neutral→sky brand swap). */
+/* 021-workspace-layout-redesign (FR-026, research R8, data-model §3): zinc neutrals with one
+   blue accent, replacing 008's Radix "sky" scale. The values are Tailwind v4's own zinc and
+   blue palette (already OKLCH). Every token *name* is unchanged, so components need no colour
+   edits for the theme itself, and dark mode follows from `.dark`. The status and data colours
+   (`--destructive`, `--chart-*`, `--chart-up`/`--chart-down`) are not accents and keep their
+   values. `tests/unit/theme.contrast.test.ts` checks the WCAG AA pairs (FR-031) from this
+   file in both themes:
+   - `--input` (form control boundaries) is zinc-500, not a lighter grey, for 3:1;
+   - `--border` is for dividers and box outlines that are never a control's only boundary;
+   - dark mode keeps blue-600 for filled buttons (white text needs it) and uses the lighter
+     blue-500 for the focus ring and selection, which must reach 3:1 on the dark background. */
 :root {
-  --background: oklch(0.994 0.005 211.039); /* sky1 */
-  --foreground: oklch(0.351 0.057 242.374); /* sky12 */
-  --card: oklch(0.994 0.005 211.039); /* sky1 */
-  --card-foreground: oklch(0.351 0.057 242.374); /* sky12 */
-  --popover: oklch(0.994 0.005 211.039); /* sky1 */
-  --popover-foreground: oklch(0.351 0.057 242.374); /* sky12 */
-  --primary: oklch(0.861 0.103 217.804); /* sky9 */
-  --primary-foreground: oklch(
-    0.351 0.057 242.374
-  ); /* sky12 (dark text — sky is one of Radix's light accent colors) */
-  --secondary: oklch(0.96 0.024 219.72); /* sky3 */
-  --secondary-foreground: oklch(0.351 0.057 242.374); /* sky12 */
-  --muted: oklch(0.96 0.024 219.72); /* sky3 */
-  --muted-foreground: oklch(0.525 0.108 232.548); /* sky11 */
-  --accent: oklch(0.96 0.024 219.72); /* sky3 */
-  --accent-foreground: oklch(0.351 0.057 242.374); /* sky12 */
+  --background: oklch(98.5% 0 0); /* zinc-50 */
+  --foreground: oklch(21% 0.006 285.885); /* zinc-900 */
+  --card: oklch(100% 0 0); /* white */
+  --card-foreground: oklch(21% 0.006 285.885);
+  --popover: oklch(100% 0 0);
+  --popover-foreground: oklch(21% 0.006 285.885);
+  --primary: oklch(54.6% 0.245 262.881); /* blue-600 */
+  --primary-foreground: oklch(100% 0 0);
+  --secondary: oklch(96.7% 0.001 286.375); /* zinc-100 */
+  --secondary-foreground: oklch(21% 0.006 285.885);
+  --muted: oklch(96.7% 0.001 286.375);
+  --muted-foreground: oklch(
+    44.2% 0.017 285.786
+  ); /* zinc-600: zinc-500 is under 4.5:1 on zinc-100 */
+  --accent: oklch(96.7% 0.001 286.375);
+  --accent-foreground: oklch(21% 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.86 0.057 223.645); /* sky6 */
-  --input: oklch(0.86 0.057 223.645); /* sky6 */
-  --ring: oklch(0.728 0.096 228.432); /* sky8 */
-  --chart-1: oklch(0.861 0.103 217.804); /* sky9 */
-  --chart-2: oklch(0.838 0.104 219.37); /* sky10 */
-  --chart-3: oklch(0.525 0.108 232.548); /* sky11 */
-  --chart-4: oklch(0.806 0.072 225.484); /* sky7 */
-  --chart-5: oklch(0.903 0.047 220.564); /* sky5 */
+  --border: oklch(92% 0.004 286.32); /* zinc-200 */
+  --input: oklch(55.2% 0.016 285.938); /* zinc-500 */
+  --ring: oklch(54.6% 0.245 262.881); /* blue-600 */
+  --chart-1: oklch(0.861 0.103 217.804);
+  --chart-2: oklch(0.838 0.104 219.37);
+  --chart-3: oklch(0.525 0.108 232.548);
+  --chart-4: oklch(0.806 0.072 225.484);
+  --chart-5: oklch(0.903 0.047 220.564);
   --radius: 0.625rem;
-  --sidebar: oklch(0.994 0.005 211.039); /* sky1 */
-  --sidebar-foreground: oklch(0.351 0.057 242.374); /* sky12 */
-  --sidebar-primary: oklch(0.861 0.103 217.804); /* sky9 */
-  --sidebar-primary-foreground: oklch(0.351 0.057 242.374); /* sky12 */
-  --sidebar-accent: oklch(0.96 0.024 219.72); /* sky3 */
-  --sidebar-accent-foreground: oklch(0.351 0.057 242.374); /* sky12 */
-  --sidebar-border: oklch(0.86 0.057 223.645); /* sky6 */
-  --sidebar-ring: oklch(0.728 0.096 228.432); /* sky8 */
+  --sidebar: oklch(96.7% 0.001 286.375); /* zinc-100 */
+  --sidebar-foreground: oklch(21% 0.006 285.885);
+  --sidebar-primary: oklch(54.6% 0.245 262.881);
+  --sidebar-primary-foreground: oklch(100% 0 0);
+  --sidebar-accent: oklch(92% 0.004 286.32);
+  --sidebar-accent-foreground: oklch(21% 0.006 285.885);
+  --sidebar-border: oklch(92% 0.004 286.32);
+  --sidebar-ring: oklch(54.6% 0.245 262.881);
   /* 019 (Trends): a diverging pair for price direction — up red, down blue. Validated with
        the dataviz palette checks against the light and dark backgrounds (all pass). */
+  /* 021 US5 (FR-035): the header is a dark zinc band in both themes, with its own text,
+     hover and focus colours so they meet contrast on it. */
+  --header: oklch(21% 0.006 285.885); /* zinc-900 */
+  --header-foreground: oklch(98.5% 0 0); /* zinc-50 */
+  --header-muted-foreground: oklch(87.1% 0.006 286.286); /* zinc-300 */
+  --header-accent: oklch(27.4% 0.006 286.033); /* zinc-800 */
+  --header-border: oklch(27.4% 0.006 286.033);
+  --header-ring: oklch(70.7% 0.165 254.624); /* blue-400 */
+  /* 021 US5 (FR-039, FR-040): the soft (light-blue) button, for Save and Calculate when
+     there is nothing new to save or price. */
+  --primary-soft: oklch(93.2% 0.032 255.585); /* blue-100 */
+  --primary-soft-foreground: oklch(48.8% 0.243 264.376); /* blue-700 */
   --chart-up: #e34948;
   --chart-down: #2a78d6;
 }
 
 .dark {
-  --background: oklch(0.19 0.025 259.237); /* sky1 (dark) */
-  --foreground: oklch(0.934 0.053 214.317); /* sky12 (dark) */
-  --card: oklch(0.216 0.029 257.527); /* sky2 (dark) */
-  --card-foreground: oklch(0.934 0.053 214.317); /* sky12 (dark) */
-  --popover: oklch(0.216 0.029 257.527); /* sky2 (dark) */
-  --popover-foreground: oklch(0.934 0.053 214.317); /* sky12 (dark) */
-  --primary: oklch(0.861 0.103 217.804); /* sky9 (dark) */
-  --primary-foreground: oklch(0.19 0.025 259.237); /* sky1 (dark) — dark text on the vivid solid */
-  --secondary: oklch(0.271 0.054 251.29); /* sky3 (dark) */
-  --secondary-foreground: oklch(0.934 0.053 214.317); /* sky12 (dark) */
-  --muted: oklch(0.271 0.054 251.29); /* sky3 (dark) */
-  --muted-foreground: oklch(0.793 0.099 231.613); /* sky11 (dark) */
-  --accent: oklch(0.271 0.054 251.29); /* sky3 (dark) */
-  --accent-foreground: oklch(0.934 0.053 214.317); /* sky12 (dark) */
+  --background: oklch(14.1% 0.005 285.823); /* zinc-950 */
+  --foreground: oklch(98.5% 0 0); /* zinc-50 */
+  --card: oklch(21% 0.006 285.885); /* zinc-900 */
+  --card-foreground: oklch(98.5% 0 0);
+  --popover: oklch(21% 0.006 285.885);
+  --popover-foreground: oklch(98.5% 0 0);
+  --primary: oklch(54.6% 0.245 262.881); /* blue-600: white text on it stays above 4.5:1 */
+  --primary-foreground: oklch(100% 0 0);
+  --secondary: oklch(27.4% 0.006 286.033); /* zinc-800 */
+  --secondary-foreground: oklch(98.5% 0 0);
+  --muted: oklch(27.4% 0.006 286.033);
+  --muted-foreground: oklch(70.5% 0.015 286.067); /* zinc-400 */
+  --accent: oklch(27.4% 0.006 286.033);
+  --accent-foreground: oklch(98.5% 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.426 0.088 243.923); /* sky6 (dark) */
-  --input: oklch(0.488 0.098 240.809); /* sky7 (dark) */
-  --ring: oklch(0.557 0.115 237.441); /* sky8 (dark) */
-  --chart-1: oklch(0.861 0.103 217.804); /* sky9 */
-  --chart-2: oklch(0.838 0.104 219.37); /* sky10 */
-  --chart-3: oklch(0.525 0.108 232.548); /* sky11 */
-  --chart-4: oklch(0.806 0.072 225.484); /* sky7 */
-  --chart-5: oklch(0.903 0.047 220.564); /* sky5 */
-  --sidebar: oklch(0.216 0.029 257.527); /* sky2 (dark) */
-  --sidebar-foreground: oklch(0.934 0.053 214.317); /* sky12 (dark) */
-  --sidebar-primary: oklch(0.861 0.103 217.804); /* sky9 (dark) */
-  --sidebar-primary-foreground: oklch(0.19 0.025 259.237); /* sky1 (dark) */
-  --sidebar-accent: oklch(0.271 0.054 251.29); /* sky3 (dark) */
-  --sidebar-accent-foreground: oklch(0.934 0.053 214.317); /* sky12 (dark) */
-  --sidebar-border: oklch(0.426 0.088 243.923); /* sky6 (dark) */
-  --sidebar-ring: oklch(0.557 0.115 237.441); /* sky8 (dark) */
+  --border: oklch(27.4% 0.006 286.033); /* zinc-800 */
+  --input: oklch(55.2% 0.016 285.938); /* zinc-500 */
+  --ring: oklch(62.3% 0.214 259.815); /* blue-500 */
+  --chart-1: oklch(0.861 0.103 217.804);
+  --chart-2: oklch(0.838 0.104 219.37);
+  --chart-3: oklch(0.525 0.108 232.548);
+  --chart-4: oklch(0.806 0.072 225.484);
+  --chart-5: oklch(0.903 0.047 220.564);
+  --sidebar: oklch(21% 0.006 285.885); /* zinc-900 */
+  --sidebar-foreground: oklch(98.5% 0 0);
+  --sidebar-primary: oklch(54.6% 0.245 262.881);
+  --sidebar-primary-foreground: oklch(100% 0 0);
+  --sidebar-accent: oklch(27.4% 0.006 286.033);
+  --sidebar-accent-foreground: oklch(98.5% 0 0);
+  --sidebar-border: oklch(27.4% 0.006 286.033);
+  --sidebar-ring: oklch(62.3% 0.214 259.815);
+  /* 021 US5 (FR-035): the header is a dark zinc band in both themes, with its own text,
+     hover and focus colours so they meet contrast on it. */
+  --header: oklch(21% 0.006 285.885); /* zinc-900 */
+  --header-foreground: oklch(98.5% 0 0); /* zinc-50 */
+  --header-muted-foreground: oklch(87.1% 0.006 286.286); /* zinc-300 */
+  --header-accent: oklch(27.4% 0.006 286.033); /* zinc-800 */
+  --header-border: oklch(27.4% 0.006 286.033);
+  --header-ring: oklch(70.7% 0.165 254.624); /* blue-400 */
+  --primary-soft: oklch(28.2% 0.091 267.935); /* blue-950 */
+  --primary-soft-foreground: oklch(88.2% 0.059 254.128); /* blue-200 */
   --chart-up: #e66767;
   --chart-down: #3987e5;
 }
@@ -148,10 +181,85 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* 021 (FR-027): every keyboard-focusable element shows a visible ring, including the app's
+     own native buttons, inputs, selects, tabs and resize handles. It is in the base layer,
+     so a component's own focus style (shadcn's rings, `focus-ring`) still wins. */
+  :where(
+    a,
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    [role="button"],
+    [role="tab"],
+    [role="separator"][tabindex],
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* 021 US5: on the dark header, the ring uses the header's lighter blue. */
+  header[data-app-header] :focus-visible {
+    outline-color: var(--header-ring);
+  }
   body {
     @apply bg-background text-foreground;
   }
   html {
     @apply font-sans;
   }
+}
+
+/* 021 (FR-027, research R9): one shared keyboard-focus ring and one shared hover/pressed
+   treatment for the app's own interactive elements (shadcn's Button, Input and Select bring
+   their own). A 2px ring outline with a 2px gap, only for keyboard focus. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@utility interactive {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: 150ms;
+  &:hover {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
+  &:active {
+    background-color: color-mix(in oklch, var(--accent), var(--foreground) 10%);
+  }
+}
+
+/* 021 (FR-032, research R10): when the system asks for reduced motion, menus, tabs and panes
+   appear without animation — in one place, so a new component can't forget it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 021 (FR-028): React Flow's canvas in the theme's colours — connector lines, the dot grid,
+   edge labels and the zoom controls — so they follow light and dark like everything else. */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-attribution-background-color: transparent;
+  --xy-background-pattern-dots-color: color-mix(in oklch, var(--border), var(--foreground) 15%);
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--ring);
+  --xy-connectionline-stroke: var(--ring);
+  --xy-edge-label-color: var(--foreground);
+  --xy-edge-label-background-color: var(--background);
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--accent);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-color-hover: var(--accent-foreground);
+  --xy-controls-button-border-color: var(--border);
 }

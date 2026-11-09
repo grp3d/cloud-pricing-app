@@ -124,3 +124,60 @@ async def test_deleting_a_guest_deletes_its_preferences(client):
 @pytest.mark.asyncio
 async def test_requires_an_identity(client):
     assert (await client.get(URL)).status_code == 401
+
+
+# --- 021: workspace.inspector (contracts/api.md §1, data-model §1) --------------------------
+
+INSPECTOR = {"mode": "split", "upper": "service", "front": "pricing", "split": 0.35}
+
+
+@pytest.mark.asyncio
+async def test_an_inspector_arrangement_round_trips(client, auth_headers):
+    workspace = {**WORKSPACE, "inspector": INSPECTOR}
+    resp = await client.patch(URL, json={"workspace": workspace}, headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    assert (await client.get(URL, headers=auth_headers)).json()["data"]["workspace"] == workspace
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "inspector",
+    [
+        {**INSPECTOR, "split": 0.1},
+        {**INSPECTOR, "split": 0.9},
+        {**INSPECTOR, "mode": "tabs"},
+        {**INSPECTOR, "upper": "canvas"},
+        {**INSPECTOR, "front": "editor"},
+        {**INSPECTOR, "pinned": True},
+        {k: v for k, v in INSPECTOR.items() if k != "front"},
+    ],
+)
+async def test_an_invalid_inspector_is_422_and_keeps_the_stored_value(
+    client, auth_headers, inspector
+):
+    stored = {"last_provider": "gcp", "inspector": INSPECTOR}
+    await client.patch(URL, json={"workspace": stored}, headers=auth_headers)
+    resp = await client.patch(
+        URL, json={"workspace": {"last_provider": "gcp", "inspector": inspector}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422, resp.text
+    assert (await client.get(URL, headers=auth_headers)).json()["data"]["workspace"] == stored
+
+
+@pytest.mark.asyncio
+async def test_replacing_workspace_without_inspector_removes_it(client, auth_headers):
+    await client.patch(URL, json={"workspace": {**WORKSPACE, "inspector": INSPECTOR}},
+                       headers=auth_headers)
+    resp = await client.patch(URL, json={"workspace": WORKSPACE}, headers=auth_headers)
+    assert resp.json()["data"]["workspace"] == WORKSPACE
+
+
+@pytest.mark.asyncio
+async def test_a_row_stored_before_021_still_reads_back(client, auth_headers):
+    # Written by 019's frontend: only the four column keys and last_provider.
+    await client.patch(URL, json={"workspace": WORKSPACE}, headers=auth_headers)
+    resp = await client.get(URL, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["data"]["workspace"] == WORKSPACE
+    assert "inspector" not in resp.json()["data"]["workspace"]

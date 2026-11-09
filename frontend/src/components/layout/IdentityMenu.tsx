@@ -5,7 +5,9 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { LoginDialog } from "../auth/LoginDialog";
+import { cn } from "cn";
 import { Button } from "../ui/button";
+import { HEADER_CONTROL } from "./headerStyles";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 
 /**
@@ -43,14 +45,14 @@ export function IdentityMenu() {
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon-sm"
+      <button
+        type="button"
+        className={cn(HEADER_CONTROL, "px-1.5")}
         aria-label={username ? `Logged in as ${username}` : "Guest — click to log in"}
         onClick={() => setMenuOpen(true)}
       >
-        <User />
-      </Button>
+        <User className="size-4" />
+      </button>
 
       <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
         <DialogContent>

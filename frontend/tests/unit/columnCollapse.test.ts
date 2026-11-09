@@ -47,8 +47,10 @@ describe("columnCollapse (preferences-backed)", () => {
       workspace: { collapsed: { col1: true } },
     });
     await store.load();
-    writeColumnCollapsed("service", false, store);
-    expect(readColumnCollapsed(store)).toEqual({ provider: true, service: false });
+    writeColumnCollapsed("inspector", false, store);
+    // 021: col1 (the removed Column 1) is ignored without error, and left stored.
+    expect(readColumnCollapsed(store)).toEqual({ inspector: false });
+    expect(store.current.workspace?.collapsed).toEqual({ col1: true, col4: false });
   });
 
   it("uses this browser's old flags until they are moved, skipping invalid ones", async () => {
@@ -57,7 +59,8 @@ describe("columnCollapse (preferences-backed)", () => {
       JSON.stringify({ collections: "yes", service: 1, provider: true }),
     );
     const { store } = storeWith({ migrated_from_browser: false });
-    expect(readColumnCollapsed(store)).toEqual({ provider: true });
+    // 021: the moved col1 flag is ignored (Column 1 is gone).
+    expect(readColumnCollapsed(store)).toEqual({});
     await store.load();
     expect(store.current.workspace?.collapsed).toEqual({ col1: true });
   });
@@ -66,5 +69,19 @@ describe("columnCollapse (preferences-backed)", () => {
     localStorage.setItem("cloud-pricing-column-collapsed", "not json");
     const { store } = storeWith({ migrated_from_browser: false });
     expect(readColumnCollapsed(store)).toEqual({});
+  });
+
+  it("021: the inspector's collapsed flag round-trips under col4", async () => {
+    const { store, patches } = storeWith({
+      migrated_from_browser: true,
+      workspace: { collapsed: { col2: true }, last_provider: "azure" },
+    });
+    await store.load();
+    writeColumnCollapsed("inspector", true, store);
+    expect(readColumnCollapsed(store)).toEqual({ collections: true, inspector: true });
+    await vi.waitFor(() => expect(store.queued).toEqual([]));
+    expect(patches.at(-1)).toEqual({
+      workspace: { collapsed: { col2: true, col4: true }, last_provider: "azure" },
+    });
   });
 });

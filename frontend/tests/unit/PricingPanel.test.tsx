@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CalculationResult } from "../../src/api/client";
 import { PricingPanel, type PricingPanelProps } from "../../src/components/workspace/PricingPanel";
 import { TooltipProvider } from "../../src/components/ui/tooltip";
+import { serviceLabel } from "../../src/lib/serviceLabel";
 
 const calculation: CalculationResult = {
   snapshot_date: "2026-09-24",
@@ -34,7 +35,6 @@ function renderPanel(overrides: Partial<PricingPanelProps> = {}) {
     calculation,
     calculationError: null,
     onRetry: vi.fn(),
-    width: 320,
     priceChange: null,
     skuAttributesById: new Map(),
     isOutOfDate: false,
@@ -190,5 +190,90 @@ describe("PricingPanel Price Change not available (020, FR-005)", () => {
     renderPanel({ priceChange: "5" });
     expect(screen.queryByText(NOTE)).toBeNull();
     expect(screen.getByText(/Price Change:/)).toBeInTheDocument();
+  });
+});
+
+describe("Calculate button colour (021 US5, FR-040)", () => {
+  const button = () => screen.getByRole("button", { name: "Calculate" });
+
+  it("is dark blue when the price is out of date", () => {
+    renderPanel({ isOutOfDate: true });
+    expect(button()).toHaveAttribute("data-variant", "default");
+  });
+
+  it("is dark blue when nothing has been priced yet", () => {
+    renderPanel({ calculation: null });
+    expect(button()).toHaveAttribute("data-variant", "default");
+  });
+
+  it("is light blue when the price is current, and still calculates", () => {
+    const onCalculate = vi.fn();
+    renderPanel({ onCalculate });
+    expect(button()).toHaveAttribute("data-variant", "soft");
+    fireEvent.click(button());
+    expect(onCalculate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Price per Sku names (021 US7, FR-047)", () => {
+  it("shows a readable name and description, with the codes muted", () => {
+    renderPanel({
+      skuLabelsById: new Map([
+        [
+          "sel-1",
+          serviceLabel({
+            service_code: "95FF-2EF5-5EA1",
+            sku: "EE2C-E844-D760",
+            service_name: "Cloud Storage",
+            summary: "Nearline Class A Operations",
+          }),
+        ],
+      ]),
+    });
+    expect(screen.getByText("Cloud Storage — Nearline Class A Operations")).toHaveAttribute(
+      "title",
+      "Cloud Storage — Nearline Class A Operations",
+    );
+    expect(screen.getByText("95FF-2EF5-5EA1 / EE2C-E844-D760")).toHaveClass(
+      "text-muted-foreground",
+    );
+  });
+
+  it("keeps service_code / sku for AWS", () => {
+    renderPanel({
+      skuLabelsById: new Map([["sel-1", serviceLabel({ service_code: "AmazonEC2", sku: "SKU1" })]]),
+    });
+    expect(screen.getByText("AmazonEC2 / SKU1")).toBeInTheDocument();
+  });
+});
+
+describe("PricingPanel pinned summary (021 US8, FR-048)", () => {
+  it("pins duration, Calculate, the total and Price Change above a divider; the rest scrolls", () => {
+    renderPanel({ priceChange: "1.50" });
+    const pinned = screen.getByTestId("pricing-pinned");
+    const scroll = screen.getByTestId("pricing-scroll");
+    expect(within(pinned).getByLabelText("Duration")).toBeInTheDocument();
+    expect(within(pinned).getByRole("button", { name: "Calculate" })).toBeInTheDocument();
+    expect(within(pinned).getByRole("heading", { name: /^Total:/ })).toBeInTheDocument();
+    expect(within(pinned).getByText(/^Price Change:/)).toBeInTheDocument();
+    expect(pinned.lastElementChild).toHaveAttribute("data-slot", "separator");
+    expect(within(scroll).getByRole("region", { name: "Price per Sku" })).toBeInTheDocument();
+    expect(within(scroll).getByText(/^Data Timestamp:/)).toBeInTheDocument();
+    expect(scroll).toHaveClass("overflow-auto");
+    // The result region still holds the total, for the existing checks.
+    expect(
+      within(screen.getByRole("region", { name: "Calculation result" })).getByRole("heading", {
+        name: /^Total:/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the divider under the controls before anything is priced", () => {
+    renderPanel({ calculation: null });
+    expect(screen.getByTestId("pricing-pinned").lastElementChild).toHaveAttribute(
+      "data-slot",
+      "separator",
+    );
+    expect(screen.queryByRole("region", { name: "Calculation result" })).toBeNull();
   });
 });

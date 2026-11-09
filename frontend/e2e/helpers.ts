@@ -134,14 +134,26 @@ export async function openArchitecture(page: Page, api: Api, architectureId: str
  * and including the Price Change re-pricing), then for React to commit. An architecture with
  * services and no stored result calculates by itself when opened (FR-017). */
 async function settled(page: Page) {
-  await expect(page.getByRole("button", { name: "Calculate" })).toBeEnabled();
+  // 021: Calculate is in the inspector's Pricing tab, which may be behind the Service tab. This
+  // waits without switching tabs (`includeHidden`), so it never changes what is in front.
+  await expect(page.getByRole("button", { name: "Calculate", includeHidden: true })).toBeEnabled();
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+}
+
+/** 021: brings the inspector's Pricing tab to the front, as a user would click it, when it
+ * isn't already showing. */
+export async function showPricing(page: Page) {
+  const tab = page.getByRole("tab", { name: "Pricing" });
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
 }
 
 /** A service's icon button on the main canvas (its accessible name starts with the code and SKU). */
 export function serviceButton(scope: Page | Locator, s: { service_code: string; sku: string }) {
   return scope.getByRole("button", {
-    name: new RegExp(`^${escape(s.service_code)}, Sku: ${escape(s.sku)}`),
+    // 021 US7: AWS names start "code, Sku: sku"; GCP and Azure lead with their readable name
+    // and carry "code / sku" after it.
+    name: new RegExp(`(^|, )${escape(s.service_code)}(, Sku: | / )${escape(s.sku)}(,|$)`),
   });
 }
 
@@ -164,6 +176,7 @@ export function pricing(page: Page) {
 
 /** Calculate at `duration` and wait for the new total. */
 export async function calculate(page: Page, duration?: "1 day" | "1 month" | "1 year") {
+  await showPricing(page);
   if (duration) await page.getByLabel("Duration").selectOption({ label: duration });
   const calculated = page.waitForResponse(
     (r) => /\/architectures\/[^/]+\/calculate/.test(r.url()) && r.request().method() === "POST",
@@ -202,6 +215,9 @@ export async function editService(
   expect((await saved).ok()).toBe(true);
   expect((await reloaded).ok()).toBe(true);
   await settled(page);
+  // 021: the save leaves the Service tab in front (FR-017; e2e/layout.spec.ts checks that).
+  // The callers read the Price Summary next, so they look at it as a user would.
+  await showPricing(page);
 }
 
 /** Turns the page's dark theme on or off (the `.dark` class on <html>, as the app's CSS expects). */

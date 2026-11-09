@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type ArchitectureDetail, type CalculationResult } from "../../src/api/client";
 import { TooltipProvider } from "../../src/components/ui/tooltip";
 import { writePricingResult } from "../../src/lib/architecturePricingResults";
+import { readInspector } from "../../src/lib/inspectorLayout";
+import { preferencesStore } from "../../src/lib/preferences";
 import { WorkspacePage } from "../../src/pages/WorkspacePage";
 
 const ARCH_ID = "arch-a";
@@ -277,5 +279,120 @@ describe("WorkspacePage Price Change with provider options (020)", () => {
     expect(
       screen.queryByText("Not available: previous calculation from prior version is unreliable"),
     ).toBeNull();
+  });
+});
+
+// --- 021 (T030, User Story 2): the inspector's front tab -------------------------------------
+//
+// Selecting a service or picking a SKU needs the canvas or a catalogue search with a selected
+// collection, which jsdom can't lay out; those auto-front rules are covered in
+// e2e/layout.spec.ts. Here: the calculation rules, and the three zones.
+
+describe("WorkspacePage inspector (021)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.spyOn(api, "listProviders").mockResolvedValue([]);
+    vi.spyOn(api, "listRegions").mockResolvedValue([]);
+    vi.spyOn(api, "listArchitectures").mockResolvedValue([]);
+    vi.spyOn(api, "getCurrentUser").mockResolvedValue(
+      null as unknown as Awaited<ReturnType<typeof api.getCurrentUser>>,
+    );
+    vi.spyOn(api, "getArchitecture").mockResolvedValue(architecture);
+    // Start with Service in front, as if the user had been editing.
+    preferencesStore.patchSection("workspace", {
+      inspector: { mode: "merged", upper: "pricing", front: "service", split: 0.5 },
+    });
+  });
+  afterEach(() => {
+    preferencesStore.patchSection("workspace", null);
+    vi.restoreAllMocks();
+  });
+
+  it("shows three zones: the Architecture Editor, the canvas and the inspector", async () => {
+    vi.spyOn(api, "calculate").mockResolvedValue(result("1.00"));
+    renderWorkspace();
+    expect(
+      await screen.findByRole("complementary", { name: "Architecture Editor" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Inspector" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("separator", { name: "Resize Architecture Editor panel" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("separator", { name: "Resize inspector" })).toBeTruthy();
+    expect(screen.queryByRole("separator", { name: "Resize Service Editor panel" })).toBeNull();
+    expect(screen.queryByRole("separator", { name: "Resize pricing panel" })).toBeNull();
+  });
+
+  it("names the open architecture above the canvas (021 US5, FR-036)", async () => {
+    vi.spyOn(api, "calculate").mockResolvedValue(result("1.00"));
+    renderWorkspace();
+    const title = await screen.findByRole("heading", { name: "AWS · A" });
+    expect(title.closest("aside")).toBeNull();
+  });
+
+  it("brings Pricing forward when the automatic calculation finishes (FR-016)", async () => {
+    vi.spyOn(api, "calculate").mockResolvedValue(result("7.00"));
+    renderWorkspace();
+    expect(await screen.findByText(/Total: .*7\.00/)).toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Pricing" })).toHaveAttribute("aria-selected", "true"),
+    );
+    expect(readInspector(preferencesStore.current.workspace).front).toBe("pricing");
+  });
+
+  it("brings Pricing forward when a calculation ends in an error, too (FR-016)", async () => {
+    vi.spyOn(api, "calculate").mockRejectedValue(new Error("Pricing data unavailable"));
+    renderWorkspace();
+    expect(await screen.findByText("Pricing data unavailable")).toBeInTheDocument();
+    await vi.waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Pricing" })).toHaveAttribute("aria-selected", "true"),
+    );
+  });
+
+  it("keeps a collapsed inspector collapsed and marks its rail when a result arrives (FR-018a)", async () => {
+    preferencesStore.patchSection("workspace", {
+      ...preferencesStore.current.workspace,
+      collapsed: { col4: true },
+    });
+    vi.spyOn(api, "calculate").mockResolvedValue(result("3.00"));
+    renderWorkspace();
+    expect(await screen.findByRole("button", { name: "Pricing — new result" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Expand inspector" }));
+    expect(screen.getByRole("tab", { name: "Pricing" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText(/Total: .*3\.00/)).toBeInTheDocument();
+  });
+
+  it("restores a split arrangement and saves changes with the rest of the workspace kept", async () => {
+    preferencesStore.patchSection("workspace", {
+      column_widths: { col2: 300 },
+      last_provider: "aws",
+      inspector: { mode: "split", upper: "service", front: "pricing", split: 0.4 },
+    });
+    vi.spyOn(api, "calculate").mockResolvedValue(result("2.00"));
+    const patch = vi.spyOn(preferencesStore, "patchSection");
+    renderWorkspace();
+    expect(
+      await screen.findByRole("tablist", { name: "Upper inspector pane" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "Resize inspector panes" })).toHaveAttribute(
+      "aria-valuenow",
+      "40",
+    );
+    // A finished calculation moves nothing while split (US3 scenario 5).
+    await screen.findByText(/Total: .*2\.00/);
+    expect(readInspector(preferencesStore.current.workspace).upper).toBe("service");
+    // A keyboard divider move is saved with the other workspace fields kept.
+    fireEvent.keyDown(screen.getByRole("separator", { name: "Resize inspector panes" }), {
+      key: "ArrowDown",
+    });
+    expect(patch).toHaveBeenLastCalledWith(
+      "workspace",
+      expect.objectContaining({
+        column_widths: { col2: 300 },
+        last_provider: "aws",
+        inspector: { mode: "split", upper: "service", front: "pricing", split: 0.45 },
+      }),
+    );
   });
 });

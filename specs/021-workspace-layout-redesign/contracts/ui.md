@@ -76,3 +76,17 @@ field.
   `getByRole(..., { hidden: false })` / Playwright's default visible-only locators.
 - `Calculate` is reachable only while the Pricing tab is visible. The e2e `calculate()`
   helper clicks the `Pricing` tab first when it isn't selected.
+
+## Added 2026-11-09 (User Stories 5 and 6)
+
+| Control | Accessible name | Notes |
+|---|---|---|
+| Canvas title | heading "`<Provider> · <name>`" (focusable span with the same label) | Replaces the header label (FR-036). |
+| Provider in the menu | button "AWS" / "GCP" / "Azure", `aria-expanded` | Hover, click, Enter, Space or ArrowRight opens its panel (FR-041, FR-042). |
+| Provider panel | group "`<Provider> architectures`" | As before, but one at a time, beside the list. |
+| Rename button | "Rename `<name>`" | Between "Make … public/private" and "Delete …" (FR-043). |
+| Rename field | textbox "Name for `<name>`" | Enter or blur saves; Escape cancels and keeps the menu open. |
+| Search result arrow | "Add `<service summary>`" (was "Configure …") | Adds with defaults to the selected box or connector (FR-037). |
+| Save / Calculate | unchanged names | `data-variant="default"` (dark blue) or `"soft"` (light blue), FR-039, FR-040. |
+| GCP / Azure canvas icon | "`<service name>`, `<description>`, `<code> / <sku>`, …" | Was "`<code>`, Sku: `<sku>`, …"; AWS unchanged (FR-045). |
+

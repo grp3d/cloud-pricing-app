@@ -42,6 +42,19 @@ It also gives the app a calmer, more consistent look. No pricing behaviour chang
 - Q: How wide should the inspector be by default, now that it holds both the Service Editor and the Price Summary? → A: 360px by default, with a saved Price Summary width carried over where one exists. It stays adjustable by dragging (saved to the account) and collapsible, as today. The "Price per Sku" word-wrap toggle is kept in the Pricing tab, unchanged: off by default, for the current session.
 - Q: If the inspector is collapsed to its rail and the user selects a service, should it expand by itself? → A: Selecting a service or choosing a SKU expands it, with Service in front. A finished calculation only shows a marker on the rail. Calculate (with duration) stays in the Pricing tab and does not move onto the canvas.
 
+### Session 2026-11-09
+
+- Q: What colour should the header be? → A: Dark zinc in both themes (zinc-900; in dark mode set off from the zinc-950 page by a border), with its text lightened as needed to meet contrast. The architecture menu that drops from it keeps the normal surface colours.
+- Q: Where should the open architecture's name go once it leaves the header? → A: In a title row at the top of the canvas, not in the sidebar, because the sidebar can collapse to its rail.
+- Q: Should a light-blue (nothing to save) Save button still be clickable? → A: Yes. Save and Calculate both stay clickable when light blue; the colour only signals whether there is something new to save or price.
+- Q: Do these refinements belong in 021? → A: Yes, as User Story 5 in the same release.
+- Q: How should the architecture menu show the three providers? → A: Collapsed to a short list (AWS, GCP, Azure). Hovering or clicking a provider shows its architectures, New and Import in a panel to the right of the list (User Story 6).
+- Q: How is an architecture renamed? → A: An edit (pencil) button between the share and delete buttons in the menu turns the name into a text field, prefilled and selected, to type over. Enter or leaving the field saves; Escape cancels.
+- Q: GCP and Azure services show only codes (e.g. "95FF-2EF5-5EA1 / EE2C-E844-D760") on hover and in the Service tab. Where should readable names appear, and what about the codes? → A: In all three places (canvas hover, Service tab, Price per SKU list), with the codes kept as a muted line. Names drawn on the canvas itself are a follow-up feature (User Story 7).
+- Q: Azure descriptions repeat words ("… P10 LRS P10 LRS Disk") and Azure service names can be broad ("Storage"). What should change? → A: Remove the repeated words. The broad service name is fine for now, since the details show on hover and in the Service tab.
+- Q: Should the top of the Service and Pricing tabs stay visible while scrolling? → A: Yes. Service: the name and description line with the delete button, then a divider. Pricing: duration, total and Price Change, then the existing divider. Both stay in place; the rest scrolls (User Story 8).
+- Q: The canvas hover text grows with the canvas zoom and can get far too large. Should it? → A: No. It stays at its normal (100%) size at every zoom (User Story 9, superseding 015's FR-014).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Pick and manage architectures from the header (Priority: P1)
@@ -221,6 +234,158 @@ ring. Contrast measures meet the stated levels.
 
 ---
 
+### User Story 5 - Header and editing refinements (Priority: P2)
+
+The header is a dark band that sets the navigation apart from the work area, with larger
+menu text. The open architecture's name moves from the header to the top of the canvas.
+Adding a service from the search puts it on the diagram in one click. The Save and Calculate
+buttons show, by their colour, whether there is something new to save or to price, and saving
+a service keeps it open in the Service tab.
+
+**Why this priority**: These remove clicks and guesswork from the most common loop (add a
+service, adjust it, price it), but the workflow already works without them.
+
+**Independent Test**: Open an architecture, select an application box, click a search
+result's arrow: the service appears in the box and in the Service tab. Change its quantity:
+Save turns dark blue; save: it turns light blue and the service stays open. Calculate is dark
+blue while the price is out of date and light blue once it is current.
+
+**Acceptance Scenarios**:
+
+1. **Given** any page, **When** it is shown in light or dark theme, **Then** the header is a
+   dark zinc band, its text and controls meet contrast, and its navigation text is larger
+   than before (about 14px) in a slightly taller bar (about 48px).
+2. **Given** an open architecture, **When** the workspace is shown, **Then** its provider and
+   name appear in a title row at the top of the canvas and no longer in the header.
+3. **Given** an application box or a connector is selected, **When** the user clicks a search
+   result's arrow, **Then** the service is added there with default values, it is selected,
+   and the Service tab comes to the front showing it.
+4. **Given** nothing that can hold a service is selected, **When** the user clicks a search
+   result's arrow, **Then** nothing is added and a message asks them to select an application
+   or connector on the canvas first.
+5. **Given** a service open in the Service tab, **When** the user saves it, **Then** it stays
+   selected and open, showing the saved values.
+6. **Given** a service open in the Service tab, **When** no field differs from what is saved,
+   **Then** Save is light blue; **When** any field differs, **Then** Save is dark blue. Both
+   are clickable.
+7. **Given** an architecture whose price is out of date (or has never been priced), **When**
+   the Pricing tab is shown, **Then** Calculate is dark blue; once the price is current, it is
+   light blue and still clickable.
+
+---
+
+### User Story 6 - A compact architecture menu with rename (Priority: P2)
+
+The architecture menu opens as a short list of the three providers. Hovering or clicking one
+shows that provider's architectures, "New … architecture…" and Import in a panel to its
+right. Each architecture has an edit button, between share and delete, to rename it in place.
+
+**Why this priority**: The full menu grows long with many architectures, and there was no
+way to rename an architecture at all.
+
+**Independent Test**: Open the menu: only AWS, GCP and Azure show. Hover GCP: its panel
+appears to the right. Click the pencil beside an architecture, type a new name and press
+Enter: the menu and the canvas title show the new name.
+
+**Acceptance Scenarios**:
+
+1. **Given** the menu is opened, **When** it appears, **Then** it lists AWS, GCP and Azure,
+   each collapsed, with no architectures shown.
+2. **Given** the open menu, **When** the user hovers or clicks a provider, **Then** that
+   provider's architectures, New and Import appear in a panel to the right, and any other
+   provider's panel closes.
+3. **Given** a provider focused from the keyboard, **When** the user presses Enter, Space or
+   ArrowRight, **Then** its panel opens and focus moves into it; ArrowLeft returns to the
+   provider; Escape closes the menu with focus back on the chevron.
+4. **Given** an architecture in the panel, **When** the user clicks its edit button, **Then**
+   the name becomes a text field holding the current name, selected. Enter or leaving the
+   field saves a changed, non-blank name; Escape cancels and keeps the menu open.
+5. **Given** a rename was saved, **When** the menu and the canvas title are shown, **Then**
+   both show the new name.
+
+---
+
+### User Story 7 - Readable GCP and Azure service names (Priority: P1)
+
+GCP and Azure services are identified by opaque codes. Wherever a service is shown (the canvas
+hover text, the Service tab and the Price per SKU list), it is named by its provider service
+name and its own description, as the service search shows them, with the codes kept as a
+muted line.
+
+**Why this priority**: Without it, a GCP or Azure architecture can't be read: every service
+looks like "95FF-2EF5-5EA1 / EE2C-E844-D760". It is also the groundwork for showing names on
+the canvas, a follow-up.
+
+**Independent Test**: Add GCP "Cloud Storage" from the search. Hover its icon: "Cloud
+Storage", its description, then the codes (muted). Select it: the Service tab heading reads
+the same. Calculate: the price line reads "Cloud Storage — <description>".
+
+**Acceptance Scenarios**:
+
+1. **Given** a saved GCP or Azure service, **When** its canvas icon is hovered or focused,
+   **Then** the text starts with the service name and description, followed by the codes,
+   shown muted; its accessible name starts the same way.
+2. **Given** that service selected, **When** the Service tab shows it, **Then** the heading
+   is the name and description, with the codes muted beneath; a GCP service also lists its
+   category path.
+3. **Given** a calculation, **When** the Price per SKU list (and any "could not be priced"
+   list) shows that service, **Then** it reads "name — description", the full text on hover,
+   with the codes muted beneath.
+4. **Given** an AWS service, **When** it is shown, **Then** it reads as before: its service
+   code with its identifying details.
+5. **Given** an architecture saved before this change, **When** it is opened, **Then** its
+   services are named too (nothing is stored; names come from the pricing data).
+
+---
+
+### User Story 8 - The inspector tabs keep their top in view (Priority: P2)
+
+When the Service or Pricing tab holds more than fits, its top stays in place and only the
+rest scrolls: the service's name, description and delete button in the Service tab; the
+duration, Calculate, total and Price Change in the Pricing tab. A divider separates the
+pinned top from what scrolls, in both tabs.
+
+**Why this priority**: A long list of service details or prices pushed the service's name,
+its Save and delete, or the total out of view.
+
+**Independent Test**: Select a service with many details and scroll the Service tab: the
+heading and delete button stay put. Make the window short and scroll the Pricing tab: the
+duration, Calculate and total stay put.
+
+**Acceptance Scenarios**:
+
+1. **Given** a service open in the Service tab, **When** the user scrolls it, **Then** the
+   name, description, codes and delete button stay in place above a divider, and the
+   details and form scroll beneath.
+2. **Given** a calculation shown in the Pricing tab, **When** the user scrolls it, **Then**
+   the duration, Calculate, total and Price Change (or its "not available" note) stay in
+   place above the divider, and the warnings, Price per SKU list and Data Timestamp scroll
+   beneath.
+3. **Given** nothing priced yet, **When** the Pricing tab is shown, **Then** the duration and
+   Calculate sit above the divider.
+
+---
+
+### User Story 9 - Canvas hover text at a fixed size (Priority: P3)
+
+The hover text of a service on the canvas stays at its normal size whatever the canvas zoom,
+instead of growing and shrinking with it.
+
+**Why this priority**: Magnified, the text grew far too large to read comfortably; shrunk,
+too small. The icons and boxes still zoom.
+
+**Independent Test**: Zoom the canvas in and out with its controls and hover (or focus) a
+service: the text is the same size each time.
+
+**Acceptance Scenarios**:
+
+1. **Given** the canvas at any zoom, **When** a service is hovered or focused, **Then** its
+   pop-up text is the tooltip's normal size (as at 100%).
+2. **Given** a service being dragged, **When** the canvas is zoomed, **Then** the dragged
+   copy still matches the icon's size on screen (unchanged).
+
+---
+
 ### Edge Cases
 
 - **Active architecture deleted from the header menu:** the workspace returns to the empty
@@ -278,9 +443,10 @@ ring. Contrast measures meet the stated levels.
   Import in a provider group MUST list only that provider's importable architectures.
 - **FR-004**: Selecting an architecture MUST open it and set the workspace's provider to that
   architecture's provider.
-- **FR-005**: The header MUST show the current provider and architecture name when one is
-  open. A long name MUST be shortened with an ellipsis, and the full name MUST be available
-  on hover and keyboard focus.
+- **FR-005**: The current provider and architecture name MUST be shown when one is open, in a
+  title row at the top of the canvas (moved from the header by FR-036). A long name MUST be
+  shortened with an ellipsis, and the full name MUST be available on hover and keyboard
+  focus.
 - **FR-006**: The menu MUST be fully usable from the keyboard: open, move between rows and
   their actions, act, and close with Escape, with focus returning to the control that opened
   it.
@@ -384,6 +550,79 @@ ring. Contrast measures meet the stated levels.
 - **FR-033**: All controls MUST have accessible names. Controls that exist today MUST keep
   their current accessible names unless this spec replaces the control.
 
+**Header and editing refinements (User Story 5)**
+
+- **FR-035**: The header MUST be a dark zinc band in both themes, using its own theme tokens
+  (not colours hard-coded in components). Its text, icons, hover, focus and current-page
+  states MUST meet FR-031 contrast against it. Its navigation text MUST be about 14px and
+  the bar about 48px tall. Menus opened from it keep the normal surface colours.
+- **FR-036**: The open architecture's provider and name MUST appear in a title row directly
+  above the canvas, and MUST NOT appear in the header.
+- **FR-037**: A search result's arrow MUST add that service, with the same default values
+  the Service form starts with, to the selected box (application or VPC) or connector, then
+  select it and bring the Service tab forward showing it. With nothing selected that can
+  hold a service, it MUST add nothing and show "Select a box or connector on the canvas
+  first". Its accessible name becomes "Add <service>" (it was "Configure <service>").
+- **FR-038**: Saving a service MUST leave it selected and open in the Service tab, showing
+  the saved values.
+- **FR-039**: Save MUST be dark blue (the primary style) when any field differs from the
+  saved service, and light blue (a soft primary style) otherwise. It stays clickable in
+  both states.
+- **FR-040**: Calculate MUST be dark blue when the price is out of date (FR-018a of 015) or
+  the architecture has never been priced, and light blue otherwise. It stays clickable in
+  both states. Save and Calculate MUST use the same light-blue style, which MUST meet
+  FR-031 contrast.
+
+**Architecture menu layout and rename (User Story 6)**
+
+- **FR-041**: The architecture menu MUST open with the providers collapsed: AWS, GCP and
+  Azure listed, with no architectures shown. Each provider MUST show its architecture count
+  and state whether it is expanded (to assistive technology too).
+- **FR-042**: Hovering or clicking a provider MUST show its group (architectures, "New …
+  architecture…", Import, as in FR-002 and FR-003) in a panel to the right of the list, one
+  provider at a time. From the keyboard, Enter, Space or ArrowRight on a provider MUST open
+  its panel and move focus into it, and ArrowLeft MUST return focus to the provider. Escape
+  MUST close the menu and return focus to the chevron (FR-006).
+- **FR-043**: Each architecture row MUST have an edit button, "Rename <name>", between the
+  share button and the delete button. It MUST turn the name into a text field holding the
+  current name, selected. Enter or leaving the field MUST save a changed name; a blank or
+  unchanged name MUST save nothing; Escape MUST cancel without closing the menu. The new name
+  MUST be saved to the account (owner only, guests included) and shown everywhere the name
+  appears. A failed save MUST keep the field open and show the error in the menu.
+
+**Readable service names (User Story 7)**
+
+- **FR-044**: Every saved service in an architecture's response MUST carry its item's
+  description from the active pricing data (`summary`), alongside the existing
+  `service_name`, resolved at response time and never stored. It is null when the item is not
+  in the active data, and for AWS (whose readable details remain its attributes). An Azure
+  description joins its product, SKU and meter names, leaving out any word an earlier name
+  already has.
+- **FR-045**: The canvas hover text and accessible name of a GCP or Azure service MUST start
+  with its service name, then its description, then "service code / SKU" shown muted. AWS
+  services MUST keep today's text.
+- **FR-046**: The Service tab heading MUST show the service name and description, with
+  "service code / SKU" muted beneath. AWS shows its service code with its identifying
+  details. A GCP service MUST also list its category path in its details.
+- **FR-047**: The Price per SKU list and the "could not be priced" list MUST show a GCP or
+  Azure service as "name — description", with the full text on hover and "service code / SKU"
+  muted beneath. AWS lines MUST keep "service code / SKU".
+
+**Pinned tab tops (User Story 8)**
+
+- **FR-048**: In the Pricing tab, the duration selector, Calculate, the total and the Price
+  Change line (or its "not available" note) MUST stay in place above a divider while the rest
+  of the tab scrolls on its own.
+- **FR-049**: In the Service tab, the heading (name, description, muted codes) and the delete
+  button MUST stay in place above a divider while the details and the form scroll on their
+  own.
+
+**Canvas hover text size (User Story 9)**
+
+- **FR-050**: A canvas service's hover and focus pop-up MUST keep the tooltip's normal text
+  size at every canvas zoom. This supersedes 015's FR-014 (pop-ups scaled with the zoom).
+  Icons, boxes and labels still scale with the zoom.
+
 **Preserved behaviour**
 
 - **FR-034**: Everything else that works today MUST keep working unchanged:
@@ -432,7 +671,11 @@ ring. Contrast measures meet the stated levels.
   hidden.
 - **SC-009**: Every existing automated check for calculation, Price Change, icons,
   connectors, import and export, and sharing still passes. Tests are updated only where the
-  control they reach has moved, not where the behaviour has changed.
+  control they reach has moved, not where the behaviour has changed. The exception is the
+  add-service and Save behaviour that User Story 5 changes on purpose; tests of those flows
+  are updated to match.
+- **SC-010**: Adding a service from the search takes one click once an application box or
+  connector is selected (it took two before: the arrow, then Add).
 
 ## Assumptions
 
@@ -454,9 +697,11 @@ ring. Contrast measures meet the stated levels.
 - **Old preferences:** saved preferences for the removed columns stay in the user's account,
   unused. Cleaning them up is not needed.
 - **Mobile:** tablets and phones are out of scope. The minimum supported width is 1280px.
-- **The only backend change is saving the new preferences:** the per-user preference store
-  from 019 holds typed, versioned layout settings. Its layout section knows only the four
-  column keys today, so it is extended to hold the inspector arrangement (a typed addition,
-  per the constitution's Principle IV). Pricing, data and every other API stay unchanged.
+- **Backend changes are small and additive:** the per-user preference store from 019 holds
+  typed, versioned layout settings. Its layout section knows only the four column keys today,
+  so it is extended to hold the inspector arrangement (a typed addition, per the
+  constitution's Principle IV). Import gains a provider filter, and the architecture update
+  gains a name for renaming (User Story 6). Pricing, data and every other API stay
+  unchanged.
 - **Design rules:** the rules in `.claude/system_prompts/design.md` apply as stated in
   FR-026–FR-033, using the app's theme rather than fixed colour values.

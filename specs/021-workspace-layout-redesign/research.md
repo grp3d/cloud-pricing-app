@@ -378,3 +378,56 @@ browser checks as the regression net for calculation, Price Change and icons.
 
 **Rationale**: the user hasn't asked for the file to be edited. The spec already records how
 its rules apply here.
+
+## R15. Changes made during implementation
+
+- **Tabs written by hand, not with shadcn Tabs (R1, R6):** a Tabs component puts each panel
+  inside its own root, so splitting or merging would re-parent the Pricing and Service bodies
+  and remount them, losing unsaved Service input (FR-017). `InspectorPanel` keeps both bodies
+  in one parent, placed with CSS `order`, and uses the ARIA tab roles directly. The unused
+  `ui/tabs.tsx` was removed. Popover and DropdownMenu are used as planned, with their motion
+  set to 150ms.
+- **The options button is per pane (R6):** when merged there is one, for the front tab; when
+  split, one per pane. A button can't sit inside a `tablist`.
+- **Inactive providers stay in the menu (R2):** their group shows its architectures, so they
+  can still be opened, but New and Import are disabled, with the snapshot reason as the hover
+  text (019 FR-001).
+- **`last_provider` is saved only for an active provider (R3):** otherwise it fights the
+  existing clean-up of an inactive saved provider, and the two loop forever. A unit test
+  found this.
+- **The workspace row is measured on mount and resize only (R4):** `useMeasuredWidth`
+  re-measures after every render. At page level that combined with other updates into a
+  render loop, so the row uses a ResizeObserver and a window `resize` listener.
+- **Theme values (R8):**
+  - Light `--muted-foreground` is zinc-600, because zinc-500 is 4.4:1 on zinc-100.
+  - Canvas selection uses `--ring`, because dark blue-600 is under 3:1 on zinc-950.
+  - The canvas's own colours (lines, dots, labels, zoom controls) come from React Flow's
+    `--xy-*` variables, set in `index.css`.
+- **Focus (R9):** a base-layer `:focus-visible` rule gives every focusable element a ring, and
+  component focus styles still win. The column resize handles are now keyboard-focusable,
+  with the arrow keys resizing in 16px steps. Native form controls use the `--input` border.
+- **Column ids (T012):** the `pricing` id was renamed to `inspector` straight away, rather than
+  run alongside it, so `readColumnWidths` never reported `col4` twice.
+
+## R16. User Stories 5 and 6 (added 2026-11-09)
+
+- **Header tokens:** `--header`, `--header-foreground`, `--header-muted-foreground` (zinc-300,
+  lighter than the page's muted text so it reads on zinc-900), `--header-accent`,
+  `--header-border` and `--header-ring` (blue-400; blue-600 is too dark on zinc-900). The
+  same values serve both themes: in dark mode the header is the zinc-900 band on the
+  zinc-950 page. All pairs are in the contrast test.
+- **Soft button:** a `soft` variant on the shadcn Button (`--primary-soft`, blue-100 with
+  blue-700 text in light; blue-950 with blue-200 in dark). Save and Calculate share it.
+- **Save baseline:** the form compares what it would submit with what it was opened with,
+  or after a save with what was last saved successfully, so it turns light at once without
+  waiting for the refetch, and stays dark if the save failed.
+- **One-click add and the first calculation:** in an architecture that has never been priced,
+  adding the first service lets the automatic first calculation run, and its result brings
+  Pricing forward (FR-016). With any earlier result, the new service stays in front.
+- **Menu flyout in one popover:** the provider panel is a second column inside the same
+  popover, not a nested popover, so hover can move from the list into the panel without a
+  gap and Radix sees one layer. Radix skipped returning focus to the chevron once focus had
+  been inside the panel, so `TopTabs` does it on Escape.
+- **Rename:** the existing owner-only `PATCH /architectures/{id}` takes an optional `name`
+  (contracts/api.md §3) instead of a new route.
+

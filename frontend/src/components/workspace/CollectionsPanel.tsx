@@ -245,6 +245,8 @@ export interface CollectionsPanelProps {
     change: { arrow_style?: ArrowStyle; arrow_reversed?: boolean },
   ) => void;
   onPickSku: (sku: CatalogSKU) => void;
+  /** 021 US5 (FR-037): why the last add from the search didn't happen, if it didn't. */
+  searchNotice?: string | null;
   /** 010-multi-region-support, spec FR-005/FR-006: region to scope "Add a Service" search to —
    * the selected collection's region, or a selected connector's "from" collection's region. */
   searchRegion: string | undefined;
@@ -267,10 +269,10 @@ export interface CollectionsPanelProps {
  * the top, unchanged from 007's FR-004 behavior), "Selected Collection" (the current
  * selection's own name/delete control), "Add a Service" (the search panel) — each
  * separated by a visible divider that stays visible even when the section it borders has
- * no content (FR-010). Collapsible to an icon rail (FR-006), mirroring
- * `ProviderArchitecturePanel.tsx`'s 007 pattern. Deliberately no list of already-added
- * services (007, Clarifications) — an already-added service is reached only via the
- * diagram (column 4 → column 3).
+ * no content (FR-010). Collapsible to an icon rail (FR-006). Deliberately no list of
+ * already-added services (007, Clarifications) — an already-added service is reached only via
+ * the diagram, which opens it in the inspector's Service tab (021). 021: this is the
+ * workspace's left sidebar, the "Architecture Editor" landmark.
  */
 export function CollectionsPanel({
   newCollectionType,
@@ -291,6 +293,7 @@ export function CollectionsPanel({
   onDeleteConnector,
   onUpdateConnectorArrow,
   onPickSku,
+  searchNotice = null,
   searchRegion,
   provider = "aws",
   regions,
@@ -307,8 +310,11 @@ export function CollectionsPanel({
   }
 
   return (
-    <section
-      className="flex h-full min-w-0 shrink-0 flex-col gap-3 overflow-hidden border-r border-border p-2 transition-[width]"
+    // 021 (FR-008, FR-012): the workspace's left sidebar, on the sidebar background, with its
+    // own scroll area so a long list never pushes the layout.
+    <aside
+      aria-label="Architecture Editor"
+      className="flex h-full min-w-0 shrink-0 flex-col gap-3 overflow-hidden border-r border-sidebar-border bg-sidebar p-3 text-sidebar-foreground transition-[width]"
       style={{ width: expanded ? width : 56 }}
     >
       <div className={`flex items-center ${expanded ? "justify-between" : "justify-center"}`}>
@@ -342,7 +348,7 @@ export function CollectionsPanel({
               }}
             >
               <select
-                className="rounded border border-border bg-background px-1.5 py-1 text-2xs"
+                className="rounded-md border border-input bg-background px-1.5 py-1 text-2xs"
                 value={newCollectionType}
                 onChange={(e) => onNewCollectionTypeChange(e.target.value as CollectionType)}
               >
@@ -352,7 +358,7 @@ export function CollectionsPanel({
                 <option value="vpc">VPC</option>
               </select>
               <input
-                className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-2xs"
+                className="min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 py-1 text-2xs"
                 placeholder="Collection name"
                 value={newCollectionName}
                 onChange={(e) => onNewCollectionNameChange(e.target.value)}
@@ -489,6 +495,7 @@ export function CollectionsPanel({
                 // keeps its filters across selections, as before.
                 key={provider === "aws" ? "aws" : `${provider}-${selection.kind}`}
                 onAdd={onPickSku}
+                notice={searchNotice}
                 region={searchRegion}
                 provider={provider}
                 // 019 (T054): a connector's service is usually its data transfer.
@@ -504,6 +511,6 @@ export function CollectionsPanel({
           </div>
         </>
       )}
-    </section>
+    </aside>
   );
 }

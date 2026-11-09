@@ -32,7 +32,7 @@ interface Props {
 }
 
 const selectClassName =
-  "rounded border border-border bg-background px-1.5 py-1 text-2xs font-normal";
+  "rounded-md border border-input bg-background px-1.5 py-1 text-2xs font-normal";
 
 function MoverItem({ mover, up }: { mover: Mover; up: boolean }) {
   const Arrow = up ? ArrowUp : ArrowDown;

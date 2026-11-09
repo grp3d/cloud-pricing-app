@@ -187,3 +187,42 @@ async def test_aws_selections_have_no_service_name(client, auth_headers):
                                 headers=auth_headers)
     assert created.status_code == 201
     assert created.json()["service_name"] is None
+
+
+# --- 021 (US7, FR-044): SKUSelectionOut.summary -----------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["gcp", "azure"])
+async def test_gcp_and_azure_selections_carry_their_description(client, auth_headers, provider):
+    arch_id = await build_architecture(client, auth_headers, provider)
+    body = (await client.get(f"/api/v1/architectures/{arch_id}", headers=auth_headers)).json()
+    selections = [s for c in body["collections"] for s in c["sku_selections"]]
+    assert selections
+    for s in selections:
+        assert isinstance(s["summary"], str) and s["summary"].strip(), s["sku"]
+        # The description is the item's own, not its service's name.
+        assert s["summary"] != s["service_code"]
+
+
+@pytest.mark.asyncio
+async def test_aws_selections_have_no_summary(client, auth_headers):
+    """AWS's readable details stay in `attributes` (unchanged), so `summary` stays null."""
+    arch = await client.post(
+        "/api/v1/architectures", json={"name": "N", "provider": "aws"}, headers=auth_headers
+    )
+    coll = await client.post(
+        f"/api/v1/architectures/{arch.json()['id']}/collections",
+        json={"type": "application_component", "name": "App", "region": "us-east-1"},
+        headers=auth_headers,
+    )
+    await client.post(
+        f"/api/v1/collections/{coll.json()['id']}/sku-selections",
+        json=_selection("AmazonEC2", NAT_GATEWAY_SKU),
+        headers=auth_headers,
+    )
+    body = (
+        await client.get(f"/api/v1/architectures/{arch.json()['id']}", headers=auth_headers)
+    ).json()
+    assert body["collections"][0]["sku_selections"][0]["summary"] is None
+

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import type { ImportableArchitectures } from "../../api/client";
+import type { ImportableArchitectures, ProviderCode } from "../../api/client";
+import { IMPORT_ARCHITECTURE_LABELS, PROVIDER_LABELS } from "../../lib/providerPricing";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
@@ -13,16 +14,21 @@ type Picked = { id: string; name: string };
  * server-side, `GET /architectures/importable`), then a naming prompt pre-filled
  * `"My {original name}"`. Two steps in one `Dialog` (research.md §9's `Dialog`-reuse
  * precedent), rather than two separate dialogs, since only one is ever shown at a time.
+ *
+ * 021 (FR-003, research R12): opened from one provider group of the header menu, it lists
+ * only that provider's architectures and names the provider in its title.
  */
 export function ImportArchitectureDialog({
   open,
   onOpenChange,
+  provider,
   data,
   onConfirm,
   isSubmitting,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  provider: ProviderCode;
   data: ImportableArchitectures | undefined;
   onConfirm: (architectureId: string, name: string) => void;
   isSubmitting: boolean;
@@ -51,14 +57,16 @@ export function ImportArchitectureDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{picked ? "Name your copy" : "Import an architecture"}</DialogTitle>
+          <DialogTitle>
+            {picked ? "Name your copy" : IMPORT_ARCHITECTURE_LABELS[provider]}
+          </DialogTitle>
         </DialogHeader>
 
         {!picked && (
           <div className="flex max-h-80 flex-col gap-3 overflow-y-auto">
             {groups.length === 0 && (
               <p className="text-2xs text-muted-foreground">
-                No other user has shared a public architecture yet.
+                No other user has shared a public {PROVIDER_LABELS[provider]} architecture yet.
               </p>
             )}
             {groups.map((group) => (

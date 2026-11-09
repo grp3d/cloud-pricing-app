@@ -16,7 +16,10 @@ import { Button } from "./ui/button";
 import { ErrorMessage } from "./ErrorMessage";
 
 interface Props {
+  /** 021 US5 (FR-037): adds the service to the selected box or connector. */
   onAdd: (sku: CatalogSKU) => void;
+  /** 021 US5: why the last add didn't happen (nothing selected, or the request failed). */
+  notice?: string | null;
   /** 010-multi-region-support, spec FR-005/FR-006: the region search results are scoped to —
    * the selected collection's region, or, for a selected connector, that connector's "from"
    * collection's region. `undefined` disables searching (nothing resolvable to scope it to). */
@@ -74,7 +77,13 @@ function summaryText(r: CatalogSKU): string {
  * own displayed text (FR-025); an "(n of m)" indicator appears when fewer results are shown
  * than actually match (FR-024).
  */
-export function CatalogSearchPanel({ onAdd, region, provider = "aws", defaultKind }: Props) {
+export function CatalogSearchPanel({
+  onAdd,
+  notice = null,
+  region,
+  provider = "aws",
+  defaultKind,
+}: Props) {
   const isAws = provider === "aws";
   const [serviceCode, setServiceCode] = useState("");
   const [productFamily, setProductFamily] = useState("");
@@ -127,7 +136,7 @@ export function CatalogSearchPanel({ onAdd, region, provider = "aws", defaultKin
     : [];
 
   const inputClassName =
-    "w-full min-w-0 rounded border border-border bg-background px-1.5 py-1 text-2xs";
+    "w-full min-w-0 rounded-md border border-input bg-background px-1.5 py-1 text-2xs";
   const fieldErrorClassName = "text-2xs text-destructive";
 
   return (
@@ -248,20 +257,32 @@ export function CatalogSearchPanel({ onAdd, region, provider = "aws", defaultKin
         </p>
       )}
 
+      {notice && (
+        <p role="status" className="shrink-0 text-2xs text-destructive">
+          {notice}
+        </p>
+      )}
+
       <div className="min-h-0 flex-1 overflow-auto">
         <ul className="flex flex-col gap-1">
           {sortedResults.map((r) => (
             <li
               key={`${r.service_code}/${r.sku}`}
-              className="flex items-start justify-between gap-2 rounded border border-transparent px-1 py-1 text-2xs hover:border-border"
+              className="flex items-start justify-between gap-2 rounded-md px-1 py-1 text-2xs transition-colors hover:bg-accent"
             >
               <span className="min-w-0 break-words">{summaryText(r)}</span>
-              {/* 009-ui-fixes-next-iteration follow-up: this button doesn't add the Service to
-                  the Architecture yet, only opens it in the Service Editor (column 3) for
-                  configuration. Shrunk to just the arrow (a follow-up request) -- same
-                  `default` variant/color as the Service Editor's own "+ Add" button
-                  (`PricingInputsForm.tsx`) so the two feel like one flow. */}
-              <Button type="button" size="sm" variant="default" onClick={() => onAdd(r)}>
+              {/* 021 US5 (FR-037): the arrow adds the service to the selected box or connector
+                  with default values and opens it in the Service tab (it used to only open
+                  the form, with a separate Add). */}
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                // 021 (FR-033): an icon-only button needs a name of its own.
+                aria-label={`Add ${summaryText(r)}`}
+                title="Add to the selected box or connector"
+                onClick={() => onAdd(r)}
+              >
                 <ArrowRight />
               </Button>
             </li>

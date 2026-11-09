@@ -24,6 +24,7 @@ from src.models.schemas import (
     ImportableArchitectureGroupOut,
     ImportableArchitectureOut,
     ImportableArchitecturesOut,
+    ProviderCode,
 )
 from src.pricing_data.providers.registry import has_adapter
 from src.services.architecture_import import import_architecture
@@ -67,13 +68,14 @@ async def list_architectures(
 
 @router.get("/architectures/importable", response_model=ImportableArchitecturesOut)
 async def list_importable_architectures(
-    session: DbSession, user: CurrentUser
+    session: DbSession, user: CurrentUser, provider: ProviderCode | None = None
 ) -> ImportableArchitecturesOut:
     """Every other user's public architectures, grouped by owner and pre-sorted
     (012-user-accounts-sharing, spec FR-023-026): the Admin group always first, other groups
     alphabetical, architecture names alphabetical within a group; an owner with zero public
-    architectures never appears."""
-    result = await session.execute(
+    architectures never appears. With `provider`, only that provider's architectures are
+    listed (021, research R12); without it, every provider's, as before."""
+    query = (
         select(Architecture, User.username)
         .join(User, Architecture.user_id == User.id)
         .where(
@@ -83,6 +85,9 @@ async def list_importable_architectures(
             User.username.is_not(None),
         )
     )
+    if provider is not None:
+        query = query.where(Architecture.provider == provider)
+    result = await session.execute(query)
     by_owner: dict[str, list[Architecture]] = {}
     for architecture, owner_username in result.all():
         by_owner.setdefault(owner_username, []).append(architecture)
@@ -158,7 +163,8 @@ async def get_architecture(
 async def update_architecture(
     architecture_id: uuid.UUID, body: ArchitectureUpdate, session: DbSession, user: CurrentUser
 ) -> Architecture:
-    """Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020-022)."""
+    """Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020-022) and
+    rename (021, FR-043). Only the fields sent change."""
     result = await session.execute(
         select(Architecture).where(
             Architecture.id == architecture_id,
@@ -173,7 +179,10 @@ async def update_architecture(
         raise HTTPException(
             status_code=403, detail="A guest-owned architecture can never be made public"
         )
-    architecture.is_public = body.is_public
+    if body.is_public is not None:
+        architecture.is_public = body.is_public
+    if body.name is not None:
+        architecture.name = body.name
     await session.commit()
     await session.refresh(architecture)
     return architecture

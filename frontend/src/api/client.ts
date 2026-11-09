@@ -255,8 +255,22 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ is_public: isPublic }),
     }),
-  /** Every other user's public architectures, pre-grouped/sorted server-side (FR-023-026). */
-  listImportableArchitectures: () => request<ImportableArchitectures>("/architectures/importable"),
+  /** 021 (FR-043): owner-only rename; the server trims the name and rejects a blank one. */
+  renameArchitecture: (id: string, name: string) =>
+    request<ArchitectureSummary>(`/architectures/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+  /** Every other user's public architectures, pre-grouped/sorted server-side (FR-023-026).
+   * With `provider`, only that provider's (021, research R12). Call it as
+   * `() => api.listImportableArchitectures(p)`, never as a bare `queryFn`: React Query passes
+   * its context object as the first argument. */
+  listImportableArchitectures: (provider?: ProviderCode) =>
+    request<ImportableArchitectures>(
+      provider
+        ? `/architectures/importable?provider=${encodeURIComponent(provider)}`
+        : "/architectures/importable",
+    ),
   /** Deep-copies a public architecture into the caller's own list under `name` (FR-028/029). */
   importArchitecture: (architectureId: string, name: string) =>
     request<ArchitectureSummary>(`/architectures/${architectureId}/import`, {

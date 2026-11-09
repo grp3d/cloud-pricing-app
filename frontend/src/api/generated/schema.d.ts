@@ -115,7 +115,8 @@ export interface paths {
          * @description Every other user's public architectures, grouped by owner and pre-sorted
          *     (012-user-accounts-sharing, spec FR-023-026): the Admin group always first, other groups
          *     alphabetical, architecture names alphabetical within a group; an owner with zero public
-         *     architectures never appears.
+         *     architectures never appears. With `provider`, only that provider's architectures are
+         *     listed (021, research R12); without it, every provider's, as before.
          */
         get: operations["list_importable_architectures_api_v1_architectures_importable_get"];
         put?: never;
@@ -167,7 +168,8 @@ export interface paths {
         head?: never;
         /**
          * Update Architecture
-         * @description Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020-022).
+         * @description Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020-022) and
+         *     rename (021, FR-043). Only the fields sent change.
          */
         patch: operations["update_architecture_api_v1_architectures__architecture_id__patch"];
         trace?: never;
@@ -799,11 +801,15 @@ export interface components {
         };
         /**
          * ArchitectureUpdate
-         * @description Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020).
+         * @description Owner-only update: the public/private toggle (012-user-accounts-sharing, spec FR-020)
+         *     and, from 021 (US6, FR-043), the name. Only the fields sent change; at least one is
+         *     required.
          */
         ArchitectureUpdate: {
             /** Is Public */
-            is_public: boolean;
+            is_public?: boolean | null;
+            /** Name */
+            name?: string | null;
         };
         /**
          * AzureVmOptions
@@ -1279,6 +1285,31 @@ export interface components {
             /** Groups */
             groups: components["schemas"]["ImportableArchitectureGroupOut"][];
         };
+        /**
+         * InspectorArrangement
+         * @description The workspace inspector's tab layout (021, data-model §1). All fields are required when
+         *     the arrangement is sent; `upper` and `front` are both kept in either mode so a split ->
+         *     merge -> split round trip restores the previous split.
+         */
+        InspectorArrangement: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "merged" | "split";
+            /**
+             * Upper
+             * @enum {string}
+             */
+            upper: "pricing" | "service";
+            /**
+             * Front
+             * @enum {string}
+             */
+            front: "pricing" | "service";
+            /** Split */
+            split: number;
+        };
         /** IssueOut */
         IssueOut: {
             /**
@@ -1590,6 +1621,8 @@ export interface components {
             kind?: components["schemas"]["CatalogKind"] | null;
             /** Service Name */
             service_name?: string | null;
+            /** Summary */
+            summary?: string | null;
         };
         /** SKUSelectionUpdate */
         SKUSelectionUpdate: {
@@ -1832,6 +1865,7 @@ export interface components {
             } | null;
             /** Last Provider */
             last_provider?: ("aws" | "gcp" | "azure") | null;
+            inspector?: components["schemas"]["InspectorArrangement"] | null;
         };
     };
     responses: never;
@@ -2023,7 +2057,9 @@ export interface operations {
     };
     list_importable_architectures_api_v1_architectures_importable_get: {
         parameters: {
-            query?: never;
+            query?: {
+                provider?: ("aws" | "gcp" | "azure") | null;
+            };
             header?: {
                 authorization?: string | null;
             };

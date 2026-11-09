@@ -14,6 +14,14 @@ import {
   isTermPriced,
   offeredPriceTypes,
 } from "../lib/providerPricing";
+import {
+  type FormContext,
+  type InitialInputs,
+  initialState,
+  inputsOf,
+  itemShape,
+  sameInputs,
+} from "../lib/pricingInputs";
 import { usageQuantityHint } from "../lib/usageQuantityHint";
 import { AwsFields } from "./providers/AwsFields";
 import { type AzureOs, AzureFields } from "./providers/AzureFields";
@@ -29,21 +37,12 @@ export interface PricingInputs {
   provider_options?: ProviderOptions | null;
 }
 
-interface StoredOptions {
-  kind: string;
-  os?: string;
-  vcpus?: number;
-  memory_gib?: number | string;
-  ram_sku?: string;
-}
-
 interface Props {
-  onSubmit: (inputs: PricingInputs) => void;
+  /** Resolving to `false` means the submit failed, so Save stays dark blue (021 US5). */
+  onSubmit: (inputs: PricingInputs) => void | boolean | Promise<void | boolean>;
   submitLabel?: string;
   /** Pre-fill the form, e.g. when editing an existing SKU Selection's inputs. */
-  initial?: Partial<Omit<PricingInputs, "provider_options">> & {
-    provider_options?: StoredOptions | null;
-  };
+  initial?: InitialInputs;
   /** The SKU's real billing unit (e.g. "Hrs", "GB-Mo") — shown alongside the usage-quantity
    * field so a user knows what they're entering a quantity of (003-service-selection-
    * improvements, FR-004/FR-005). `null`/undefined when unavailable — no fabricated unit. */
@@ -76,25 +75,24 @@ export function PricingInputsForm({
   kind,
   attributes,
 }: Props) {
+  const ctx: FormContext = { initial, provider, priceTypes, kind, attributes };
   const offered = offeredPriceTypes(provider, priceTypes);
-  const [term, setTerm] = useState<PricingTerm>(() => {
-    const wanted = initial?.pricing_term ?? "on_demand";
-    return offered.includes(wanted) ? wanted : offered[0];
-  });
-  const [purchaseOption, setPurchaseOption] = useState<PurchaseOption>(
-    initial?.purchase_option ?? "not_applicable",
-  );
-  const [quantity, setQuantity] = useState(initial?.usage_quantity ?? "730");
+  const [start] = useState(() => initialState(ctx));
+  const [term, setTerm] = useState<PricingTerm>(start.term);
+  const [purchaseOption, setPurchaseOption] = useState<PurchaseOption>(start.purchaseOption);
+  const [quantity, setQuantity] = useState(start.quantity);
+  const [os, setOs] = useState<AzureOs>(start.os);
+  const [vcpus, setVcpus] = useState(start.vcpus);
+  const [memoryGib, setMemoryGib] = useState(start.memoryGib);
+  const { isAzureVm, isGcpMachine } = itemShape(ctx);
 
-  const stored = initial?.provider_options ?? null;
-  const [os, setOs] = useState<AzureOs>(stored?.os === "windows" ? "windows" : "linux");
-  const ramSku = stored?.ram_sku ?? attributes?.ram_sku ?? "";
-  const [vcpus, setVcpus] = useState(String(stored?.vcpus ?? 4));
-  const [memoryGib, setMemoryGib] = useState(String(stored?.memory_gib ?? 16));
-
-  const isAzureVm = provider === "azure" && (kind === "vm" || stored?.kind === "azure_vm");
-  const isGcpMachine =
-    provider === "gcp" && Boolean(ramSku) && (kind === "vm" || stored?.kind === "gcp_machine");
+  const current = inputsOf({ term, purchaseOption, quantity, os, vcpus, memoryGib }, ctx);
+  // 021 US5 (FR-039): Save is dark blue only when something differs from the saved service:
+  // what it was opened with, or once saved here, what was last saved successfully (so it
+  // turns light blue straight away, before the refetch lands).
+  const [lastSaved, setLastSaved] = useState<PricingInputs | null>(null);
+  const changed = !sameInputs(current, lastSaved ?? inputsOf(start, ctx));
+  const submitVariant = submitLabel === "Save" && !changed ? "soft" : "default";
 
   // Which of the two proration interpretations this quantity represents (004, FR-007) — only
   // meaningful for usage-priced terms (006-fix-reserved-pricing: usage_quantity has no
@@ -102,33 +100,15 @@ export function PricingInputsForm({
   // once a Reserved term is selected, below).
   const hint = usageQuantityHint(isGcpMachine ? "Hrs" : unit);
 
-  function options(): ProviderOptions | null {
-    if (isAzureVm) return { kind: "azure_vm", version: 1, os };
-    if (isGcpMachine) {
-      return {
-        kind: "gcp_machine",
-        version: 1,
-        vcpus: Number(vcpus),
-        memory_gib: memoryGib,
-        ram_sku: ramSku,
-      };
-    }
-    return null;
-  }
-
   return (
     <form
       className="flex flex-col gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        const inputs: PricingInputs = {
-          pricing_term: term,
-          purchase_option: purchaseOption,
-          usage_quantity: quantity,
-        };
-        // AWS keeps its request exactly as before; other providers always send their options.
-        if (provider !== "aws") inputs.provider_options = options();
-        onSubmit(inputs);
+        const submitted = current;
+        void Promise.resolve(onSubmit(submitted)).then((ok) => {
+          if (ok !== false) setLastSaved(submitted);
+        });
       }}
     >
       <label className={labelClassName}>
@@ -187,7 +167,7 @@ export function PricingInputsForm({
           <label className={labelClassName}>
             {isGcpMachine ? "Hours per day" : `Usage quantity${unit ? ` (${unit})` : ""}`}
             <input
-              className="rounded border border-border bg-background px-1.5 py-1 text-xs"
+              className="rounded-md border border-input bg-background px-1.5 py-1 text-xs"
               type="number"
               min="0"
               step="any"
@@ -208,7 +188,7 @@ export function PricingInputsForm({
         </>
       )}
 
-      <Button type="submit" size="sm" className="self-start">
+      <Button type="submit" size="sm" variant={submitVariant} className="self-start">
         {submitLabel === "Save" ? <Save /> : <Plus />} {submitLabel}
       </Button>
     </form>

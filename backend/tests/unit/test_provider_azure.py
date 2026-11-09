@@ -155,3 +155,26 @@ def test_a_purchase_option_is_never_used_for_azure(snap):
 
 def test_global_items_price_from_any_region(snap):
     assert [t.rate for t in _price(snap, SQL_LICENCE).tiers] == [Decimal("0.4")]
+
+
+# --- 021 (US7): Azure descriptions without repeated words ------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("parts", "expected"),
+    [
+        (("Premium SSD Managed Disks", "P10 LRS", "P10 LRS Disk"),
+         "Premium SSD Managed Disks P10 LRS Disk"),
+        (("Azure Kubernetes Service", "Anyscale GPU NVIDIA P100",
+          "Anyscale GPU NVIDIA P100 GPU Accelerated"),
+         "Azure Kubernetes Service Anyscale GPU NVIDIA P100 Accelerated"),
+        (("Virtual Machines Dv5 Series", "D4 v5", None), "Virtual Machines Dv5 Series D4 v5"),
+        (("Bandwidth", "Standard", "standard Data Transfer Out"),
+         "Bandwidth Standard Data Transfer Out"),
+        ((None, "", None), ""),
+    ],
+)
+def test_summary_leaves_out_words_an_earlier_part_has(parts, expected):
+    from src.pricing_data.providers.azure import _summary
+
+    assert _summary(*parts) == expected

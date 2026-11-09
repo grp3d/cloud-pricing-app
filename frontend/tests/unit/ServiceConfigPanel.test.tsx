@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { SKUSelection } from "../../src/api/client";
@@ -37,7 +37,6 @@ const noop = {
   onRemoveExisting: vi.fn(),
   actionError: null,
   onDismissActionError: vi.fn(),
-  width: 280,
 };
 
 // Live user report (regression): editing one service's usage quantity was landing on a
@@ -223,5 +222,90 @@ describe("ServiceConfigPanel — provider fields", () => {
     expect(screen.getByLabelText("Purchase option")).toHaveValue("all_upfront");
     fireEvent.click(screen.getByRole("button", { name: /Save/ }));
     expect(onSubmitExisting.mock.calls[0][1]).not.toHaveProperty("provider_options");
+  });
+});
+
+// --- 021 (FR-018): the Service tab's empty prompt --------------------------------------------
+
+describe("ServiceConfigPanel as the inspector's Service tab (021)", () => {
+  it("prompts to select a service when nothing is selected", () => {
+    render(panel({ ...noop, selection: null, resolvedExisting: null }));
+    expect(screen.getByText("Select a service on the canvas")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("treats a selection whose service no longer exists as nothing selected", () => {
+    render(panel({ ...noop, selection: existingServiceSelection("gone"), resolvedExisting: null }));
+    expect(screen.getByText("Select a service on the canvas")).toBeInTheDocument();
+  });
+});
+
+// --- 021 US7 (FR-046): a readable heading, with the codes muted -------------------------------
+
+describe("ServiceConfigPanel heading (021 US7)", () => {
+  it("names a GCP service by its name and description, and lists its category", () => {
+    const gcp = sku({
+      id: "gcs",
+      service_code: "95FF-2EF5-5EA1",
+      sku: "EE2C-E844-D760",
+      service_name: "Cloud Storage",
+      summary: "Multi-Region HNS Nearline Class A Operations",
+      product_family: "Storage > GCS > Ops > Nearline > Multi-Region",
+      attributes: { location: "global" },
+    });
+    render(
+      panel({
+        ...noop,
+        provider: "gcp",
+        selection: existingServiceSelection("gcs"),
+        resolvedExisting: gcp,
+      }),
+    );
+    const heading = screen.getByRole("heading", { level: 3 });
+    expect(heading).toHaveTextContent("Cloud Storage");
+    expect(heading).toHaveTextContent("Multi-Region HNS Nearline Class A Operations");
+    const codes = screen.getByText("95FF-2EF5-5EA1 / EE2C-E844-D760");
+    expect(codes).toHaveClass("text-muted-foreground");
+    expect(heading).not.toHaveTextContent("95FF-2EF5-5EA1");
+    expect(screen.getByText("category")).toBeInTheDocument();
+    expect(screen.getByText("Storage > GCS > Ops > Nearline > Multi-Region")).toBeInTheDocument();
+  });
+
+  it("keeps an AWS service's code, with its identifying details as the description", () => {
+    render(
+      panel({
+        ...noop,
+        selection: existingServiceSelection("sku-a"),
+        resolvedExisting: sku({ attributes: { instanceType: "m5.large", vcpu: "2" } }),
+      }),
+    );
+    const heading = screen.getByRole("heading", { level: 3 });
+    expect(heading).toHaveTextContent("AmazonEC2");
+    expect(heading).toHaveTextContent("m5.large · 2");
+    expect(screen.getByText("AmazonEC2 / SKU-A")).toHaveClass("text-muted-foreground");
+  });
+});
+
+// --- 021 US8 (FR-049): the heading stays pinned while the rest scrolls -----------------------
+
+describe("ServiceConfigPanel pinned heading (021 US8)", () => {
+  it("pins the heading, codes and delete button above a divider; the form scrolls", () => {
+    render(
+      panel({
+        ...noop,
+        selection: existingServiceSelection("sku-a"),
+        resolvedExisting: sku({ attributes: { instanceType: "m5.large" } }),
+      }),
+    );
+    const pinned = screen.getByTestId("service-pinned");
+    const scroll = screen.getByTestId("service-scroll");
+    expect(within(pinned).getByRole("heading", { level: 3 })).toHaveTextContent("AmazonEC2");
+    expect(within(pinned).getByText("AmazonEC2 / SKU-A")).toBeInTheDocument();
+    expect(within(pinned).getByRole("button", { name: "Remove this service" })).toBeInTheDocument();
+    expect(pinned.querySelector('[data-slot="separator"]')).not.toBeNull();
+    expect(pinned).toHaveClass("shrink-0");
+    expect(within(scroll).getByRole("button", { name: /Save/ })).toBeInTheDocument();
+    expect(within(scroll).getByLabelText(/Usage quantity/)).toBeInTheDocument();
+    expect(scroll).toHaveClass("overflow-auto");
   });
 });
