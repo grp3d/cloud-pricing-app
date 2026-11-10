@@ -106,3 +106,38 @@ def test_changing_iterations_keeps_existing_passwords_valid(monkeypatch):
     monkeypatch.setattr(auth_service.settings, "password_hash_iterations", 300_000)
     assert "$300000$" in auth_service.hash_password("s3cret-pass")
     assert auth_service.verify_password("s3cret-pass", stored)
+
+
+# --- 019-gcp-azure-providers-trends (contracts §1, research R10) ------------------------------
+
+
+def test_snapshot_stale_days_default_and_env(monkeypatch):
+    assert _settings().snapshot_stale_days == 14
+    monkeypatch.setenv("SNAPSHOT_STALE_DAYS", "21")
+    assert _settings().snapshot_stale_days == 21
+
+
+def test_snapshot_stale_days_rejects_invalid(monkeypatch):
+    monkeypatch.setenv("SNAPSHOT_STALE_DAYS", "0")
+    with pytest.raises(ValidationError, match="snapshot_stale_days"):
+        _settings()
+
+
+def test_pricing_history_dir_defaults_to_persistent_user_folder(monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.delenv("PRICING_HISTORY_DIR", raising=False)  # conftest isolates the tests
+
+    assert _settings().pricing_history_dir == str(Path.home() / ".cloud-pricing" / "history")
+
+
+def test_pricing_history_dir_reads_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("PRICING_HISTORY_DIR", str(tmp_path / "hist"))
+    assert _settings().pricing_history_dir == str(tmp_path / "hist")
+
+
+def test_pricing_history_dir_expands_home(monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setenv("PRICING_HISTORY_DIR", "~/hist")
+    assert _settings().pricing_history_dir == str(Path.home() / "hist")

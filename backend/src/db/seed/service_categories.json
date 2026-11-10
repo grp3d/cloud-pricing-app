@@ -1,0 +1,691 @@
+{
+  "description": "019 (research R9, data-model \u00a72): provider groupings \u2192 shared categories. The rule with the highest priority wins; no match is uncategorized (FR-017). AWS keys are service_code|product_family, Azure service_family|service_name, GCP taxonomy levels 1|2 (after 'GCP').",
+  "rules": [
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonEC2",
+      "category": "compute",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AWSLambda",
+      "category": "compute",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonECS",
+      "category": "compute",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonEKS",
+      "category": "compute",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonLightsail",
+      "category": "compute",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AWSBatch",
+      "category": "compute",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonAppStream",
+      "category": "compute",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AWSElasticBeanstalk",
+      "category": "compute",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonS3",
+      "category": "storage",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonEFS",
+      "category": "storage",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonFSx",
+      "category": "storage",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonGlacier",
+      "category": "storage",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AWSBackup",
+      "category": "storage",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonS3GlacierDeepArchive",
+      "category": "storage",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AWSStorageGateway",
+      "category": "storage",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonRDS",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonDynamoDB",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonElastiCache",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonRedshift",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonDocDB",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonNeptune",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonMemoryDB",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonKeyspaces",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonTimestream",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AWSDataTransfer",
+      "category": "networking",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonVPC",
+      "category": "networking",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonCloudFront",
+      "category": "networking",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AmazonRoute53",
+      "category": "networking",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AWSELB",
+      "category": "networking",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AWSDirectConnect",
+      "category": "networking",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AWSGlobalAccelerator",
+      "category": "networking",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "service_code",
+      "match_value": "AWSTransitGateway",
+      "category": "networking",
+      "priority": 0
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Compute Instance",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Compute Instance (bare metal)",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Dedicated Host",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Storage",
+      "category": "storage",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Storage Snapshot",
+      "category": "storage",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Provisioned Throughput",
+      "category": "storage",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "System Operation",
+      "category": "storage",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Database Instance",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Database Storage",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Data Transfer",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "NAT Gateway",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Load Balancer",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Load Balancer-Application",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Load Balancer-Network",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "Load Balancer-Gateway",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "IP Address",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "aws",
+      "match_field": "product_family",
+      "match_value": "VpcEndpoint",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_family",
+      "match_value": "Compute",
+      "category": "compute",
+      "priority": 0
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_family",
+      "match_value": "Storage",
+      "category": "storage",
+      "priority": 0
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_family",
+      "match_value": "Databases",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_family",
+      "match_value": "Networking",
+      "category": "networking",
+      "priority": 0
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Virtual Machines",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Azure App Service",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Functions",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Container Instances",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Azure Kubernetes Service",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Storage",
+      "category": "storage",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Backup",
+      "category": "storage",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Azure Database for PostgreSQL",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Azure Database for MySQL",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "SQL Database",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Azure Cosmos DB",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Redis Cache",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Bandwidth",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Virtual Network",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Load Balancer",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "VPN Gateway",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Application Gateway",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Azure DNS",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "azure",
+      "match_field": "service_name",
+      "match_value": "Content Delivery Network",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_1",
+      "match_value": "Compute",
+      "category": "compute",
+      "priority": 0
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_1",
+      "match_value": "Storage",
+      "category": "storage",
+      "priority": 0
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_1",
+      "match_value": "Databases",
+      "category": "database",
+      "priority": 0
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_1",
+      "match_value": "Network",
+      "category": "networking",
+      "priority": 0
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "GCE",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Cloud Run",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "GKE",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "App Engine",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Cloud Functions",
+      "category": "compute",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Persistent Disk",
+      "category": "storage",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "GCS",
+      "category": "storage",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Filestore",
+      "category": "storage",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Local SSD",
+      "category": "storage",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Cloud SQL",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Spanner",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Bigtable",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Firestore",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Memorystore",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "AlloyDB",
+      "category": "database",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Egress",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Ingress",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Cloud NAT",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Load Balancing",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Cloud CDN",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Cloud DNS",
+      "category": "networking",
+      "priority": 10
+    },
+    {
+      "provider": "gcp",
+      "match_field": "taxonomy_2",
+      "match_value": "Interconnect",
+      "category": "networking",
+      "priority": 10
+    }
+  ]
+}

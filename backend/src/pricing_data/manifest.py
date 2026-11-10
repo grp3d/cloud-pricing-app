@@ -15,12 +15,17 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from src.pricing_data.snapshot import TABLES
+from src.pricing_data.snapshot import PROVIDER_TABLES
 
 SUPPORTED_MANIFEST_MAJOR = 1
-SUPPORTED_SCHEMA_VERSIONS: dict[str, set[int]] = {table: {1} for table in TABLES}
+# Per provider, per table (019, research R1).
+SUPPORTED_SCHEMA_VERSIONS: dict[str, dict[str, set[int]]] = {
+    provider: {table: {1} for table in tables} for provider, tables in PROVIDER_TABLES.items()
+}
 
 _RUN_ID = r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}"
+# A location name: AWS and GCP regions, Azure regions and geographies, and `global` (019).
+_LOCATION = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 class _Model(BaseModel):
@@ -178,14 +183,22 @@ def validate_manifest(
         return reject(f"manifest is for provider {manifest.provider}, not {provider}")
     if manifest.status != "succeeded" or manifest.purged is not None:
         return reject(f"status is {manifest.status}")
-    for table in TABLES:
+    if provider not in PROVIDER_TABLES:
+        return reject(f"provider {provider} is not supported")
+    expected = PROVIDER_TABLES[provider]
+    for table in expected:
         if table not in manifest.tables:
             return reject(f"table {table} is missing")
         version = manifest.tables[table].schema_version
-        if version not in SUPPORTED_SCHEMA_VERSIONS[table]:
+        if version not in SUPPORTED_SCHEMA_VERSIONS[provider][table]:
             return reject(f"table {table} schema version {version} is not supported")
+    for table in manifest.tables:
+        if table not in expected:
+            return reject(f"table {table} is not a {provider} table")
     for table, entry in manifest.tables.items():
         for region, files in entry.regions.items():
+            if not _LOCATION.match(region):
+                return reject(f"location name {region!r} does not match the contract")
             for data_file in files.files:
                 if _bad_path(data_file.path, provider, table, manifest.snapshot_date, region):
                     return reject(

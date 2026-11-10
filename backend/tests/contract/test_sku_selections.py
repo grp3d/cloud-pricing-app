@@ -418,3 +418,143 @@ async def test_connector_service_logs_not_movable(client, auth_headers, log_outp
     assert record["reason"] == "not_movable"
     assert record["source_collection_id"] is None
     assert record["target_collection_id"] == a
+
+
+# --- 019-gcp-azure-providers-trends (research R6): price types per provider ------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("term", ["savings_plan_1yr", "commitment_3yr"])
+async def test_a_price_type_the_provider_has_not_is_rejected(client, auth_headers, term):
+    coll_id = await _create_collection(client, auth_headers)
+    body = {"service_code": KNOWN_SERVICE_CODE, "sku": KNOWN_SKU, "pricing_term": term,
+            "purchase_option": "not_applicable", "usage_quantity": "730"}
+    resp = await client.post(f"/api/v1/collections/{coll_id}/sku-selections", json=body,
+                             headers=auth_headers)
+    assert resp.status_code == 422
+    assert "pricing_term" in str(resp.json()["detail"])
+
+    body["pricing_term"] = "on_demand"
+    created = await client.post(f"/api/v1/collections/{coll_id}/sku-selections", json=body,
+                                headers=auth_headers)
+    resp = await client.patch(f"/api/v1/sku-selections/{created.json()['id']}",
+                              json={"pricing_term": term}, headers=auth_headers)
+    assert resp.status_code == 422
+
+
+# --- 019 (T035, contracts §4, data-model §3): per-provider validation --------------------------
+
+AZ_VM = "DZH318Z08M9W/004T/db8c0962-f3f8-5b44-99aa-f3c7c1e668c8"
+AZ_VM_SERVICE = "DZH313Z7MMC8"
+AZ_DISK = "DZH318Z0BP04/0035/93a6a529-4f49-47cb-9b1e-db9e5f23263f"
+AZ_DISK_SERVICE = "DZH317F1HKN0"
+GCP_CORE, GCP_RAM, GCP_COMPUTE = "BB77-5FDA-69D9", "5B01-D157-A097", "6F81-5844-456A"
+
+
+async def _provider_collection(client, auth_headers, provider: str, region: str) -> str:
+    arch = await client.post("/api/v1/architectures", json={"name": "A", "provider": provider},
+                             headers=auth_headers)
+    coll = await client.post(
+        f"/api/v1/architectures/{arch.json()['id']}/collections",
+        json={"type": "application_component", "name": "Web", "region": region},
+        headers=auth_headers,
+    )
+    assert coll.status_code == 201, coll.text
+    return coll.json()["id"]
+
+
+def _body(service_code, sku, term="on_demand", **extra):
+    return {"service_code": service_code, "sku": sku, "pricing_term": term,
+            "purchase_option": "not_applicable", "usage_quantity": "24", **extra}
+
+
+def _loc(resp) -> list[str]:
+    return [d["loc"][-1] for d in resp.json()["detail"]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("term", ["savings_plan_1yr", "reserved_3yr"])
+async def test_azure_accepts_its_widened_price_types(client, auth_headers, term):
+    coll = await _provider_collection(client, auth_headers, "azure", "eastus")
+    resp = await client.post(f"/api/v1/collections/{coll}/sku-selections",
+                             json=_body(AZ_VM_SERVICE, AZ_VM, term), headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    out = resp.json()
+    assert out["pricing_term"] == term
+    assert out["unit"] == "1 Hour"
+    assert out["product_family"] == "Virtual Machines Dsv5 Series"
+
+
+@pytest.mark.asyncio
+async def test_valid_provider_options_are_stored_and_returned(client, auth_headers):
+    coll = await _provider_collection(client, auth_headers, "gcp", "us-east1")
+    options = {"kind": "gcp_machine", "version": 1, "vcpus": 4, "memory_gib": "16",
+               "ram_sku": GCP_RAM}
+    resp = await client.post(f"/api/v1/collections/{coll}/sku-selections",
+                             json=_body(GCP_COMPUTE, GCP_CORE, provider_options=options),
+                             headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["provider_options"] == options
+
+    patched = await client.patch(f"/api/v1/sku-selections/{resp.json()['id']}",
+                                 json={"provider_options": None}, headers=auth_headers)
+    assert patched.status_code == 200
+    assert patched.json()["provider_options"] is None
+
+
+@pytest.mark.asyncio
+async def test_options_for_another_provider_are_422(client, auth_headers):
+    coll = await _provider_collection(client, auth_headers, "azure", "eastus")
+    resp = await client.post(
+        f"/api/v1/collections/{coll}/sku-selections",
+        json=_body(AZ_VM_SERVICE, AZ_VM, provider_options={
+            "kind": "gcp_machine", "version": 1, "vcpus": 4, "memory_gib": 16, "ram_sku": "X"}),
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+    assert _loc(resp) == ["provider_options"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", [{"vcpus": 0}, {"memory_gib": -1}, {"surprise": 1},
+                                 {"version": 2}])
+async def test_invalid_options_are_422(client, auth_headers, bad):
+    coll = await _provider_collection(client, auth_headers, "gcp", "us-east1")
+    options = {"kind": "gcp_machine", "version": 1, "vcpus": 4, "memory_gib": 16,
+               "ram_sku": GCP_RAM, **bad}
+    resp = await client.post(f"/api/v1/collections/{coll}/sku-selections",
+                             json=_body(GCP_COMPUTE, GCP_CORE, provider_options=options),
+                             headers=auth_headers)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_price_type_the_item_does_not_publish_is_422(client, auth_headers):
+    coll = await _provider_collection(client, auth_headers, "azure", "eastus")
+    resp = await client.post(f"/api/v1/collections/{coll}/sku-selections",
+                             json=_body(AZ_DISK_SERVICE, AZ_DISK, "reserved_1yr"),
+                             headers=auth_headers)
+    assert resp.status_code == 422
+    assert _loc(resp) == ["pricing_term"]
+    assert "doesn't publish" in resp.json()["detail"][0]["msg"]
+
+
+@pytest.mark.asyncio
+async def test_a_purchase_option_is_422_for_azure_and_gcp(client, auth_headers):
+    coll = await _provider_collection(client, auth_headers, "gcp", "us-east1")
+    resp = await client.post(
+        f"/api/v1/collections/{coll}/sku-selections",
+        json={**_body(GCP_COMPUTE, GCP_CORE, "commitment_1yr"), "purchase_option": "all_upfront"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+    assert _loc(resp) == ["purchase_option"]
+
+
+@pytest.mark.asyncio
+async def test_an_item_not_in_the_region_is_422(client, auth_headers):
+    coll = await _provider_collection(client, auth_headers, "gcp", "us-east1")
+    resp = await client.post(f"/api/v1/collections/{coll}/sku-selections",
+                             json=_body(GCP_COMPUTE, "0000-0000-0000"), headers=auth_headers)
+    assert resp.status_code == 422
+    assert _loc(resp) == ["sku"]

@@ -1,43 +1,87 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { PreferencesOut, PreferencesPatch } from "../../src/api/client";
+import { readBrowserWorkspace } from "../../src/lib/browserPrefs";
 import { readColumnCollapsed, writeColumnCollapsed } from "../../src/lib/columnCollapse";
+import { PreferencesStore } from "../../src/lib/preferences";
 
-describe("columnCollapse", () => {
-  beforeEach(() => {
-    localStorage.clear();
+/** 019 (FR-023): collapsed flags are the `workspace.collapsed` preferences section. */
+function storeWith(data: PreferencesOut["data"] = { migrated_from_browser: true }) {
+  const patches: PreferencesPatch[] = [];
+  const store = new PreferencesStore(
+    {
+      get: vi.fn(async () => ({ schema_version: 1, data })),
+      patch: vi.fn(async (p: PreferencesPatch) => {
+        patches.push(p);
+        return { schema_version: 1, data };
+      }),
+    },
+    { readBrowser: readBrowserWorkspace },
+  );
+  return { store, patches };
+}
+
+describe("columnCollapse (preferences-backed)", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("returns an empty object when nothing is stored", async () => {
+    const { store } = storeWith();
+    await store.load();
+    expect(readColumnCollapsed(store)).toEqual({});
   });
 
-  it("returns an empty object when nothing is stored", () => {
-    expect(readColumnCollapsed()).toEqual({});
+  it("round-trips a written flag, including an explicit false", async () => {
+    const { store, patches } = storeWith();
+    await store.load();
+    writeColumnCollapsed("collections", true, store);
+    expect(readColumnCollapsed(store)).toEqual({ collections: true });
+    writeColumnCollapsed("collections", false, store);
+    expect(readColumnCollapsed(store)).toEqual({ collections: false });
+    await vi.waitFor(() => expect(store.queued).toEqual([]));
+    expect(patches.at(-1)).toEqual({ workspace: { collapsed: { col2: false } } });
   });
 
-  it("round-trips a written collapsed flag", () => {
-    writeColumnCollapsed("collections", true);
-    expect(readColumnCollapsed()).toEqual({ collections: true });
+  it("keeps each column's flag independent of the others", async () => {
+    const { store } = storeWith({
+      migrated_from_browser: true,
+      workspace: { collapsed: { col1: true } },
+    });
+    await store.load();
+    writeColumnCollapsed("inspector", false, store);
+    // 021: col1 (the removed Column 1) is ignored without error, and left stored.
+    expect(readColumnCollapsed(store)).toEqual({ inspector: false });
+    expect(store.current.workspace?.collapsed).toEqual({ col1: true, col4: false });
   });
 
-  it("round-trips an explicit false (expanded) flag, not just true", () => {
-    writeColumnCollapsed("provider", true);
-    writeColumnCollapsed("provider", false);
-    expect(readColumnCollapsed()).toEqual({ provider: false });
-  });
-
-  it("keeps each column's flag independent of the others", () => {
-    writeColumnCollapsed("provider", true);
-    writeColumnCollapsed("service", false);
-    expect(readColumnCollapsed()).toEqual({ provider: true, service: false });
-  });
-
-  it("falls back to an empty object for malformed stored data, rather than throwing", () => {
-    localStorage.setItem("cloud-pricing-column-collapsed", "not json");
-    expect(readColumnCollapsed()).toEqual({});
-  });
-
-  it("ignores non-boolean values for a column, keeping the rest", () => {
+  it("uses this browser's old flags until they are moved, skipping invalid ones", async () => {
     localStorage.setItem(
       "cloud-pricing-column-collapsed",
       JSON.stringify({ collections: "yes", service: 1, provider: true }),
     );
-    expect(readColumnCollapsed()).toEqual({ provider: true });
+    const { store } = storeWith({ migrated_from_browser: false });
+    // 021: the moved col1 flag is ignored (Column 1 is gone).
+    expect(readColumnCollapsed(store)).toEqual({});
+    await store.load();
+    expect(store.current.workspace?.collapsed).toEqual({ col1: true });
+  });
+
+  it("falls back to an empty object for malformed browser data, rather than throwing", () => {
+    localStorage.setItem("cloud-pricing-column-collapsed", "not json");
+    const { store } = storeWith({ migrated_from_browser: false });
+    expect(readColumnCollapsed(store)).toEqual({});
+  });
+
+  it("021: the inspector's collapsed flag round-trips under col4", async () => {
+    const { store, patches } = storeWith({
+      migrated_from_browser: true,
+      workspace: { collapsed: { col2: true }, last_provider: "azure" },
+    });
+    await store.load();
+    writeColumnCollapsed("inspector", true, store);
+    expect(readColumnCollapsed(store)).toEqual({ collections: true, inspector: true });
+    await vi.waitFor(() => expect(store.queued).toEqual([]));
+    expect(patches.at(-1)).toEqual({
+      workspace: { collapsed: { col2: true, col4: true }, last_provider: "azure" },
+    });
   });
 });

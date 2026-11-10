@@ -24,15 +24,20 @@ from src.models.schemas import (
     CacheOut,
     DeploymentOut,
     FailedRegionOut,
+    HistoryOut,
     IssueOut,
     LatestRunOut,
+    ProviderSystemOut,
     RejectedOut,
     SnapshotCheckStartedOut,
     SourceOut,
     SystemInfoOut,
 )
 from src.pricing_data import active_snapshot
-from src.pricing_data.active_snapshot import Issue
+from src.pricing_data.active_snapshot import Issue, MonitorState
+from src.pricing_data.history.service import history_store, is_building
+from src.pricing_data.providers.registry import get_provider
+from src.pricing_data.snapshot import PROVIDER_NAMES, PROVIDERS
 
 router = APIRouter(tags=["admin"])
 logger = get_logger("cloud_pricing.admin_system")
@@ -59,24 +64,69 @@ def _source() -> SourceOut:
     return SourceOut(kind=source.kind, location=location, provider=active_snapshot.PROVIDER)
 
 
+def _active_out(state: MonitorState) -> ActiveSnapshotOut | None:
+    active = state.active
+    if active is None:
+        return None
+    manifest = active.manifest
+    return ActiveSnapshotOut(
+        snapshot_date=active.snapshot_date,
+        revision=active.revision,
+        run_id=manifest.run_id,
+        pipeline_version=manifest.run.pipeline_version.image_tag,
+        created_at=manifest.created_at,
+        pinned=active.pinned,
+        # The provider's selectable regions (AWS: those in all five tables, as before).
+        regions=sorted(get_provider(active.provider).locations(active)),
+        failed_regions=_failed(manifest.regions.failed),
+    )
+
+
+def _latest_out(state: MonitorState) -> LatestRunOut | None:
+    latest = state.latest_run
+    if latest is None:
+        return None
+    return LatestRunOut(snapshot_date=latest.snapshot_date, revision=latest.revision,
+                        status=latest.status, failed_regions=_failed(latest.failed_regions))
+
+
+def _provider_out(code: str) -> ProviderSystemOut:
+    """Monitor state only: an unchecked provider is reported as such, never checked here."""
+    state = active_snapshot.state_for(code)
+    status, reason = active_snapshot.provider_status(code)
+    return ProviderSystemOut(
+        name=PROVIDER_NAMES[code],
+        status=status,
+        reason=reason if state.initialized else "not checked yet",
+        checked=state.initialized,
+        active_snapshot=_active_out(state),
+        latest_run=_latest_out(state),
+        rejected=RejectedOut(**asdict(state.rejected)) if state.rejected is not None else None,
+        last_check_error=state.last_check_error,
+        issues=[IssueOut(**asdict(i)) for i in sorted(state.issues, key=_issue_order)],
+        history=_history_out(code),
+    )
+
+
+def _history_out(code: str) -> HistoryOut:
+    """019 (contracts §9): the price history's progress, from its `state.json` only."""
+    state = history_store(code).state()
+    backfill = "running" if is_building(code) else state.get("backfill", "pending")
+    return HistoryOut(
+        weeks_built=int(state.get("weeks_built", 0)),
+        weeks_total=int(state.get("weeks_total", 0)),
+        gaps=list(state.get("gaps", [])),
+        backfill=backfill,
+        last_error=state.get("last_error"),
+        last_built_at=state.get("last_built_at"),
+    )
+
+
 @router.get("/admin/system-info", response_model=SystemInfoOut)
 async def get_system_info(_admin: AdminUser) -> SystemInfoOut:
     state = active_snapshot.STATE
     active = state.active
-    active_out = None
-    if active is not None:
-        manifest = active.manifest
-        active_out = ActiveSnapshotOut(
-            snapshot_date=active.snapshot_date,
-            revision=active.revision,
-            run_id=manifest.run_id,
-            pipeline_version=manifest.run.pipeline_version.image_tag,
-            created_at=manifest.created_at,
-            pinned=active.pinned,
-            regions=sorted(active.common_regions()),
-            failed_regions=_failed(manifest.regions.failed),
-        )
-    latest = state.latest_run
+    active_out = _active_out(state)
     cache_out = None
     if state.cache is not None:
         cache_out = CacheOut(
@@ -100,11 +150,7 @@ async def get_system_info(_admin: AdminUser) -> SystemInfoOut:
         ),
         source=_source(),
         active=active_out,
-        latest_run=(
-            LatestRunOut(snapshot_date=latest.snapshot_date, revision=latest.revision,
-                         status=latest.status, failed_regions=_failed(latest.failed_regions))
-            if latest is not None else None
-        ),
+        latest_run=_latest_out(state),
         rejected=(
             RejectedOut(**asdict(state.rejected)) if state.rejected is not None else None
         ),
@@ -113,6 +159,7 @@ async def get_system_info(_admin: AdminUser) -> SystemInfoOut:
         last_check_error=state.last_check_error,
         check_interval_seconds=settings.snapshot_check_interval_seconds,
         issues=[IssueOut(**asdict(i)) for i in sorted(state.issues, key=_issue_order)],
+        providers={code: _provider_out(code) for code in PROVIDERS},
     )
 
 

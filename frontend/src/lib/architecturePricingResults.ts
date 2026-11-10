@@ -14,12 +14,13 @@
  * for, using only the context captured at request time (FR-020).
  */
 
-import type { CalculationDuration, CalculationResult } from "../api/client";
-import type {
-  BaselineDecision,
-  PriceChangeSelection,
-  PricedContentsEntry,
-  PriorCalculation,
+import type { CalculationDuration, CalculationResult, ProviderCode } from "../api/client";
+import {
+  isStoredSelection,
+  type BaselineDecision,
+  type PriceChangeSelection,
+  type PricedContentsEntry,
+  type PriorCalculation,
 } from "./priceChange";
 
 export interface PricingResultEntry {
@@ -30,6 +31,9 @@ export interface PricingResultEntry {
   duration: CalculationDuration;
   /** The Price Change displayed alongside this result, if any (FR-022). */
   priceChange: string | null;
+  /** 020 (FR-005): Price Change couldn't be worked out (a legacy GCP or Azure baseline after a
+   * Duration switch), so "Not available" shows instead of a figure. Absent otherwise. */
+  priceChangeUnavailable?: true;
   /** What was priced — compared against the live architecture for FR-018a's notice. */
   pricedContents: PricedContentsEntry[];
   /** ISO-8601; informational only. */
@@ -50,7 +54,12 @@ function isPricingResultEntry(value: unknown): value is PricingResultEntry {
     typeof (v.result as Record<string, unknown>).total_price === "string" &&
     typeof v.duration === "string" &&
     (v.priceChange === null || typeof v.priceChange === "string") &&
-    Array.isArray(v.pricedContents)
+    (v.priceChangeUnavailable === undefined || v.priceChangeUnavailable === true) &&
+    Array.isArray(v.pricedContents) &&
+    // 020 (data-model §4): entries with or without `provider_options`; anything else drops.
+    v.pricedContents.every(
+      (e) => isStoredSelection(e) && (e as unknown as Record<string, unknown>).region !== undefined,
+    )
   );
 }
 
@@ -104,6 +113,9 @@ export interface CalculationRequestVars {
   priceChangeSelections: PriceChangeSelection[];
   /** That Architecture's Price Change baseline at request time. */
   prior: PriorCalculation | null;
+  /** 020: that Architecture's provider (the legacy rule and the snapshot re-pricing use it).
+   * Missing means `aws`. */
+  provider?: ProviderCode;
 }
 
 /** Records a successful calculation: the new stored entry for `vars.architectureId` (every
@@ -114,7 +126,11 @@ export interface CalculationRequestVars {
  *   `comparisonTotal` (the caller supplies the prior total, or its real repricing at the new
  *   Duration), and the baseline advances.
  * - `"unchanged"`: a true no-op recalculation — the previously displayed Price Change carries
- *   forward and the baseline is left exactly as it was (`newBaseline: null`). */
+ *   forward and the baseline is left exactly as it was (`newBaseline: null`).
+ * - `"unavailable"` (020, FR-005): no Price Change figure; the entry is marked
+ *   `priceChangeUnavailable`, and the baseline advances.
+ *
+ * Every new baseline is stored as `version: 2` (020, data-model §3). */
 export function applyCalculationSuccess(params: {
   entries: ReadonlyMap<string, PricingResultEntry>;
   vars: CalculationRequestVars;
@@ -131,16 +147,20 @@ export function applyCalculationSuccess(params: {
   const { entries, vars, result, decision, comparisonTotal, previousEntry, now } = params;
 
   let priceChange: string | null;
+  let unavailable: boolean;
   let newBaseline: PriorCalculation | null;
   if (decision === "unchanged") {
     priceChange = previousEntry?.priceChange ?? null;
+    unavailable = previousEntry?.priceChangeUnavailable === true;
     newBaseline = null;
   } else {
+    unavailable = decision === "unavailable";
     priceChange =
-      decision === "establish" || comparisonTotal === null
+      decision === "establish" || unavailable || comparisonTotal === null
         ? null
         : String(Number(result.total_price) - Number(comparisonTotal));
     newBaseline = {
+      version: 2,
       total: result.total_price,
       duration: vars.duration,
       selections: vars.priceChangeSelections,
@@ -152,6 +172,7 @@ export function applyCalculationSuccess(params: {
     result,
     duration: vars.duration,
     priceChange,
+    ...(unavailable ? { priceChangeUnavailable: true as const } : {}),
     pricedContents: vars.pricedContents,
     calculatedAt: now,
   };

@@ -1,4 +1,4 @@
-"""Data Connector endpoints (spec FR-008, FR-009, FR-015)."""
+"""Data Connector endpoints (spec FR-008, FR-009, FR-015; 019 arrows FR-026, FR-028 to FR-030)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from src.models.orm import DataConnector, SKUSelection
 from src.models.schemas import (
     DataConnectorCreate,
     DataConnectorOut,
+    DataConnectorUpdate,
     SKUSelectionCreate,
     SKUSelectionOut,
 )
@@ -19,6 +20,7 @@ from src.services.architecture_service import (
     get_owned_architecture,
     get_owned_connector,
     sku_selection_out_with_unit,
+    validate_selection,
 )
 
 router = APIRouter(tags=["connectors"])
@@ -52,8 +54,26 @@ async def create_connector(
         architecture_id=architecture.id,
         from_collection_id=body.from_collection_id,
         to_collection_id=body.to_collection_id,
+        arrow_style=body.arrow_style,
+        arrow_reversed=body.arrow_reversed,
     )
     session.add(connector)
+    await session.commit()
+    await session.refresh(connector, attribute_names=["sku_selection"])
+    return connector
+
+
+@router.patch("/connectors/{connector_id}", response_model=DataConnectorOut)
+async def update_connector(
+    connector_id: uuid.UUID, body: DataConnectorUpdate, session: DbSession, user: CurrentUser
+) -> DataConnector:
+    """Change how the connector is drawn (019, contracts §6). Visual only: `from` and `to`,
+    and so the priced direction, never change (FR-030)."""
+    connector = await get_owned_connector(connector_id, session, user)
+    if body.arrow_style is not None:
+        connector.arrow_style = body.arrow_style
+    if body.arrow_reversed is not None:
+        connector.arrow_reversed = body.arrow_reversed
     await session.commit()
     await session.refresh(connector, attribute_names=["sku_selection"])
     return connector
@@ -82,6 +102,20 @@ async def attach_connector_sku(
             detail="This Connector already has a Service. Create a new Connector to add another.",
         )
 
+    region = connector.from_collection.region
+    options = (
+        None if body.provider_options is None else body.provider_options.model_dump(mode="json")
+    )
+    provider = await validate_selection(
+        connector.architecture_id,
+        service_code=body.service_code,
+        sku=body.sku,
+        pricing_term=body.pricing_term.value,
+        purchase_option=body.purchase_option.value,
+        provider_options=options,
+        region=region,
+        session=session,
+    )
     selection = SKUSelection(
         connector_id=connector.id,
         service_code=body.service_code,
@@ -89,11 +123,12 @@ async def attach_connector_sku(
         pricing_term=body.pricing_term.value,
         purchase_option=body.purchase_option.value,
         usage_quantity=body.usage_quantity,
+        provider_options=options,
     )
     session.add(selection)
     await session.commit()
     await session.refresh(selection)
-    return sku_selection_out_with_unit(selection, region=connector.from_collection.region)
+    return sku_selection_out_with_unit(selection, region=region, provider=provider)
 
 
 @router.delete("/connectors/{connector_id}", status_code=204)

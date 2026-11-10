@@ -186,6 +186,9 @@ def startup_cleanup(cache_dir: Path) -> None:
         return
     for tmp in cache_dir.glob("*/*.tmp-*"):
         shutil.rmtree(tmp, ignore_errors=True)
+    # 019: a price-history backfill's temporary copy (history/source.py).
+    for tmp in cache_dir.glob("history-*"):
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # --- Clean-up (FR-011, SC-006) ------------------------------------------------------------------
@@ -235,6 +238,49 @@ def plan_cleanup(
             total -= entry.bytes
 
     return sorted(set(deletions), key=lambda p: p.name)
+
+
+@dataclass(frozen=True)
+class ProviderCache:
+    """One provider's cache entries and what protects them (019, research R2)."""
+
+    entries: list[CacheEntry]
+    active: CacheEntry | None
+    superseded_this_check: CacheEntry | None
+    purged_dates: set[str]
+
+
+def plan_cleanup_providers(
+    views: dict[str, ProviderCache], *, keep: int, max_bytes: int
+) -> list[Path]:
+    """`plan_cleanup` across providers. Pure. Per provider: the active entry and the one this
+    check superseded are protected, purged entries go, and `keep` other entries are kept. The
+    size budget is then shared: the oldest unprotected entries go, from any provider, until the
+    whole cache fits in `max_bytes`."""
+    deletions: set[Path] = set()
+    protected: set[Path] = set()
+    for view in views.values():
+        protected |= {e.path for e in (view.active, view.superseded_this_check) if e is not None}
+        deletions |= set(plan_cleanup(
+            view.entries,
+            active=view.active,
+            keep=keep,
+            max_bytes=sum(e.bytes for e in view.entries),  # the budget is applied below
+            superseded_this_check=view.superseded_this_check,
+            purged_dates=view.purged_dates,
+        ))
+    remaining = sorted(
+        (e for view in views.values() for e in view.entries if e.path not in deletions),
+        key=lambda e: (e.snapshot_date, e.revision, str(e.path)),
+    )
+    total = sum(e.bytes for e in remaining)
+    for entry in remaining:
+        if total <= max_bytes:
+            break
+        if entry.path not in protected:
+            deletions.add(entry.path)
+            total -= entry.bytes
+    return sorted(deletions, key=lambda p: (p.parent.name, p.name))
 
 
 def apply_cleanup(paths: list[Path]) -> None:

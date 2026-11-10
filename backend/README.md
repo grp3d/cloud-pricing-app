@@ -1,6 +1,7 @@
 # Cloud Pricing Backend
 
-FastAPI backend for AWS Architecture Assembly & Pricing. See
+FastAPI backend for cloud architecture assembly and pricing (AWS, GCP and Azure since 019,
+plus the Trends price history). See
 `specs/001-assemble-price-aws-architecture/` (plan.md, data-model.md, contracts/api.md) for the
 full design, and `quickstart.md` for a scripted end-to-end validation of the API.
 
@@ -28,6 +29,13 @@ Environment variables (see `src/config.py`):
   `AWS_PRICING_PARQUET_DIR` setting are no longer supported (see
   [`docs/configuration.md`](../docs/configuration.md#pricing-data) for converting old data).
 - `AWS_PRICING_REGION` — defaults to `us-east-1`
+- `SNAPSHOT_STALE_DAYS` — defaults to `14`: a provider whose active snapshot is older is shown as
+  stale (it stays active)
+- `PRICING_HISTORY_DIR` — defaults to `~/.cloud-pricing/history`: the derived price history the
+  Trends page reads, one folder per provider. Keep it on persistent disk: each snapshot is then
+  processed only once
+- `PRICE_HISTORY_ENABLED` — defaults to `true`: build that history at startup and after each
+  snapshot switch. The tests point `PRICING_HISTORY_DIR` at a temporary folder
 
 The full list of settings (including the pricing-snapshot check interval, the
 `ACTIVE_SNAPSHOT_DATE` override, CORS origins, catalog page sizes, password hashing, and log level),

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { Region } from "../../api/client";
+import { regionLabel } from "../../lib/providerPricing";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -16,12 +17,15 @@ export function RegionSelectDialog({
   open,
   onOpenChange,
   regions,
+  providerName = "AWS",
   onConfirm,
   isSubmitting,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   regions: Region[];
+  /** 019: the architecture's provider name for the label (default AWS). */
+  providerName?: string;
   onConfirm: (region: string) => void;
   isSubmitting: boolean;
 }) {
@@ -45,7 +49,7 @@ export function RegionSelectDialog({
         </DialogHeader>
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium" htmlFor="region-select">
-            AWS Region
+            {providerName} Region
           </label>
           <Select value={region} onValueChange={setRegion}>
             <SelectTrigger id="region-select" className="w-full">
@@ -54,7 +58,7 @@ export function RegionSelectDialog({
             <SelectContent>
               {regions.map((r) => (
                 <SelectItem key={r.code} value={r.code}>
-                  {r.code}
+                  {regionLabel(r)}
                 </SelectItem>
               ))}
             </SelectContent>

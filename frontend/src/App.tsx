@@ -6,6 +6,7 @@ import { RequireAdmin, useTrackLastNonAdminPath } from "./components/layout/Requ
 import { TopTabs } from "./components/layout/TopTabs";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { AdminPage } from "./pages/AdminPage";
+import { TrendsPage } from "./pages/TrendsPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
 
 /**
@@ -32,6 +33,7 @@ export function App() {
               <Routes>
                 <Route path="/" element={<WorkspacePage />} />
                 <Route path="/architectures/:architectureId" element={<WorkspacePage />} />
+                <Route path="/trends" element={<TrendsPage />} />
                 <Route
                   path="/admin"
                   element={

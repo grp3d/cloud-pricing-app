@@ -2,7 +2,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { GripHorizontal } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
-import { type Collection, type DataConnector } from "../../api/client";
+import { type Collection, type DataConnector, type ProviderCode } from "../../api/client";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { ArchitectureDiagramPanel } from "./ArchitectureDiagramPanel";
 
@@ -134,6 +134,8 @@ export interface PopoutCanvasDialogProps {
   onSelectConnector: (id: string) => void;
   onSelectService: (skuSelectionId: string, containingCollectionId: string) => void;
   onDeselectAll: () => void;
+  /** 020: the architecture's provider, so the pop-out shows the same icons. */
+  provider?: ProviderCode;
 }
 
 /**
@@ -175,6 +177,7 @@ export function PopoutCanvasDialog({
   onSelectConnector,
   onSelectService,
   onDeselectAll,
+  provider = "aws",
 }: PopoutCanvasDialogProps) {
   const [size, setSize] = useState(() => ({
     width: Math.round(window.innerWidth * DEFAULT_WIDTH_RATIO),
@@ -295,6 +298,7 @@ export function PopoutCanvasDialog({
               onMoveService={onMoveService}
               onMoveRejected={onMoveRejected}
               onRefresh={onRefresh}
+              provider={provider}
               // `onOpenPopout` deliberately omitted — this is already the pop-out; see its
               // doc comment on `ArchitectureDiagramPanelProps`.
             />

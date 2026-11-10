@@ -24,9 +24,11 @@ from src.config import settings
 from src.logging_config import configure_logging, get_logger
 from src.models.schemas import HealthOut
 from src.pricing_data import active_snapshot
-from src.pricing_data.active_snapshot import run_check
+from src.pricing_data.active_snapshot import provider_status, run_check
 from src.pricing_data.catalog import EmptyCatalogFilterError, InvalidRegexPatternError
 from src.pricing_data.errors import PricingDataUnavailableError
+from src.pricing_data.history.service import update_all_in_background
+from src.pricing_data.snapshot import PROVIDER_NAMES
 from src.pricing_data.snapshot_cache import startup_cleanup
 from src.services.architecture_transfer import InvalidImportFileError
 from src.services.price_calculation import EmptySnapshotError
@@ -58,6 +60,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _ = settings.pricing_data_source
     startup_cleanup(Path(settings.pricing_cache_dir))
     await asyncio.to_thread(run_check, at_startup=True)
+    # 019 (research R10, T075): build any missing price history in the background (the
+    # backfill on a first start), then keep it up to date after each snapshot switch.
+    if settings.price_history_enabled:
+        active_snapshot.set_switch_hook(lambda code: update_all_in_background([code]))
+        update_all_in_background()
     monitor = asyncio.create_task(_snapshot_monitor())
     try:
         yield
@@ -86,12 +93,22 @@ app.add_middleware(
 async def pricing_data_unavailable_handler(
     request: Request, exc: PricingDataUnavailableError
 ) -> JSONResponse:
-    logger.error("pricing data unavailable", path=request.url.path, error=str(exc))
+    provider = getattr(exc, "provider", "aws")
+    logger.error(
+        "pricing data unavailable", path=request.url.path, error=str(exc), provider=provider
+    )
+    # 019 (SC-008): the provider and its public status reason, never the internal error text.
+    _status, reason = provider_status(provider)
     return JSONResponse(
         status_code=503,
         content={
             "error": "pricing_data_unavailable",
-            "message": "The AWS pricing data source is temporarily unreachable. Please retry.",
+            "message": (
+                f"The {PROVIDER_NAMES.get(provider, provider)} pricing data source is "
+                "temporarily unreachable. Please retry."
+            ),
+            "provider": provider,
+            "reason": reason or "pricing data unavailable",
         },
     )
 
@@ -173,9 +190,11 @@ from src.api.calculate import router as calculate_router  # noqa: E402
 from src.api.catalog import router as catalog_router  # noqa: E402
 from src.api.collections import router as collections_router  # noqa: E402
 from src.api.connectors import router as connectors_router  # noqa: E402
+from src.api.preferences import router as preferences_router  # noqa: E402
 from src.api.providers import router as providers_router  # noqa: E402
 from src.api.regions import router as regions_router  # noqa: E402
 from src.api.sku_selections import router as sku_selections_router  # noqa: E402
+from src.api.trends import router as trends_router  # noqa: E402
 
 app.include_router(providers_router, prefix="/api/v1")
 app.include_router(regions_router, prefix="/api/v1")
@@ -188,3 +207,5 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(admin_users_router, prefix="/api/v1")
 app.include_router(admin_system_router, prefix="/api/v1")
 app.include_router(connectors_router, prefix="/api/v1")
+app.include_router(preferences_router, prefix="/api/v1")
+app.include_router(trends_router, prefix="/api/v1")

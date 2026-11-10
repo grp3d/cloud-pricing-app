@@ -20,6 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Literal
 
 from src.config import settings
 from src.logging_config import get_logger
@@ -34,7 +35,7 @@ from src.pricing_data.manifest import (
     parse_pointer,
     validate_manifest,
 )
-from src.pricing_data.snapshot import TABLES, ActiveSnapshot
+from src.pricing_data.snapshot import PROVIDERS, TABLES, ActiveSnapshot
 from src.pricing_data.storage import LocalStore, S3Store, Store, open_store
 
 logger = get_logger("cloud_pricing.active_snapshot")
@@ -109,7 +110,8 @@ class CheckResult:
 
 
 def _is_old_layout(store: Store, provider: str) -> bool:
-    if not isinstance(store, LocalStore):
+    # The old layout only ever held AWS data (019: the other providers never had one).
+    if provider != PROVIDER or not isinstance(store, LocalStore):
         return False
     if (store.root / provider / "manifests").is_dir():
         return False
@@ -290,14 +292,37 @@ def check_snapshots(
 
 # --- Process-wide state -------------------------------------------------------------------------
 
+# 019 (FR-001, FR-002): one monitor state per provider. `STATE` stays the AWS state (the Admin
+# tab, `/health` and the 018 tests use it by that name); the others live in `_OTHER_STATES`.
 STATE = MonitorState()
+_OTHER_STATES: dict[str, MonitorState] = {p: MonitorState() for p in PROVIDERS if p != PROVIDER}
 _lock = threading.Lock()
 
-# The analysis run after a check that changed the active snapshot: called with the state, the
+# The analysis run after a check that changed the active AWS snapshot: called with the state, the
 # store and the previously active snapshot. Defaults to the icon-coverage analysis (imported
 # lazily — it imports this module); tests may swap it.
 AnalysisHook = Callable[[MonitorState, Store, ActiveSnapshot | None], None]
 _analysis_hook: AnalysisHook | None = None
+
+
+def state_for(provider: str) -> MonitorState:
+    """The monitor state of one provider; `ValueError` for an unknown provider code."""
+    if provider == PROVIDER:
+        return STATE
+    try:
+        return _OTHER_STATES[provider]
+    except KeyError:
+        raise ValueError(f"unknown provider {provider!r}") from None
+
+
+_switch_hook: Callable[[str], None] | None = None
+
+
+def set_switch_hook(hook: Callable[[str], None] | None) -> None:
+    """019 (T075): called with the provider code after its active snapshot switches (the app
+    starts the price history update there). Set by the app at startup; never in tests."""
+    global _switch_hook
+    _switch_hook = hook
 
 
 def set_analysis_hook(hook: AnalysisHook | None) -> None:
@@ -306,9 +331,11 @@ def set_analysis_hook(hook: AnalysisHook | None) -> None:
 
 
 def reset() -> None:
-    """Forget the monitor's state (tests; the next lookup re-checks)."""
+    """Forget every provider's monitor state (tests; the next lookup re-checks)."""
     global STATE
     STATE = MonitorState()
+    for provider in _OTHER_STATES:
+        _OTHER_STATES[provider] = MonitorState()
 
 
 def _default_analysis(state: MonitorState, store: Store, previous: ActiveSnapshot | None) -> None:
@@ -331,14 +358,16 @@ def _materializer(store: Store) -> Materialize:
     return materialize
 
 
-def _log_transitions(result: CheckResult, *, first: bool) -> None:
+def _log_transitions(provider: str, result: CheckResult, *, first: bool) -> None:
     """017-structured-json-logging, FR-008 a–b: log what this check changed."""
-    active = STATE.active
+    state = state_for(provider)
+    active = state.active
     if active is None:
         return
     if first and result.switched:
         logger.info(
             "active pricing snapshot selected",
+            provider=provider,
             snapshot_date=active.snapshot_date,
             revision=active.revision,
             pinned=active.pinned,
@@ -346,16 +375,18 @@ def _log_transitions(result: CheckResult, *, first: bool) -> None:
     elif result.switched:
         logger.info(
             "active pricing snapshot changed",
+            provider=provider,
             snapshot_date=active.snapshot_date,
             revision=active.revision,
             previous_snapshot_date=result.previous.snapshot_date if result.previous else None,
             previous_revision=result.previous.revision if result.previous else None,
             pinned=active.pinned,
         )
-        for issue in STATE.issues:
+        for issue in state.issues:
             if issue.kind == "missing_regions" and issue.snapshot_date == active.snapshot_date:
                 logger.warning(
                     "pricing snapshot missing regions",
+                    provider=provider,
                     snapshot_date=active.snapshot_date,
                     previous_snapshot_date=(
                         result.previous.snapshot_date if result.previous else None
@@ -364,75 +395,106 @@ def _log_transitions(result: CheckResult, *, first: bool) -> None:
                 )
 
 
-def _cleanup_cache(store: S3Store, result: CheckResult) -> None:
-    """Delete what the clean-up policy says, then record the cache for the Admin tab."""
+def _cleanup_cache(store: S3Store, results: dict[str, CheckResult]) -> None:
+    """Delete what the clean-up policy says, across providers (one shared size budget, research
+    R2), then record each provider's cache for the Admin tab."""
     from src.pricing_data.snapshot_cache import (
+        ProviderCache,
         apply_cleanup,
         list_entries,
-        plan_cleanup,
+        plan_cleanup_providers,
     )
 
     cache_dir = Path(settings.pricing_cache_dir)
-    entries = list_entries(cache_dir, PROVIDER)
+    views: dict[str, ProviderCache] = {}
+    for provider in PROVIDERS:
+        state = state_for(provider)
+        entries = list_entries(cache_dir, provider)
 
-    def entry_for(snapshot: ActiveSnapshot | None):
-        if snapshot is None:
-            return None
-        return next((e for e in entries if e.path == snapshot.base_dir), None)
+        def entry_for(snapshot: ActiveSnapshot | None, entries=entries):
+            if snapshot is None:
+                return None
+            return next((e for e in entries if e.path == snapshot.base_dir), None)
 
-    purged: set[str] = set()
-    for date_ in {e.snapshot_date for e in entries} - {STATE.active.snapshot_date
-                                                        if STATE.active else ""}:
-        found = _read_manifest(store, PROVIDER, date_)
-        if isinstance(found, Manifest) and found.status == "purged":
-            purged.add(date_)
-    deletions = plan_cleanup(
-        entries,
-        active=entry_for(STATE.active),
-        keep=settings.pricing_cache_keep,
-        max_bytes=settings.pricing_cache_max_bytes,
-        superseded_this_check=entry_for(result.previous) if result.switched else None,
-        purged_dates=purged,
+        active_date = state.active.snapshot_date if state.active else ""
+        purged: set[str] = set()
+        for date_ in {e.snapshot_date for e in entries} - {active_date}:
+            found = _read_manifest(store, provider, date_)
+            if isinstance(found, Manifest) and found.status == "purged":
+                purged.add(date_)
+        result = results.get(provider)
+        views[provider] = ProviderCache(
+            entries=entries,
+            active=entry_for(state.active),
+            superseded_this_check=(
+                entry_for(result.previous) if result is not None and result.switched else None
+            ),
+            purged_dates=purged,
+        )
+    deletions = plan_cleanup_providers(
+        views, keep=settings.pricing_cache_keep, max_bytes=settings.pricing_cache_max_bytes
     )
     if deletions:
         apply_cleanup(deletions)
-        logger.info("pricing cache cleaned", deleted=[p.name for p in deletions])
-    STATE.cache = list_entries(cache_dir, PROVIDER)
+        logger.info("pricing cache cleaned",
+                    deleted=[f"{p.parent.name}/{p.name}" for p in deletions])
+    for provider in PROVIDERS:
+        state_for(provider).cache = list_entries(cache_dir, provider)
 
 
-def _post_check(store: Store, result: CheckResult) -> None:
-    """Work after a check: the icon analysis on a switch, then cache clean-up (S3 only)."""
-    if result.analysis_needed:
+def _post_check(store: Store, results: dict[str, CheckResult]) -> None:
+    """Work after a check: the icon analysis on an AWS switch (AWS service icons only), then the
+    cache clean-up across providers (S3 only)."""
+    aws = results.get(PROVIDER)
+    if aws is not None and aws.analysis_needed:
         try:
-            (_analysis_hook or _default_analysis)(STATE, store, result.previous)
+            (_analysis_hook or _default_analysis)(STATE, store, aws.previous)
         except Exception:  # noqa: BLE001 — a failed analysis never stops pricing
             logger.exception("icon coverage analysis failed")
     if isinstance(store, S3Store):
         try:
-            _cleanup_cache(store, result)
+            _cleanup_cache(store, results)
         except Exception:  # noqa: BLE001 — clean-up is retried at the next check
             logger.exception("pricing cache clean-up failed")
     else:
-        STATE.cache = None
+        for provider in results:
+            state_for(provider).cache = None
 
 
-def run_check(*, at_startup: bool = False) -> CheckResult:
-    """One check against the configured source, then the analysis if needed. Serialized, so a
-    slow check never overlaps the next (spec Edge Cases)."""
+def run_check(*, at_startup: bool = False, provider: str | None = None) -> CheckResult:
+    """One check against the configured source, for every provider in turn (or just
+    `provider`), then the analysis if needed. Serialized, so a slow check never overlaps the next
+    (spec Edge Cases). A failure is recorded in that provider's state only (FR-002). Returns the
+    AWS result, or `provider`'s when one is given.
+
+    `ACTIVE_SNAPSHOT_DATE` pins AWS only: the other providers publish on their own dates."""
+    providers = [provider] if provider is not None else list(PROVIDERS)
+    for code in providers:
+        state_for(code)  # unknown provider → ValueError before anything runs
     with _lock:
         store = open_store(settings)
-        was_initialized = STATE.initialized
-        result = check_snapshots(
-            store,
-            PROVIDER,
-            STATE,
-            settings.active_snapshot_date,
-            at_startup=at_startup,
-            materialize=_materializer(store),
-        )
-        _log_transitions(result, first=at_startup or not was_initialized)
-        _post_check(store, result)
-        return result
+        results: dict[str, CheckResult] = {}
+        for code in providers:
+            state = state_for(code)
+            was_initialized = state.initialized
+            results[code] = check_snapshots(
+                store,
+                code,
+                state,
+                settings.active_snapshot_date if code == PROVIDER else None,
+                at_startup=at_startup,
+                materialize=_materializer(store),
+            )
+            _log_transitions(code, results[code], first=at_startup or not was_initialized)
+        _post_check(store, results)
+    if _switch_hook is not None:
+        for code, result in results.items():
+            if result.switched:
+                try:
+                    _switch_hook(code)
+                except Exception:  # noqa: BLE001 — history never stops pricing
+                    logger.exception("price history update could not start", provider=code)
+    return results[provider or PROVIDER]
 
 
 def check_in_progress() -> bool:
@@ -443,21 +505,24 @@ def check_in_progress() -> bool:
     return True
 
 
-def get_active_snapshot() -> ActiveSnapshot:
-    """The snapshot every pricing lookup must use (FR-014). The first call runs a check if the
-    background monitor hasn't yet (scripts, tests); after that it's an in-memory read. Raises
-    `PricingDataUnavailableError` (→ HTTP 503) when there's no usable snapshot (FR-013)."""
-    if not STATE.initialized:
-        run_check(at_startup=True)
-    if STATE.active is None:
-        raise PricingDataUnavailableError(STATE.last_check_error or NO_SNAPSHOT)
-    return STATE.active
+def get_active_snapshot(provider: str = PROVIDER) -> ActiveSnapshot:
+    """The snapshot every pricing lookup for `provider` must use (FR-014). The first call runs a
+    check if the background monitor hasn't yet (scripts, tests); after that it's an in-memory
+    read. Raises `PricingDataUnavailableError` (→ HTTP 503) when there's no usable snapshot
+    (FR-013)."""
+    state = state_for(provider)
+    if not state.initialized:
+        run_check(at_startup=True, provider=provider)
+        state = state_for(provider)
+    if state.active is None:
+        raise PricingDataUnavailableError(state.last_check_error or NO_SNAPSHOT, provider)
+    return state.active
 
 
-def pricing_status() -> tuple[bool, str | None]:
+def pricing_status(provider: str = PROVIDER) -> tuple[bool, str | None]:
     """(pricing works, a fixed public phrase saying why not) for `/health`. Never includes a
     location or an error text, because `/health` needs no login."""
-    state = STATE
+    state = state_for(provider)
     if state.active is not None:
         return True, None
     if not state.initialized:
@@ -471,6 +536,37 @@ def pricing_status() -> tuple[bool, str | None]:
     return False, "pricing data unavailable"
 
 
+ProviderStatus = Literal["current", "partial", "failed", "stale", "none"]
+
+
+def provider_status(
+    provider: str, *, today: date | None = None
+) -> tuple[ProviderStatus, str | None]:
+    """A provider's status for `GET /providers` (019, contracts §1), with a short public reason
+    when it isn't `current`:
+
+    - `none`: nothing published yet; `failed`: published, but no usable snapshot;
+    - `stale`: the active snapshot is older than `SNAPSHOT_STALE_DAYS` (still active);
+    - `partial`: active, but the newest run is newer and not succeeded (still active)."""
+    state = state_for(provider)
+    if state.active is None:
+        ok, reason = pricing_status(provider)
+        if reason == NO_SNAPSHOT and state.latest_run is None and state.rejected is None:
+            return "none", NO_SNAPSHOT
+        return "failed", reason
+    today = today or datetime.now(UTC).date()
+    age = (today - date.fromisoformat(state.active.snapshot_date)).days
+    if age > settings.snapshot_stale_days:
+        return "stale", f"snapshot is {age} days old"
+    run = state.latest_run
+    if run is not None and run.status != "succeeded" and (
+        (run.snapshot_date, run.revision)
+        > (state.active.snapshot_date, state.active.revision)
+    ):
+        return "partial", f"latest run {run.snapshot_date} is {run.status}"
+    return "current", None
+
+
 __all__ = [
     "ActiveSnapshotConfigError",
     "CheckResult",
@@ -481,6 +577,8 @@ __all__ = [
     "Selection",
     "check_snapshots",
     "get_active_snapshot",
+    "provider_status",
+    "state_for",
     "previous_snapshot",
     "run_check",
     "select_snapshot",

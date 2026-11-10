@@ -121,3 +121,94 @@ def test_unparseable_documents_are_rejected_not_raised(raw):
     result = parse_manifest(raw, snapshot_date="2026-10-05")
     assert isinstance(result, RejectedManifest)
     assert result.snapshot_date == "2026-10-05"
+
+
+# --- 019-gcp-azure-providers-trends (research R1): per-provider tables, manifest 1.1 ---------
+
+PRICING_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "pricing_parquet"
+
+
+def _provider_manifest(provider: str) -> Manifest:
+    path = next((PRICING_FIXTURES / provider / "manifests").glob("*/manifest.json"))
+    return Manifest.model_validate_json(path.read_text())
+
+
+def test_provider_table_registry():
+    from src.pricing_data.manifest import PROVIDER_TABLES
+
+    assert len(PROVIDER_TABLES["aws"]) == 5
+    assert set(PROVIDER_TABLES["azure"]) == {"price_item", "price_item_savings_plan"}
+    assert set(PROVIDER_TABLES["gcp"]) == {"service", "sku", "sku_price", "sku_price_tier"}
+
+
+@pytest.mark.parametrize("provider", ["azure", "gcp"])
+def test_azure_and_gcp_fixture_manifests_are_usable(provider):
+    # Manifest 1.1: `catalog`, `excluded_price_types` and the wider `run.region_results` are
+    # accepted and ignored; `global`, `north-america` locations pass the path check.
+    manifest = _provider_manifest(provider)
+    assert manifest.manifest_version == "1.1"
+    assert validate_manifest(manifest, provider) is manifest
+
+
+def test_manifest_1_1_optional_fields_are_accepted_and_ignored():
+    manifest = _provider_manifest("azure")
+    raw = manifest.model_dump()
+    raw["excluded_price_types"] = ["DevTestConsumption"]
+    raw["catalog"] = {"api_version": "v2beta", "requests_made": 45}
+    raw["run"]["region_results"] = [{"region": "eastus", "items_received": 30, "foo": 1}]
+    again = Manifest.model_validate(raw)
+    assert validate_manifest(again, "azure") is again
+
+
+def test_a_table_of_another_provider_is_rejected():
+    manifest = _provider_manifest("azure")
+    manifest.tables["price_fact"] = manifest.tables["price_item"]
+    result = validate_manifest(manifest, "azure")
+    assert isinstance(result, RejectedManifest)
+    assert "price_fact" in result.reason
+
+
+def test_a_missing_provider_table_is_rejected():
+    manifest = _provider_manifest("gcp")
+    del manifest.tables["sku_price_tier"]
+    result = validate_manifest(manifest, "gcp")
+    assert isinstance(result, RejectedManifest)
+    assert "sku_price_tier" in result.reason
+
+
+def test_unsupported_schema_version_for_a_provider_table_is_rejected():
+    manifest = _provider_manifest("gcp")
+    manifest.tables["sku"].schema_version = 2
+    result = validate_manifest(manifest, "gcp")
+    assert isinstance(result, RejectedManifest)
+    assert "sku" in result.reason and "schema" in result.reason
+
+
+def test_unknown_provider_is_rejected():
+    manifest = _provider_manifest("gcp")
+    manifest.provider = "oracle"
+    result = validate_manifest(manifest, "oracle")
+    assert isinstance(result, RejectedManifest)
+    assert "oracle" in result.reason
+
+
+@pytest.mark.parametrize("location", ["global", "north-america", "northamerica-northeast1"])
+def test_location_names_of_every_provider_pass_the_path_check(location):
+    manifest = _provider_manifest("gcp")
+    entry = manifest.tables["sku"].regions["us-east1"].model_copy(deep=True)
+    for data_file in entry.files:
+        data_file.path = data_file.path.replace("region=us-east1", f"region={location}")
+    manifest.tables["sku"].regions[location] = entry
+    assert validate_manifest(manifest, "gcp") is manifest
+
+
+@pytest.mark.parametrize("location", ["US East", "us_east1", "-us", "us-", ""])
+def test_malformed_location_names_are_rejected(location):
+    manifest = _provider_manifest("gcp")
+    entry = manifest.tables["sku"].regions["us-east1"].model_copy(deep=True)
+    for data_file in entry.files:
+        data_file.path = data_file.path.replace("region=us-east1", f"region={location}")
+    manifest.tables["sku"].regions[location] = entry
+    result = validate_manifest(manifest, "gcp")
+    assert isinstance(result, RejectedManifest)
+    assert "location" in result.reason or "path" in result.reason

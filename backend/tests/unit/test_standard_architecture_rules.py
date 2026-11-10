@@ -147,17 +147,17 @@ def dataset(tmp_path: Path) -> Path:
 
 
 def _rule(**overrides) -> MatchRule:
-    base = dict(
-        architecture_id="arch_a",
-        component_id="comp",
-        figure="figure",
-        region="us-east-1",
-        service_codes=("AmazonEC2",),
-        product_family="Compute Instance",
-        attribute_filters={"usagetype": "BoxUsage:x"},
-        expected_unit="Hrs",
-        quantity=Decimal("24.0000"),
-    )
+    base = {
+        "architecture_id": "arch_a",
+        "component_id": "comp",
+        "figure": "figure",
+        "region": "us-east-1",
+        "service_codes": ("AmazonEC2",),
+        "product_family": "Compute Instance",
+        "attribute_filters": {"usagetype": "BoxUsage:x"},
+        "expected_unit": "Hrs",
+        "quantity": Decimal("24.0000"),
+    }
     base.update(overrides)
     return MatchRule(**base)
 

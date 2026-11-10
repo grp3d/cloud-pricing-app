@@ -65,8 +65,12 @@ services:
     <<: *backend-image
     environment:
       PRICING_CACHE_DIR: /var/lib/app/pricing-cache
+      # 019: the Trends price history, kept across container restarts so each snapshot is
+      # processed once (rebuilt from the snapshots on a new instance).
+      PRICING_HISTORY_DIR: /var/lib/app/pricing-history
     volumes:
       - pricing-cache:/var/lib/app/pricing-cache
+      - pricing-history:/var/lib/app/pricing-history
     depends_on:
       db:
         condition: service_healthy
@@ -117,6 +121,7 @@ services:
 volumes:
   pgdata:
   pricing-cache:
+  pricing-history:
   run-state:
   ops-state:
   caddy-data:

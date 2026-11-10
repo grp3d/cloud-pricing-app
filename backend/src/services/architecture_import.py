@@ -28,6 +28,7 @@ def _selection_spec(selection: SKUSelection) -> SKUSelectionSpec:
         pricing_term=selection.pricing_term,
         purchase_option=selection.purchase_option,
         usage_quantity=selection.usage_quantity,
+        provider_options=selection.provider_options,
     )
 
 
@@ -58,6 +59,8 @@ async def import_architecture(
         ConnectorSpec(
             from_ref=str(connector.from_collection_id),
             to_ref=str(connector.to_collection_id),
+            arrow_style=connector.arrow_style,
+            arrow_reversed=connector.arrow_reversed,
             sku_selection=(
                 _selection_spec(connector.sku_selection)
                 if connector.sku_selection is not None

@@ -5,7 +5,7 @@
  * `getUserId()`: a missing or malformed entry is never an error, just "no baseline yet".
  */
 
-import type { PriorCalculation } from "./priceChange";
+import { isStoredSelection, type PriorCalculation } from "./priceChange";
 
 function storageKey(architectureId: string): string {
   return `cloud-pricing-prior-calculation-${architectureId}`;
@@ -14,10 +14,13 @@ function storageKey(architectureId: string): string {
 function isPriorCalculation(value: unknown): value is PriorCalculation {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
+  // 020 (data-model §3): `version: 2`, or no version at all (a legacy v0.0.2 baseline).
   return (
+    (v.version === undefined || v.version === 2) &&
     typeof v.total === "string" &&
     typeof v.duration === "string" &&
-    Array.isArray(v.selections)
+    Array.isArray(v.selections) &&
+    v.selections.every(isStoredSelection)
   );
 }
 

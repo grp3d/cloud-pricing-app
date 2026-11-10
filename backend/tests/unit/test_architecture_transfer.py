@@ -15,6 +15,7 @@ import pytest
 
 from src.services.architecture_transfer import (
     InvalidImportFileError,
+    specs_from_definition,
     validate_definition,
     validate_envelope,
 )
@@ -240,7 +241,12 @@ def test_rule4_component_inside_component():
     assert error == 'Invalid nesting: "Worker" must be inside a VPC'
 
 
-def test_rule4a_provider_not_supported():
+def test_rule4a_provider_not_supported(monkeypatch):
+    """019 (US1): GCP and Azure have adapters now, so rule 4a fails only for a provider with
+    none (simulated here; the file format names only the three providers)."""
+    from src.services import architecture_transfer
+
+    monkeypatch.setattr(architecture_transfer, "has_adapter", lambda code: code == "aws")
     raw = _definition()
     raw["provider"] = "gcp"
     _, error = _validate(raw)
@@ -283,3 +289,129 @@ def test_input_not_mutated():
     snapshot = copy.deepcopy(raw)
     _validate(raw)
     assert raw == snapshot
+
+
+# --- 019 (T038, research R15): provider options in the file -----------------------------------
+
+
+def test_provider_options_are_read_and_written():
+    raw = _definition()
+    raw["provider"] = "azure"
+    raw["collections"][0]["sku_selections"][0]["provider_options"] = {
+        "kind": "azure_vm", "version": 1, "os": "windows"}
+    definition, error = _validate(raw)
+    assert error is None
+    collections, _ = specs_from_definition(definition)
+    assert collections[0].sku_selections[0].provider_options == {
+        "kind": "azure_vm", "version": 1, "os": "windows"}
+
+
+def test_an_older_file_without_the_new_fields_still_validates():
+    definition, error = _validate(_definition())
+    assert error is None
+    collections, _ = specs_from_definition(definition)
+    assert collections[0].sku_selections[0].provider_options is None
+
+
+def test_invalid_provider_options_fail_rule_1():
+    raw = _definition()
+    raw["collections"][0]["sku_selections"][0]["provider_options"] = {"kind": "gcp_machine",
+                                                                      "vcpus": 0}
+    _, error = _validate(raw)
+    assert error.startswith("Invalid architecture definition:")
+
+
+# --- 019 (T097, research R15): connector arrows in the file and in a copy ---------------------
+
+
+def test_arrow_fields_are_read():
+    raw = _definition()
+    raw["connectors"][0].update(arrow_style="one_way", arrow_reversed=True)
+    definition, error = _validate(raw)
+    assert error is None
+    _, connectors = specs_from_definition(definition)
+    assert (connectors[0].arrow_style, connectors[0].arrow_reversed) == ("one_way", True)
+
+
+def test_an_older_file_imports_connectors_with_their_old_arrowhead():
+    # Before 019 every connector was drawn with an arrowhead at its `to` end.
+    definition, error = _validate(_definition())
+    assert error is None
+    _, connectors = specs_from_definition(definition)
+    assert (connectors[0].arrow_style, connectors[0].arrow_reversed) == ("one_way", False)
+
+
+def test_an_explicit_none_style_is_kept():
+    raw = _definition()
+    raw["connectors"][0]["arrow_style"] = "none"
+    definition, _error = _validate(raw)
+    _, connectors = specs_from_definition(definition)
+    assert connectors[0].arrow_style == "none"
+
+
+def test_an_unknown_arrow_style_fails_rule_1():
+    raw = _definition()
+    raw["connectors"][0]["arrow_style"] = "zigzag"
+    _, error = _validate(raw)
+    assert error.startswith("Invalid architecture definition:")
+
+
+def _arrowed_architecture():
+    import uuid
+
+    from src.models.orm import Architecture, Collection, DataConnector
+
+    a = Collection(id=uuid.uuid4(), type="vpc", name="A", region="us-east-1", sku_selections=[])
+    b = Collection(id=uuid.uuid4(), type="vpc", name="B", region="us-east-1", sku_selections=[])
+    connector = DataConnector(id=uuid.uuid4(), from_collection_id=a.id, to_collection_id=b.id,
+                              arrow_style="two_way", arrow_reversed=True, sku_selection=None)
+    return Architecture(id=uuid.uuid4(), name="Arrows", provider="aws", collections=[a, b],
+                        connectors=[connector])
+
+
+def test_arrow_fields_are_written_and_round_trip():
+    from src.services.architecture_transfer import serialize_architecture
+
+    exported = serialize_architecture(_arrowed_architecture()).model_dump(mode="json")
+    (connector,) = exported["connectors"]
+    assert (connector["arrow_style"], connector["arrow_reversed"]) == ("two_way", True)
+    definition, error = _validate(exported)
+    assert error is None
+    _, connectors = specs_from_definition(definition)
+    assert (connectors[0].arrow_style, connectors[0].arrow_reversed) == ("two_way", True)
+
+
+@pytest.mark.asyncio
+async def test_a_copy_keeps_the_arrows(db_session):
+    import uuid
+
+    from sqlalchemy import select
+
+    from src.models.orm import Architecture, Collection, DataConnector, User
+    from src.services.architecture_import import import_architecture
+
+    owner, importer = User(id=uuid.uuid4()), User(id=uuid.uuid4())
+    db_session.add_all([owner, importer])
+    source = Architecture(id=uuid.uuid4(), user_id=owner.id, provider="aws", name="Src")
+    a = Collection(id=uuid.uuid4(), architecture=source, type="vpc", name="A",
+                   region="us-east-1")
+    b = Collection(id=uuid.uuid4(), architecture=source, type="vpc", name="B",
+                   region="us-east-1")
+    db_session.add_all([source, a, b])
+    await db_session.flush()
+    db_session.add(DataConnector(architecture_id=source.id, from_collection_id=a.id,
+                                 to_collection_id=b.id, arrow_style="one_way",
+                                 arrow_reversed=True))
+    await db_session.commit()
+    reloaded = (await db_session.execute(
+        select(Architecture).where(Architecture.id == source.id))).scalar_one()
+    await db_session.refresh(reloaded, attribute_names=["collections", "connectors"])
+    for collection in reloaded.collections:
+        await db_session.refresh(collection, attribute_names=["sku_selections"])
+    for conn in reloaded.connectors:
+        await db_session.refresh(conn, attribute_names=["sku_selection"])
+
+    copy = await import_architecture(db_session, reloaded, importer, "Copy")
+    (copied,) = (await db_session.execute(
+        select(DataConnector).where(DataConnector.architecture_id == copy.id))).scalars().all()
+    assert (copied.arrow_style, copied.arrow_reversed) == ("one_way", True)

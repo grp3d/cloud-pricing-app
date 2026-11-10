@@ -1,3 +1,12 @@
+> **Note (2026-11-09):** this is the original design brief from September 2026, kept as a
+> record and a source of ideas not yet built (for example "standard" architectures, machine
+> and network-component collections, and the landing-page trend chart with top-5
+> contributors). The app's layout has since changed: the four columns below became a header
+> architecture menu plus a sidebar, canvas and inspector (see
+> `specs/021-workspace-layout-redesign/spec.md`). What each feature actually built is in its
+> `specs/0NN-*/spec.md`. The dated `functionality_*.md` files beside this one are later change
+> requests.
+
 # Web Pages
 
 Stack: react + vite + typescript

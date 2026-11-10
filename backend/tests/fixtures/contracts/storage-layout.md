@@ -1,57 +1,57 @@
-# Contract: Storage Layout
+# Contract: Storage Layout (feature 004 changes)
 
-**Applies to**: the local directory and S3 alike (FR-008). `<root>` is the path or prefix given by `PIPELINE_STORAGE_URI`: `file:///data` → `/data`, or `s3://cloud-pricing-data-prod/` → the bucket root.
+This extends `specs/003-pipeline-cloud-deployment/contracts/storage-layout.md`. Its consumer rules, producer guarantees and access model apply unchanged to every provider. Only the differences are listed here.
 
 ```text
 <root>/
-└── <provider>/                                   # "aws" now; "gcp", "azure" later (FR-010)
-    ├── raw/                                      # compressed source files; expire after RAW_RETENTION_DAYS
-    │   └── <YYYY-MM-DD>/<region>/<run_id>/
-    │       └── pricing-<ServiceCode>-<region>.json.zst
-    ├── parquet/                                  # the five tables, Hive-style partitions
-    │   └── <table>/snapshot_date=<YYYY-MM-DD>/region=<region>/
-    │       └── part-<run_id>[-<n>].parquet       # file name is unique per run; never overwritten
-    ├── manifests/
-    │   ├── latest.json                           # → newest succeeded snapshot (latest.schema.json)
-    │   └── <YYYY-MM-DD>/
-    │       ├── manifest.json                     # current revision (manifest.schema.json)
-    │       └── revisions/<NNNN>.json             # immutable history, zero-padded, 0001…
-    └── claims/
-        └── <YYYY-MM-DD>.json                     # transient run claim (internal)
+├── aws/      (unchanged)
+├── azure/
+│   ├── raw/<YYYY-MM-DD>/<location>/<run_id>/
+│   │   ├── prices-p0001.json.zst …               # one file per API page, as received
+│   │   └── (global only) prices-empty-p0001.json.zst …, prices-global-p0001.json.zst …
+│   ├── parquet/<table>/snapshot_date=<YYYY-MM-DD>/region=<location>/part-<run_id>[-<n>].parquet
+│   ├── manifests/   (as AWS)
+│   └── claims/      (as AWS)
+└── gcp/
+    ├── raw/<YYYY-MM-DD>/catalog/<run_id>/
+    │   ├── services-p0001.json.zst               # v1 services list
+    │   ├── skus-p0001.json.zst …                 # v2beta SKU pages
+    │   └── prices-p0001.json.zst …               # v2beta price pages
+    ├── parquet/<table>/snapshot_date=<YYYY-MM-DD>/region=<location>/part-<run_id>[-<n>].parquet
+    ├── manifests/   (as AWS)
+    └── claims/      (as AWS)
 ```
 
-`<table>` is one of `service_dim`, `product_dim`, `product_attribute`, `region_dim` or `price_fact`.
+## Tables per provider
 
-## Consumer rules (cloud-pricing-app)
+| Provider | Tables (schema version) | Columns |
+|---|---|---|
+| `aws` | `service_dim`, `product_dim`, `product_attribute`, `region_dim`, `price_fact` (1) | unchanged |
+| `azure` | `price_item`, `price_item_savings_plan` (1) | data-model.md § Azure tables |
+| `gcp` | `service`, `sku`, `sku_price`, `sku_price_tier` (1) | data-model.md § GCP tables |
 
-1. **Start from `manifests/latest.json`**, then read the `manifest_path` it names. For history, read `manifests/<date>/manifest.json`.
-2. **Find data files only through the manifest's `tables.<t>.regions.<r>.files[].path`.** Never list or glob `parquet/` directories. During the superseded-file grace period, those directories can hold files from more than one revision, and a glob would double-count rows.
-3. **Reject** a manifest whose `manifest_version` MAJOR, or any table `schema_version`, is unsupported.
-4. **Skip** manifests with `status` `purged` or `failed`. Only use `partial` manifests if you deliberately handle missing regions.
-5. **Optionally verify** each file's `bytes` and `sha256` before use.
-6. **Ignore** `claims/` and `revisions/`. They are internal and history, not a data source.
-7. **Re-read the manifest** if you hold it longer than `SUPERSEDED_FILE_GRACE_MINUTES`. Files of a superseded revision may be deleted after that time.
-8. **Treat "access denied" like "not found"** for a missing key (for example, `latest.json` before the first snapshot). The read-only policy can list only `manifests/` and `parquet/`, so S3 reports a missing key as access denied.
+Consumers MUST reject a table name, or a table `schema_version`, that they don't support for that provider.
 
-## Producer guarantees (this repo)
+## Locations
 
-- **Write order**: data files, then `revisions/<NNNN>.json`, then `manifest.json`, then `latest.json`.
-- **Immutable data files**: a data file is never modified after it is written. It is either listed by manifests or deleted.
-- **No dangling paths**: no Active Manifest lists a path that doesn't exist. Purging rewrites the manifest before any deletes.
-- **`latest.json` never goes backwards**: it only names `succeeded` snapshots, and it names a date that retention will not purge.
-- **Access**: the bucket blocks public access and is encrypted at rest (SSE-S3). The web app gets read-only access via the IAM policy `cloud-pricing-data-read-<env>`.
+- The `region=<location>` partition and the manifest's `regions.*` lists hold **locations**: a region, a multi-region location, or `global`. Names match `^[a-z0-9]+(-[a-z0-9]+)*$`.
+- Azure source names are mapped to partition names: lowercase, with spaces replaced by `-`. Each row keeps the source value in `arm_region_name`.
+- **`global`** holds prices the source marks as global or gives no location for. Azure and GCP always collect `global`, and it is a requested location in every run.
+- **Pricing in a location**: to price something in location *L*, read the files for *L* and for `global`. Some services (e.g., Azure support plans, GCP licensing) publish only global prices.
+- **SKUs that list several locations**: a GCP SKU that lists several configured locations appears once in each of their partitions. Multi-region and dual-region SKUs list their member regions, so they are filed under those regions; `geo_taxonomy_type = 'TYPE_MULTI_REGIONAL'` tells them apart from regional SKUs. Count distinct `sku_id` values across partitions, not rows, when counting SKUs.
+- **GCP `service`** is written to the `global` partition only. The manifest's `tables.service.regions` lists every location, with no files and `row_count` 0 except `global`.
+- **Timestamps** (Azure `effective_start_date`, `effective_end_date`) are `timestamp[ms, UTC]`: Parquet has no seconds unit.
 
-## Access from any environment (FR-056)
+## Lookup examples
 
-The data is identical whoever produced it: a Fargate task or an off-AWS writer such as a home server. Readers get the same data wherever they run. Only the way they obtain credentials differs:
+These are the reference lookups the app's per-provider mapping can start from. Full filters are in data-model.md. Each example was checked against the provider's own price API on 2026-10-31 (`checklists/validation.md` § Q8 results).
 
-| Reader location | Credentials |
-|---|---|
-| In AWS (e.g., the app's ECS task) | Attach the managed policy `cloud-pricing-data-read-<env>` to the app's role. |
-| Outside AWS (laptop, home server) | Assume the role `cloud-pricing-data-reader-<env>` through IAM Roles Anywhere, with a client certificate whose subject CN is listed in `external_reader_subjects`. It has the same permissions as the policy above and returns short-lived credentials. |
+| Component | AWS (existing) | Azure | GCP |
+|---|---|---|---|
+| VM, Linux, on-demand, per hour | `price_fact` ⨝ `product_dim` by instance type and region | `price_item`: `arm_sku_name`, `price_type='Consumption'`, location | `sku` + `sku_price` (`Default`) + `sku_price_tier`: core SKU × vCPUs + RAM SKU × GiB; taxonomy `VMs On Demand`, `N2` |
+| Block storage, per GB-month | EBS volume type | `price_item`: `service_name='Storage'`, product e.g. `Premium SSD Managed Disks`, meter e.g. `P10 LRS Disk` (per disk per month); another product (`Premium Page Blob`) uses the same meter name | `sku`: taxonomy `Compute > Persistent Disk > SSD > Capacity` / `Standard > Capacity`; zonal and regional disks share it, so filter on `display_name` (`Balanced PD Capacity` vs `Regional Balanced PD Capacity`) or the last category (`Lite` vs `Regional Lite`) |
+| Object storage, per GB-month | S3 storage class | `price_item`: `product_name='General Block Blob v2'`, meter e.g. `Hot LRS Data Stored` (three tiers); `Blob Storage` and the Data Lake products repeat the meter | `sku`: taxonomy `Storage > GCS > Storage > Standard > Multi-Regional` / `Regional and Dual-Regional`, `display_name` e.g. `Standard Storage US Multi-region` |
+| Data transfer out | `price_fact` transfer types | `price_item` in the **region**: `service_name='Bandwidth'`, `product_name='Rtn Preference: MGN'` (Microsoft network; `Bandwidth - Routing Preference: Internet` for the internet route), meter `Standard Data Transfer Out` (tiers; the first 100 GB free). The geography partitions (`north-america`, …) hold only `Bandwidth Alliance` and inter-region prices | `sku`: taxonomy `Network > Egress > GCE > Premium` / `Standard`, `display_name` e.g. `Network Internet Data Transfer Out from Americas to Americas` (tiers in GiB) |
+| Managed relational DB, per hour | RDS instance class | `price_item`: `service_name='Azure Database for PostgreSQL'`, product e.g. `Azure Database for PostgreSQL Flexible Server General Purpose Ddsv5 Series Compute`, `sku_name` e.g. `2 vCore` (price for the whole server) | `sku`: taxonomy `Databases > Cloud SQL > Postgres > Compute > Cores: Per Core` / `Memory: Per GB`, `display_name` e.g. `Cloud SQL for PostgreSQL: Zonal - vCPU in Americas` |
 
-Off-AWS **writers** use the role `cloud-pricing-pipeline-writer-<env>` in the same way, with CNs listed in `external_writer_subjects`. See research R22.
-
-## Removed (FR-019)
-
-`_SUCCESS`, `_REGION_COMPLETE` and `.locks/` are no longer produced in the new layout. The legacy local tree `$DATA_DIRECTORY_ROOT/pricing_aws/` is left untouched. `upload-history` reads it as a source only.
+Tiered prices: Azure has one `price_item` row per tier (`tier_minimum_units`). GCP has one `sku_price_tier` row per tier (`start_amount`). GCP commitment prices (CUDs, savings plans) are further `sku_price` rows of the same SKU, told apart by `consumption_model_description`.

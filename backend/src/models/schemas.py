@@ -11,7 +11,17 @@ from decimal import Decimal
 from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
+
+from src.pricing_data.providers.base import OPTION_PROVIDERS
 
 
 class ORMBase(BaseModel):
@@ -24,7 +34,14 @@ class ORMBase(BaseModel):
 class ProviderOut(BaseModel):
     code: str
     name: str
+    # 019 (contracts §1, FR-001): true exactly when the provider has a usable active snapshot
+    # and the app can price it.
     active: bool
+    status: Literal["current", "partial", "failed", "stale", "none"] = "none"
+    # A short public phrase when not `current`; never a location or an error text.
+    reason: str | None = None
+    snapshot_date: str | None = None
+    snapshot_revision: int | None = None
 
 
 # --- Regions (010-multi-region-support) ---------------------------------------------------
@@ -32,6 +49,9 @@ class ProviderOut(BaseModel):
 
 class RegionOut(BaseModel):
     code: str
+    # 019 (contracts §2): the provider's own name for the region (Azure `US East`); the code
+    # when the provider publishes none (AWS, GCP).
+    display_name: str | None = None
 
 
 class RegionsOut(BaseModel):
@@ -101,6 +121,12 @@ class PricingTerm(str, Enum):
     on_demand = "on_demand"
     reserved_1yr = "reserved_1yr"
     reserved_3yr = "reserved_3yr"
+    # 019 (research R6): Azure savings plans and GCP committed-use discounts. Which ones a
+    # selection may use depends on its architecture's provider (`PROVIDER_PRICE_TYPES`).
+    savings_plan_1yr = "savings_plan_1yr"
+    savings_plan_3yr = "savings_plan_3yr"
+    commitment_1yr = "commitment_1yr"
+    commitment_3yr = "commitment_3yr"
 
 
 class PurchaseOption(str, Enum):
@@ -122,18 +148,63 @@ class CalculationDuration(str, Enum):
 # --- SKU Selection ---------------------------------------------------------------------------
 
 
+ProviderCode = Literal["aws", "gcp", "azure"]
+
+
+class CatalogKind(str, Enum):
+    """019 (contracts §3, research R6): search presets matching the pipeline's reference
+    lookups. Azure and GCP only."""
+
+    vm = "vm"
+    block_storage = "block_storage"
+    object_storage = "object_storage"
+    data_transfer = "data_transfer"
+    managed_db = "managed_db"
+
+
+class GcpMachineOptions(BaseModel):
+    """019 (research R6): a GCP machine priced as vCPUs × core rate + GiB × RAM rate. The
+    selection's `sku` is the core SKU; `ram_sku` is the matching RAM SKU."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["gcp_machine"]
+    version: Literal[1] = 1
+    vcpus: int = Field(gt=0)
+    memory_gib: Decimal = Field(gt=0)
+    ram_sku: str = Field(min_length=1)
+
+
+class AzureVmOptions(BaseModel):
+    """019 (research R6): which Azure VM meter to price, by operating system."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["azure_vm"]
+    version: Literal[1] = 1
+    os: Literal["linux", "windows"]
+
+
+# A selection's provider-specific options; null means the common pricing path (data-model §3).
+ProviderOptions = Annotated[GcpMachineOptions | AzureVmOptions, Field(discriminator="kind")]
+
+
 class SKUSelectionCreate(BaseModel):
     service_code: str = Field(min_length=1)
     sku: str = Field(min_length=1)
     pricing_term: PricingTerm
     purchase_option: PurchaseOption
     usage_quantity: Decimal = Field(gt=0)
+    # 019 (contracts §4): must match the architecture's provider.
+    provider_options: ProviderOptions | None = None
 
 
 class SKUSelectionUpdate(BaseModel):
     pricing_term: PricingTerm | None = None
     purchase_option: PurchaseOption | None = None
     usage_quantity: Decimal | None = Field(default=None, gt=0)
+    # 019: sent → replaced (null clears it); not sent → unchanged.
+    provider_options: ProviderOptions | None = None
     # 016-canvas-icon-layout, FR-004a/FR-004b (contracts/api.md §2): moves the service to another
     # box — one in the same Architecture and the same region. Connector-owned services can't move.
     collection_id: uuid.UUID | None = None
@@ -146,6 +217,7 @@ class SKUSelectionOut(ORMBase):
     pricing_term: PricingTerm
     purchase_option: PurchaseOption
     usage_quantity: Decimal
+    provider_options: ProviderOptions | None = None
     # Resolved read-only from the AWS Pricing Catalog at response time (never a stored
     # column) — attached by the endpoint after construction, since Pydantic's ORM-attribute
     # serialization has no DuckDB access. `None` when unpriceable (003, FR-004/FR-005).
@@ -159,6 +231,21 @@ class SKUSelectionOut(ORMBase):
     # product-family-specific icon (015-canvas-service-icons, contracts/api.md). `None` when the
     # SKU has no catalog row or its product family is empty.
     product_family: str | None = None
+    # 019 (FR-005): the item's published price types and search kind, from the provider
+    # adapter at response time, so the Service Editor offers only what the item publishes.
+    # Empty / null when the provider doesn't report them (AWS) or the item isn't found.
+    price_types: list[PricingTerm] = []
+    kind: CatalogKind | None = None
+    # 020 (contracts/api.md §2, research R7): the provider's display name of the selection's
+    # service (e.g. "Compute Engine"), resolved read-only at response time like
+    # `product_family` and never stored — the GCP / Azure fallback tile shows it. `None` when
+    # the item isn't in the active snapshot, and always for AWS, whose icons never need it.
+    service_name: str | None = None
+    # 021 (US7, FR-044): the item's own description, as the catalog search shows it (e.g.
+    # "Multi-Region HNS Nearline Class A Operations"), resolved at response time like
+    # `service_name` and never stored. `None` when the item isn't in the active snapshot, and
+    # for AWS, whose readable details come from `attributes`.
+    summary: str | None = None
 
 
 # --- Collection --------------------------------------------------------------------------
@@ -197,15 +284,33 @@ class CollectionUpdate(BaseModel):
 # --- Data Connector ------------------------------------------------------------------------
 
 
+# 019 (FR-026, data-model §5): how a connector's line is drawn. Visual only: pricing always
+# uses `from` → `to`.
+ArrowStyle = Literal["none", "one_way", "two_way", "one_to_many", "many_to_one"]
+
+
 class DataConnectorCreate(BaseModel):
     from_collection_id: uuid.UUID
     to_collection_id: uuid.UUID
+    arrow_style: ArrowStyle = "none"
+    arrow_reversed: StrictBool = False
+
+
+class DataConnectorUpdate(BaseModel):
+    """019 (contracts §6): `PATCH /connectors/{id}`; only the fields sent change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    arrow_style: ArrowStyle | None = None
+    arrow_reversed: StrictBool | None = None
 
 
 class DataConnectorOut(ORMBase):
     id: uuid.UUID
     from_collection_id: uuid.UUID
     to_collection_id: uuid.UUID
+    arrow_style: ArrowStyle = "none"
+    arrow_reversed: bool = False
     sku_selection: SKUSelectionOut | None = None
 
 
@@ -236,9 +341,28 @@ class ArchitectureDetailOut(ORMBase):
 
 
 class ArchitectureUpdate(BaseModel):
-    """Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020)."""
+    """Owner-only update: the public/private toggle (012-user-accounts-sharing, spec FR-020)
+    and, from 021 (US6, FR-043), the name. Only the fields sent change; at least one is
+    required."""
 
-    is_public: bool
+    is_public: bool | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("name must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> ArchitectureUpdate:
+        if self.is_public is None and self.name is None:
+            raise ValueError("send is_public, name, or both")
+        return self
 
 
 class ImportableArchitectureOut(BaseModel):
@@ -262,6 +386,8 @@ class ArchitectureImportRequest(BaseModel):
 # --- Catalog search ------------------------------------------------------------------------
 
 
+
+
 class CatalogSKUOut(BaseModel):
     service_code: str
     service_name: str
@@ -274,6 +400,13 @@ class CatalogSKUOut(BaseModel):
     # Billing unit, e.g. "Hrs", "GB-Mo" — null if this SKU has no price data at all
     # (003, FR-004/FR-005).
     unit: str | None = None
+    # 019 (contracts §3): optional, so AWS results are unchanged.
+    provider: str = "aws"
+    location_scope: Literal["regional", "multi_regional", "global"] = "regional"
+    kind: CatalogKind | None = None
+    # The price types this item publishes (FR-005); empty when the provider doesn't report
+    # them per item (AWS).
+    price_types: list[PricingTerm] = []
 
 
 class CatalogSearchResult(BaseModel):
@@ -291,6 +424,29 @@ class CatalogSearchResult(BaseModel):
 # --- Price calculation ---------------------------------------------------------------------
 
 
+class PriceComponentOut(BaseModel):
+    """019 (contracts §5): one part of a composite price, e.g. a GCP machine's cores or RAM."""
+
+    label: str
+    sku: str
+    quantity: Decimal
+    rate: Decimal
+    cost: Decimal
+
+
+class TierPartOut(BaseModel):
+    """019 (contracts §5, research R8): the part of a line's quantity priced at one tier.
+    `from_quantity`/`to_quantity` are the published monthly bounds (`to_quantity` null for an
+    open top tier); `quantity` and `cost` are what the part contributes to the requested
+    duration, so the parts add up to the line's price."""
+
+    from_quantity: Decimal
+    to_quantity: Decimal | None
+    rate: Decimal
+    quantity: Decimal
+    cost: Decimal
+
+
 class PriceLineItem(BaseModel):
     sku_selection_id: uuid.UUID
     service_code: str
@@ -303,6 +459,12 @@ class PriceLineItem(BaseModel):
     # "Global" section by the frontend (spec FR-015) — not expected in normal operation, since
     # every Collection has a NOT NULL region and every Connector a NOT NULL from_collection_id.
     region: str | None = None
+    # 019 (contracts §5): the tier breakdown of a tiered price; null when not tiered.
+    tiers: list[TierPartOut] | None = None
+    # 019 (contracts §5): how the provider names the price type (e.g. "Savings plan, 1 year").
+    price_type_label: str | None = None
+    # 019 (contracts §5): the parts of a composite price (`gcp_machine`); null otherwise.
+    components: list[PriceComponentOut] | None = None
 
 
 class UnpriceableItem(BaseModel):
@@ -353,6 +515,11 @@ class SnapshotSelection(BaseModel):
     pricing_term: PricingTerm
     purchase_option: PurchaseOption
     usage_quantity: Decimal = Field(gt=0)
+    # 020 (data-model §2): the region the selection was priced in (its box's, or a connector's
+    # "from" box's). Missing or null → `AWS_PRICING_REGION`, the v0.0.2 behaviour.
+    region: str | None = None
+    # 020: the selection's provider-specific options, validated against the request's provider.
+    provider_options: ProviderOptions | None = None
 
 
 class CalculateSnapshotRequest(BaseModel):
@@ -365,6 +532,21 @@ class CalculateSnapshotRequest(BaseModel):
     # raised explicitly in the endpoint (src/api/calculate.py), matching the
     # `EmptyCatalogFilterError` convention already used for catalog search.
     selections: list[SnapshotSelection]
+    # 020 (contracts/api.md §1): the architecture's provider. Missing → `aws`, as elsewhere.
+    provider: ProviderCode | None = None
+
+    @model_validator(mode="after")
+    def _options_match_provider(self) -> CalculateSnapshotRequest:
+        """Each selection's options must belong to the request's provider (422 otherwise), the
+        same rule selection create and update apply."""
+        provider = self.provider or "aws"
+        for selection in self.selections:
+            options = selection.provider_options
+            if options is not None and OPTION_PROVIDERS.get(options.kind) != provider:
+                raise ValueError(
+                    f"{options.kind!r} options don't apply to a {provider} architecture"
+                )
+        return self
 
 
 # --- Architecture export/import file (014-architecture-templates-import-export) --------------
@@ -392,6 +574,8 @@ class SKUSelectionDefinition(BaseModel):
     # Serialized as a decimal string (preserves `Numeric(18, 4)` exactly); a JSON number is
     # also accepted on import.
     usage_quantity: Decimal = Field(ge=0, decimal_places=4)
+    # 019 (research R15): optional, so older files import unchanged.
+    provider_options: ProviderOptions | None = None
 
 
 class CollectionDefinition(BaseModel):
@@ -411,6 +595,10 @@ class ConnectorDefinition(BaseModel):
 
     from_ref: str = Field(min_length=1)
     to_ref: str = Field(min_length=1)
+    # 019 (research R15): optional. A file from before 019 has none, and every connector was
+    # drawn with an arrowhead then, so it imports as `one_way` (as migration 0008 does).
+    arrow_style: ArrowStyle = "one_way"
+    arrow_reversed: bool = False
     sku_selection: SKUSelectionDefinition | None = None
 
 
@@ -547,9 +735,26 @@ class CacheOut(BaseModel):
     entries: list[CacheEntryOut]
 
 
+class ProviderSystemOut(BaseModel):
+    """019 (contracts §9, FR-009): one provider's snapshot state in the Admin tab."""
+
+    name: str
+    status: Literal["current", "partial", "failed", "stale", "none"]
+    reason: str | None
+    checked: bool
+    active_snapshot: ActiveSnapshotOut | None
+    latest_run: LatestRunOut | None
+    rejected: RejectedOut | None
+    last_check_error: str | None
+    issues: list[IssueOut]
+    history: HistoryOut | None = None
+
+
 class SystemInfoOut(BaseModel):
     deployment: DeploymentOut
     source: SourceOut
+    # The top-level snapshot fields are AWS's, unchanged (018); every provider is in
+    # `providers` (019).
     active: ActiveSnapshotOut | None
     latest_run: LatestRunOut | None
     rejected: RejectedOut | None
@@ -558,7 +763,170 @@ class SystemInfoOut(BaseModel):
     last_check_error: str | None
     check_interval_seconds: int
     issues: list[IssueOut]
+    providers: dict[str, ProviderSystemOut] = {}
 
 
 class SnapshotCheckStartedOut(BaseModel):
     started: bool
+
+
+# --- User preferences (019, data-model §1, contracts §7, research R12) -----------------------
+
+ColumnKey = Literal["col1", "col2", "col3", "col4"]
+TrendsCategory = Literal["all", "compute", "storage", "database", "networking"]
+
+
+class _Strict(BaseModel):
+    """Unknown keys are rejected (data-model §1): new preferences extend these models."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+InspectorTab = Literal["pricing", "service"]
+
+
+class InspectorArrangement(_Strict):
+    """The workspace inspector's tab layout (021, data-model §1). All fields are required when
+    the arrangement is sent; `upper` and `front` are both kept in either mode so a split ->
+    merge -> split round trip restores the previous split."""
+
+    mode: Literal["merged", "split"]
+    upper: InspectorTab
+    front: InspectorTab
+    split: float = Field(ge=0.2, le=0.8)
+
+
+class WorkspacePreferences(_Strict):
+    column_widths: dict[ColumnKey, int] | None = None
+    collapsed: dict[ColumnKey, bool] | None = None
+    last_provider: ProviderCode | None = None
+    inspector: InspectorArrangement | None = None
+
+    @field_validator("column_widths")
+    @classmethod
+    def _positive_widths(cls, widths: dict[str, int] | None) -> dict[str, int] | None:
+        if widths and any(w <= 0 for w in widths.values()):
+            raise ValueError("column widths must be positive")
+        return widths
+
+
+class ChartProviderSelection(_Strict):
+    provider: ProviderCode
+    # Empty means all of the provider's regions.
+    regions: list[Annotated[str, StringConstraints(min_length=1, max_length=64)]] = []
+
+
+class TrendsChartsPreferences(_Strict):
+    providers: list[ChartProviderSelection] = []
+    category: TrendsCategory = "all"
+
+
+class TrendsMoversPreferences(_Strict):
+    provider: ProviderCode
+    category: TrendsCategory = "all"
+    regions: list[Annotated[str, StringConstraints(min_length=1, max_length=64)]] = []
+    period_weeks: Literal[1, 4, 13, 52] = 52
+
+
+class TrendsPreferences(_Strict):
+    charts: TrendsChartsPreferences | None = None
+    movers: TrendsMoversPreferences | None = None
+
+
+class Preferences(_Strict):
+    migrated_from_browser: bool = False
+    workspace: WorkspacePreferences | None = None
+    trends: TrendsPreferences | None = None
+
+
+class PreferencesOut(BaseModel):
+    schema_version: int
+    data: Preferences
+
+
+class PreferencesPatch(_Strict):
+    """Each section sent replaces that section; sections not sent are kept (research R12).
+    `trends.charts` and `trends.movers` are separate sections, so the two Resets never
+    overwrite each other. Sending a section as null clears it back to the defaults."""
+
+    migrated_from_browser: bool | None = None
+    workspace: WorkspacePreferences | None = None
+    trends: TrendsPreferences | None = None
+
+
+# --- Trends (019, contracts §8) ----------------------------------------------------------------
+
+
+class SkusChangedPointOut(BaseModel):
+    week: str
+    from_snapshot: str
+    to_snapshot: str
+    # Null when nothing was compared that week ("no data"), never 0.
+    increased: int | None
+    decreased: int | None
+    increased_pct: float | None
+    decreased_pct: float | None
+    compared: int | None
+    excluded: int | None
+    gap: bool
+
+
+TrendStatus = Literal["ok", "building", "not_enough_history", "provider_unavailable"]
+
+
+class TrendSeriesOut(BaseModel):
+    provider: ProviderCode
+    regions: list[str]
+    status: TrendStatus
+    reason: str | None = None
+    weeks_built: int
+    weeks_total: int
+    points: list[SkusChangedPointOut]
+
+
+class TrendSeriesResult(BaseModel):
+    metric: Literal["skus_changed"] = "skus_changed"
+    category: TrendsCategory
+    series: list[TrendSeriesOut]
+
+
+class MoverOut(BaseModel):
+    service_name: str
+    description: str
+    region: str
+    unit: str
+    # Decimal strings exactly as published (FR-019).
+    start_price: str
+    end_price: str
+    change_pct: float  # rounded to 2 decimal places
+    tier_note: str | None = None
+
+
+class MoversOut(BaseModel):
+    """019 (contracts §8): the biggest movers for one provider, category, regions and period.
+    `status` and `reason` (added to the contract) say why the lists are empty when there is no
+    usable history: the same values as a chart series."""
+
+    provider: ProviderCode
+    category: TrendsCategory
+    regions: list[str]
+    period_weeks: Literal[1, 4, 13, 52]
+    status: TrendStatus
+    reason: str | None = None
+    from_snapshot: str | None
+    to_snapshot: str | None
+    weeks_available: int
+    increases: list[MoverOut]
+    decreases: list[MoverOut]
+    message: str | None = None
+
+
+class HistoryOut(BaseModel):
+    """019 (contracts §9): one provider's price history in the Admin tab."""
+
+    weeks_built: int
+    weeks_total: int
+    gaps: list[str]
+    backfill: Literal["pending", "running", "done", "failed"]
+    last_error: str | None
+    last_built_at: str | None

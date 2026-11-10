@@ -46,5 +46,5 @@ async def calculate_snapshot(
     `EmptySnapshotError` (raised by `build_transient_architecture` for an empty list) is
     mapped to a 400 by `src/main.py`'s registered handler.
     """
-    architecture = build_transient_architecture(request.selections)
+    architecture = build_transient_architecture(request.selections, request.provider)
     return calculate_architecture_price(architecture, duration=request.duration)

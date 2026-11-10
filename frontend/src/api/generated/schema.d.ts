@@ -72,6 +72,9 @@ export interface paths {
          *     searched — the selected collection's region, or a connector's "from" collection's region
          *     (FR-006). Distinct from `from_region_code`/`to_region_code`, which remain AWSDataTransfer
          *     attribute filters unrelated to which partition is read.
+         *
+         *     019: `provider` (default `aws`) picks the adapter. `kind` is an Azure/GCP search preset;
+         *     `from_region_code`/`to_region_code` are AWS-only (422 otherwise).
          */
         get: operations["search_skus_api_v1_catalog_skus_get"];
         put?: never;
@@ -112,7 +115,8 @@ export interface paths {
          * @description Every other user's public architectures, grouped by owner and pre-sorted
          *     (012-user-accounts-sharing, spec FR-023-026): the Admin group always first, other groups
          *     alphabetical, architecture names alphabetical within a group; an owner with zero public
-         *     architectures never appears.
+         *     architectures never appears. With `provider`, only that provider's architectures are
+         *     listed (021, research R12); without it, every provider's, as before.
          */
         get: operations["list_importable_architectures_api_v1_architectures_importable_get"];
         put?: never;
@@ -164,7 +168,8 @@ export interface paths {
         head?: never;
         /**
          * Update Architecture
-         * @description Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020-022).
+         * @description Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020-022) and
+         *     rename (021, FR-043). Only the fields sent change.
          */
         patch: operations["update_architecture_api_v1_architectures__architecture_id__patch"];
         trace?: never;
@@ -493,6 +498,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/connectors/{connector_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Connector
+         * @description Soft delete (FR-015).
+         */
+        delete: operations["delete_connector_api_v1_connectors__connector_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Connector
+         * @description Change how the connector is drawn (019, contracts §6). Visual only: `from` and `to`,
+         *     and so the priced direction, never change (FR-030).
+         */
+        patch: operations["update_connector_api_v1_connectors__connector_id__patch"];
+        trace?: never;
+    };
     "/api/v1/connectors/{connector_id}/sku-selection": {
         parameters: {
             query?: never;
@@ -518,21 +548,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/connectors/{connector_id}": {
+    "/api/v1/me/preferences": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read Preferences */
+        get: operations["read_preferences_api_v1_me_preferences_get"];
         put?: never;
         post?: never;
-        /**
-         * Delete Connector
-         * @description Soft delete (FR-015).
-         */
-        delete: operations["delete_connector_api_v1_connectors__connector_id__delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Preferences */
+        patch: operations["update_preferences_api_v1_me_preferences_patch"];
+        trace?: never;
+    };
+    "/api/v1/trends/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trend Series */
+        get: operations["trend_series_api_v1_trends_series_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trends/movers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trend Movers */
+        get: operations["trend_movers_api_v1_trends_movers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -739,11 +801,37 @@ export interface components {
         };
         /**
          * ArchitectureUpdate
-         * @description Owner-only public/private toggle (012-user-accounts-sharing, spec FR-020).
+         * @description Owner-only update: the public/private toggle (012-user-accounts-sharing, spec FR-020)
+         *     and, from 021 (US6, FR-043), the name. Only the fields sent change; at least one is
+         *     required.
          */
         ArchitectureUpdate: {
             /** Is Public */
-            is_public: boolean;
+            is_public?: boolean | null;
+            /** Name */
+            name?: string | null;
+        };
+        /**
+         * AzureVmOptions
+         * @description 019 (research R6): which Azure VM meter to price, by operating system.
+         */
+        AzureVmOptions: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "azure_vm";
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+            /**
+             * Os
+             * @enum {string}
+             */
+            os: "linux" | "windows";
         };
         /** CacheEntryOut */
         CacheEntryOut: {
@@ -773,6 +861,8 @@ export interface components {
             duration: components["schemas"]["CalculationDuration"];
             /** Selections */
             selections: components["schemas"]["SnapshotSelection"][];
+            /** Provider */
+            provider?: ("aws" | "gcp" | "azure") | null;
         };
         /**
          * CalculationDuration
@@ -809,6 +899,13 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * CatalogKind
+         * @description 019 (contracts §3, research R6): search presets matching the pipeline's reference
+         *     lookups. Azure and GCP only.
+         * @enum {string}
+         */
+        CatalogKind: "vm" | "block_storage" | "object_storage" | "data_transfer" | "managed_db";
         /** CatalogSKUOut */
         CatalogSKUOut: {
             /** Service Code */
@@ -830,6 +927,23 @@ export interface components {
             };
             /** Unit */
             unit?: string | null;
+            /**
+             * Provider
+             * @default aws
+             */
+            provider: string;
+            /**
+             * Location Scope
+             * @default regional
+             * @enum {string}
+             */
+            location_scope: "regional" | "multi_regional" | "global";
+            kind?: components["schemas"]["CatalogKind"] | null;
+            /**
+             * Price Types
+             * @default []
+             */
+            price_types: components["schemas"]["PricingTerm"][];
         };
         /** CatalogSearchResult */
         CatalogSearchResult: {
@@ -843,6 +957,19 @@ export interface components {
             snapshot_revision: number;
             /** Total */
             total: number;
+        };
+        /** ChartProviderSelection */
+        ChartProviderSelection: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /**
+             * Regions
+             * @default []
+             */
+            regions: string[];
         };
         /** CheckUsernameOut */
         CheckUsernameOut: {
@@ -928,6 +1055,17 @@ export interface components {
             from_ref: string;
             /** To Ref */
             to_ref: string;
+            /**
+             * Arrow Style
+             * @default one_way
+             * @enum {string}
+             */
+            arrow_style: "none" | "one_way" | "two_way" | "one_to_many" | "many_to_one";
+            /**
+             * Arrow Reversed
+             * @default false
+             */
+            arrow_reversed: boolean;
             sku_selection?: components["schemas"]["SKUSelectionDefinition"] | null;
         };
         /** CurrentUserOut */
@@ -956,6 +1094,17 @@ export interface components {
              * Format: uuid
              */
             to_collection_id: string;
+            /**
+             * Arrow Style
+             * @default none
+             * @enum {string}
+             */
+            arrow_style: "none" | "one_way" | "two_way" | "one_to_many" | "many_to_one";
+            /**
+             * Arrow Reversed
+             * @default false
+             */
+            arrow_reversed: boolean;
         };
         /** DataConnectorOut */
         DataConnectorOut: {
@@ -974,7 +1123,28 @@ export interface components {
              * Format: uuid
              */
             to_collection_id: string;
+            /**
+             * Arrow Style
+             * @default none
+             * @enum {string}
+             */
+            arrow_style: "none" | "one_way" | "two_way" | "one_to_many" | "many_to_one";
+            /**
+             * Arrow Reversed
+             * @default false
+             */
+            arrow_reversed: boolean;
             sku_selection?: components["schemas"]["SKUSelectionOut"] | null;
+        };
+        /**
+         * DataConnectorUpdate
+         * @description 019 (contracts §6): `PATCH /connectors/{id}`; only the fields sent change.
+         */
+        DataConnectorUpdate: {
+            /** Arrow Style */
+            arrow_style?: ("none" | "one_way" | "two_way" | "one_to_many" | "many_to_one") | null;
+            /** Arrow Reversed */
+            arrow_reversed?: boolean | null;
         };
         /** DeploymentOut */
         DeploymentOut: {
@@ -991,6 +1161,54 @@ export interface components {
             reason: string;
             /** Attempts */
             attempts: number;
+        };
+        /**
+         * GcpMachineOptions
+         * @description 019 (research R6): a GCP machine priced as vCPUs × core rate + GiB × RAM rate. The
+         *     selection's `sku` is the core SKU; `ram_sku` is the matching RAM SKU.
+         */
+        "GcpMachineOptions-Input": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gcp_machine";
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+            /** Vcpus */
+            vcpus: number;
+            /** Memory Gib */
+            memory_gib: number | string;
+            /** Ram Sku */
+            ram_sku: string;
+        };
+        /**
+         * GcpMachineOptions
+         * @description 019 (research R6): a GCP machine priced as vCPUs × core rate + GiB × RAM rate. The
+         *     selection's `sku` is the core SKU; `ram_sku` is the matching RAM SKU.
+         */
+        "GcpMachineOptions-Output": {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gcp_machine";
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+            /** Vcpus */
+            vcpus: number;
+            /** Memory Gib */
+            memory_gib: string;
+            /** Ram Sku */
+            ram_sku: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1011,6 +1229,27 @@ export interface components {
             pricing: "ok" | "unavailable";
             /** Pricing Reason */
             pricing_reason?: string | null;
+        };
+        /**
+         * HistoryOut
+         * @description 019 (contracts §9): one provider's price history in the Admin tab.
+         */
+        HistoryOut: {
+            /** Weeks Built */
+            weeks_built: number;
+            /** Weeks Total */
+            weeks_total: number;
+            /** Gaps */
+            gaps: string[];
+            /**
+             * Backfill
+             * @enum {string}
+             */
+            backfill: "pending" | "running" | "done" | "failed";
+            /** Last Error */
+            last_error: string | null;
+            /** Last Built At */
+            last_built_at: string | null;
         };
         /** ImportResult */
         ImportResult: {
@@ -1045,6 +1284,31 @@ export interface components {
         ImportableArchitecturesOut: {
             /** Groups */
             groups: components["schemas"]["ImportableArchitectureGroupOut"][];
+        };
+        /**
+         * InspectorArrangement
+         * @description The workspace inspector's tab layout (021, data-model §1). All fields are required when
+         *     the arrangement is sent; `upper` and `front` are both kept in either mode so a split ->
+         *     merge -> split round trip restores the previous split.
+         */
+        InspectorArrangement: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "merged" | "split";
+            /**
+             * Upper
+             * @enum {string}
+             */
+            upper: "pricing" | "service";
+            /**
+             * Front
+             * @enum {string}
+             */
+            front: "pricing" | "service";
+            /** Split */
+            split: number;
         };
         /** IssueOut */
         IssueOut: {
@@ -1087,6 +1351,113 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** MoverOut */
+        MoverOut: {
+            /** Service Name */
+            service_name: string;
+            /** Description */
+            description: string;
+            /** Region */
+            region: string;
+            /** Unit */
+            unit: string;
+            /** Start Price */
+            start_price: string;
+            /** End Price */
+            end_price: string;
+            /** Change Pct */
+            change_pct: number;
+            /** Tier Note */
+            tier_note?: string | null;
+        };
+        /**
+         * MoversOut
+         * @description 019 (contracts §8): the biggest movers for one provider, category, regions and period.
+         *     `status` and `reason` (added to the contract) say why the lists are empty when there is no
+         *     usable history: the same values as a chart series.
+         */
+        MoversOut: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "all" | "compute" | "storage" | "database" | "networking";
+            /** Regions */
+            regions: string[];
+            /**
+             * Period Weeks
+             * @enum {integer}
+             */
+            period_weeks: 1 | 4 | 13 | 52;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "building" | "not_enough_history" | "provider_unavailable";
+            /** Reason */
+            reason?: string | null;
+            /** From Snapshot */
+            from_snapshot: string | null;
+            /** To Snapshot */
+            to_snapshot: string | null;
+            /** Weeks Available */
+            weeks_available: number;
+            /** Increases */
+            increases: components["schemas"]["MoverOut"][];
+            /** Decreases */
+            decreases: components["schemas"]["MoverOut"][];
+            /** Message */
+            message?: string | null;
+        };
+        /** Preferences */
+        Preferences: {
+            /**
+             * Migrated From Browser
+             * @default false
+             */
+            migrated_from_browser: boolean;
+            workspace?: components["schemas"]["WorkspacePreferences"] | null;
+            trends?: components["schemas"]["TrendsPreferences"] | null;
+        };
+        /** PreferencesOut */
+        PreferencesOut: {
+            /** Schema Version */
+            schema_version: number;
+            data: components["schemas"]["Preferences"];
+        };
+        /**
+         * PreferencesPatch
+         * @description Each section sent replaces that section; sections not sent are kept (research R12).
+         *     `trends.charts` and `trends.movers` are separate sections, so the two Resets never
+         *     overwrite each other. Sending a section as null clears it back to the defaults.
+         */
+        PreferencesPatch: {
+            /** Migrated From Browser */
+            migrated_from_browser?: boolean | null;
+            workspace?: components["schemas"]["WorkspacePreferences"] | null;
+            trends?: components["schemas"]["TrendsPreferences"] | null;
+        };
+        /**
+         * PriceComponentOut
+         * @description 019 (contracts §5): one part of a composite price, e.g. a GCP machine's cores or RAM.
+         */
+        PriceComponentOut: {
+            /** Label */
+            label: string;
+            /** Sku */
+            sku: string;
+            /** Quantity */
+            quantity: string;
+            /** Rate */
+            rate: string;
+            /** Cost */
+            cost: string;
+        };
         /** PriceLineItem */
         PriceLineItem: {
             /**
@@ -1104,12 +1475,18 @@ export interface components {
             priceable: boolean;
             /** Region */
             region?: string | null;
+            /** Tiers */
+            tiers?: components["schemas"]["TierPartOut"][] | null;
+            /** Price Type Label */
+            price_type_label?: string | null;
+            /** Components */
+            components?: components["schemas"]["PriceComponentOut"][] | null;
         };
         /**
          * PricingTerm
          * @enum {string}
          */
-        PricingTerm: "on_demand" | "reserved_1yr" | "reserved_3yr";
+        PricingTerm: "on_demand" | "reserved_1yr" | "reserved_3yr" | "savings_plan_1yr" | "savings_plan_3yr" | "commitment_1yr" | "commitment_3yr";
         /** ProviderOut */
         ProviderOut: {
             /** Code */
@@ -1118,6 +1495,43 @@ export interface components {
             name: string;
             /** Active */
             active: boolean;
+            /**
+             * Status
+             * @default none
+             * @enum {string}
+             */
+            status: "current" | "partial" | "failed" | "stale" | "none";
+            /** Reason */
+            reason?: string | null;
+            /** Snapshot Date */
+            snapshot_date?: string | null;
+            /** Snapshot Revision */
+            snapshot_revision?: number | null;
+        };
+        /**
+         * ProviderSystemOut
+         * @description 019 (contracts §9, FR-009): one provider's snapshot state in the Admin tab.
+         */
+        ProviderSystemOut: {
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "current" | "partial" | "failed" | "stale" | "none";
+            /** Reason */
+            reason: string | null;
+            /** Checked */
+            checked: boolean;
+            active_snapshot: components["schemas"]["ActiveSnapshotOut"] | null;
+            latest_run: components["schemas"]["LatestRunOut"] | null;
+            rejected: components["schemas"]["RejectedOut"] | null;
+            /** Last Check Error */
+            last_check_error: string | null;
+            /** Issues */
+            issues: components["schemas"]["IssueOut"][];
+            history?: components["schemas"]["HistoryOut"] | null;
         };
         /**
          * PurchaseOption
@@ -1128,6 +1542,8 @@ export interface components {
         RegionOut: {
             /** Code */
             code: string;
+            /** Display Name */
+            display_name?: string | null;
         };
         /** RegionsOut */
         RegionsOut: {
@@ -1153,6 +1569,8 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: number | string;
+            /** Provider Options */
+            provider_options?: (components["schemas"]["GcpMachineOptions-Input"] | components["schemas"]["AzureVmOptions"]) | null;
         };
         /** SKUSelectionDefinition */
         SKUSelectionDefinition: {
@@ -1164,6 +1582,8 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: string;
+            /** Provider Options */
+            provider_options?: (components["schemas"]["GcpMachineOptions-Output"] | components["schemas"]["AzureVmOptions"]) | null;
         };
         /** SKUSelectionOut */
         SKUSelectionOut: {
@@ -1180,6 +1600,8 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: string;
+            /** Provider Options */
+            provider_options?: (components["schemas"]["GcpMachineOptions-Output"] | components["schemas"]["AzureVmOptions"]) | null;
             /** Unit */
             unit?: string | null;
             /**
@@ -1191,6 +1613,16 @@ export interface components {
             };
             /** Product Family */
             product_family?: string | null;
+            /**
+             * Price Types
+             * @default []
+             */
+            price_types: components["schemas"]["PricingTerm"][];
+            kind?: components["schemas"]["CatalogKind"] | null;
+            /** Service Name */
+            service_name?: string | null;
+            /** Summary */
+            summary?: string | null;
         };
         /** SKUSelectionUpdate */
         SKUSelectionUpdate: {
@@ -1198,8 +1630,33 @@ export interface components {
             purchase_option?: components["schemas"]["PurchaseOption"] | null;
             /** Usage Quantity */
             usage_quantity?: number | string | null;
+            /** Provider Options */
+            provider_options?: (components["schemas"]["GcpMachineOptions-Input"] | components["schemas"]["AzureVmOptions"]) | null;
             /** Collection Id */
             collection_id?: string | null;
+        };
+        /** SkusChangedPointOut */
+        SkusChangedPointOut: {
+            /** Week */
+            week: string;
+            /** From Snapshot */
+            from_snapshot: string;
+            /** To Snapshot */
+            to_snapshot: string;
+            /** Increased */
+            increased: number | null;
+            /** Decreased */
+            decreased: number | null;
+            /** Increased Pct */
+            increased_pct: number | null;
+            /** Decreased Pct */
+            decreased_pct: number | null;
+            /** Compared */
+            compared: number | null;
+            /** Excluded */
+            excluded: number | null;
+            /** Gap */
+            gap: boolean;
         };
         /** SnapshotCheckStartedOut */
         SnapshotCheckStartedOut: {
@@ -1221,6 +1678,10 @@ export interface components {
             purchase_option: components["schemas"]["PurchaseOption"];
             /** Usage Quantity */
             usage_quantity: number | string;
+            /** Region */
+            region?: string | null;
+            /** Provider Options */
+            provider_options?: (components["schemas"]["GcpMachineOptions-Input"] | components["schemas"]["AzureVmOptions"]) | null;
         };
         /** SourceOut */
         SourceOut: {
@@ -1250,6 +1711,115 @@ export interface components {
             check_interval_seconds: number;
             /** Issues */
             issues: components["schemas"]["IssueOut"][];
+            /**
+             * Providers
+             * @default {}
+             */
+            providers: {
+                [key: string]: components["schemas"]["ProviderSystemOut"];
+            };
+        };
+        /**
+         * TierPartOut
+         * @description 019 (contracts §5, research R8): the part of a line's quantity priced at one tier.
+         *     `from_quantity`/`to_quantity` are the published monthly bounds (`to_quantity` null for an
+         *     open top tier); `quantity` and `cost` are what the part contributes to the requested
+         *     duration, so the parts add up to the line's price.
+         */
+        TierPartOut: {
+            /** From Quantity */
+            from_quantity: string;
+            /** To Quantity */
+            to_quantity: string | null;
+            /** Rate */
+            rate: string;
+            /** Quantity */
+            quantity: string;
+            /** Cost */
+            cost: string;
+        };
+        /** TrendSeriesOut */
+        TrendSeriesOut: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /** Regions */
+            regions: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "building" | "not_enough_history" | "provider_unavailable";
+            /** Reason */
+            reason?: string | null;
+            /** Weeks Built */
+            weeks_built: number;
+            /** Weeks Total */
+            weeks_total: number;
+            /** Points */
+            points: components["schemas"]["SkusChangedPointOut"][];
+        };
+        /** TrendSeriesResult */
+        TrendSeriesResult: {
+            /**
+             * Metric
+             * @default skus_changed
+             * @constant
+             */
+            metric: "skus_changed";
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "all" | "compute" | "storage" | "database" | "networking";
+            /** Series */
+            series: components["schemas"]["TrendSeriesOut"][];
+        };
+        /** TrendsChartsPreferences */
+        TrendsChartsPreferences: {
+            /**
+             * Providers
+             * @default []
+             */
+            providers: components["schemas"]["ChartProviderSelection"][];
+            /**
+             * Category
+             * @default all
+             * @enum {string}
+             */
+            category: "all" | "compute" | "storage" | "database" | "networking";
+        };
+        /** TrendsMoversPreferences */
+        TrendsMoversPreferences: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /**
+             * Category
+             * @default all
+             * @enum {string}
+             */
+            category: "all" | "compute" | "storage" | "database" | "networking";
+            /**
+             * Regions
+             * @default []
+             */
+            regions: string[];
+            /**
+             * Period Weeks
+             * @default 52
+             * @enum {integer}
+             */
+            period_weeks: 1 | 4 | 13 | 52;
+        };
+        /** TrendsPreferences */
+        TrendsPreferences: {
+            charts?: components["schemas"]["TrendsChartsPreferences"] | null;
+            movers?: components["schemas"]["TrendsMoversPreferences"] | null;
         };
         /** UnpriceableItem */
         UnpriceableItem: {
@@ -1282,6 +1852,20 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WorkspacePreferences */
+        WorkspacePreferences: {
+            /** Column Widths */
+            column_widths?: {
+                [key: string]: number;
+            } | null;
+            /** Collapsed */
+            collapsed?: {
+                [key: string]: boolean;
+            } | null;
+            /** Last Provider */
+            last_provider?: ("aws" | "gcp" | "azure") | null;
+            inspector?: components["schemas"]["InspectorArrangement"] | null;
         };
     };
     responses: never;
@@ -1334,7 +1918,9 @@ export interface operations {
     };
     get_regions_api_v1_regions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                provider?: "aws" | "gcp" | "azure";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1350,15 +1936,26 @@ export interface operations {
                     "application/json": components["schemas"]["RegionsOut"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     search_skus_api_v1_catalog_skus_get: {
         parameters: {
             query: {
                 region: string;
+                provider?: "aws" | "gcp" | "azure";
                 service_code?: string | null;
                 product_family?: string | null;
                 q?: string | null;
+                kind?: components["schemas"]["CatalogKind"] | null;
                 from_region_code?: string | null;
                 to_region_code?: string | null;
                 limit?: number | null;
@@ -1460,7 +2057,9 @@ export interface operations {
     };
     list_importable_architectures_api_v1_architectures_importable_get: {
         parameters: {
-            query?: never;
+            query?: {
+                provider?: ("aws" | "gcp" | "azure") | null;
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -2365,6 +2964,74 @@ export interface operations {
             };
         };
     };
+    delete_connector_api_v1_connectors__connector_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                connector_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_connector_api_v1_connectors__connector_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                connector_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataConnectorUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataConnectorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     attach_connector_sku_api_v1_connectors__connector_id__sku_selection_post: {
         parameters: {
             query?: never;
@@ -2402,25 +3069,131 @@ export interface operations {
             };
         };
     };
-    delete_connector_api_v1_connectors__connector_id__delete: {
+    read_preferences_api_v1_me_preferences_get: {
         parameters: {
             query?: never;
             header?: {
                 authorization?: string | null;
             };
-            path: {
-                connector_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PreferencesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_preferences_api_v1_me_preferences_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferencesPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trend_series_api_v1_trends_series_get: {
+        parameters: {
+            query: {
+                select: string[];
+                category?: "all" | "compute" | "storage" | "database" | "networking";
+                weeks?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendSeriesResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trend_movers_api_v1_trends_movers_get: {
+        parameters: {
+            query: {
+                provider: "aws" | "gcp" | "azure";
+                category?: "all" | "compute" | "storage" | "database" | "networking";
+                regions?: string;
+                period_weeks?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoversOut"];
+                };
             };
             /** @description Validation Error */
             422: {

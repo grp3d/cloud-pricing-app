@@ -1,13 +1,34 @@
-import { Link2, Link2Off, PanelLeftClose, PanelLeftOpen, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Link2,
+  Link2Off,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
 
-import type { CatalogSKU, Collection, CollectionType, Region } from "../../api/client";
-import { readColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
+import type {
+  CatalogSKU,
+  Collection,
+  CollectionType,
+  ProviderCode,
+  Region,
+} from "../../api/client";
+import { useColumnCollapsed, writeColumnCollapsed } from "../../lib/columnCollapse";
+import {
+  ARROW_STYLES,
+  ARROW_STYLE_LABELS,
+  type ArrowStyle,
+  isDirectional,
+} from "../../lib/connectorArrows";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { regionLabel } from "../../lib/providerPricing";
 import { CatalogSearchPanel } from "../CatalogSearchPanel";
 import { ErrorMessage } from "../ErrorMessage";
 
@@ -122,9 +143,7 @@ function ConnectDialog({
             </Select>
           </div>
           {from && to && from === to && (
-            <p className="text-xs text-destructive">
-              From and To must be different Collections.
-            </p>
+            <p className="text-xs text-destructive">From and To must be different Collections.</p>
           )}
         </div>
         <DialogFooter>
@@ -137,9 +156,63 @@ function ConnectDialog({
   );
 }
 
+/** 019 (FR-026, FR-028, SC-007): the arrow style is one click once the connector is selected;
+ * Reverse applies to directional styles only. Visual only: the priced direction stays. */
+export function ConnectorArrowControls({
+  style,
+  reversed,
+  onChange,
+}: {
+  style: ArrowStyle;
+  reversed: boolean;
+  onChange: (change: { arrow_style?: ArrowStyle; arrow_reversed?: boolean }) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-2xs text-muted-foreground">Arrow</span>
+      <div role="group" aria-label="Arrow style" className="flex gap-0.5">
+        {ARROW_STYLES.map((s) => (
+          <Button
+            key={s}
+            type="button"
+            size="sm"
+            variant={s === style ? "default" : "outline"}
+            aria-pressed={s === style}
+            className="h-6 px-1.5 text-2xs"
+            onClick={() => s !== style && onChange({ arrow_style: s })}
+          >
+            {ARROW_STYLE_LABELS[s]}
+          </Button>
+        ))}
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-6 px-1.5 text-2xs"
+        disabled={!isDirectional(style)}
+        title={
+          isDirectional(style)
+            ? "Point the arrow the other way (pricing still uses from → to)"
+            : "Only a directional arrow can be reversed"
+        }
+        onClick={() => onChange({ arrow_reversed: !reversed })}
+      >
+        <ArrowRightLeft /> Reverse
+      </Button>
+    </div>
+  );
+}
+
 export type CollectionsPanelSelection =
   | { kind: "collection"; id: string; name: string; region: string; locked: boolean }
-  | { kind: "connector"; id: string; attachedSkuSummary: string | null }
+  | {
+      kind: "connector";
+      id: string;
+      attachedSkuSummary: string | null;
+      arrowStyle: ArrowStyle;
+      arrowReversed: boolean;
+    }
   | null;
 
 export interface CollectionsPanelProps {
@@ -166,10 +239,19 @@ export interface CollectionsPanelProps {
   selection: CollectionsPanelSelection;
   onDeleteCollection: (id: string) => void;
   onDeleteConnector: (id: string) => void;
+  /** 019 (FR-026, FR-028): set a connector's arrow style, or reverse its direction. */
+  onUpdateConnectorArrow?: (
+    id: string,
+    change: { arrow_style?: ArrowStyle; arrow_reversed?: boolean },
+  ) => void;
   onPickSku: (sku: CatalogSKU) => void;
+  /** 021 US5 (FR-037): why the last add from the search didn't happen, if it didn't. */
+  searchNotice?: string | null;
   /** 010-multi-region-support, spec FR-005/FR-006: region to scope "Add a Service" search to —
    * the selected collection's region, or a selected connector's "from" collection's region. */
   searchRegion: string | undefined;
+  /** 019 (FR-006): the architecture's provider, for catalog search. */
+  provider?: ProviderCode;
   /** 010-multi-region-support, spec FR-003/FR-017: the region control on a selected
    * collection — the available-regions list, the change handler, and its pending state. */
   regions: Region[];
@@ -187,10 +269,10 @@ export interface CollectionsPanelProps {
  * the top, unchanged from 007's FR-004 behavior), "Selected Collection" (the current
  * selection's own name/delete control), "Add a Service" (the search panel) — each
  * separated by a visible divider that stays visible even when the section it borders has
- * no content (FR-010). Collapsible to an icon rail (FR-006), mirroring
- * `ProviderArchitecturePanel.tsx`'s 007 pattern. Deliberately no list of already-added
- * services (007, Clarifications) — an already-added service is reached only via the
- * diagram (column 4 → column 3).
+ * no content (FR-010). Collapsible to an icon rail (FR-006). Deliberately no list of
+ * already-added services (007, Clarifications) — an already-added service is reached only via
+ * the diagram, which opens it in the inspector's Service tab (021). 021: this is the
+ * workspace's left sidebar, the "Architecture Editor" landmark.
  */
 export function CollectionsPanel({
   newCollectionType,
@@ -209,30 +291,30 @@ export function CollectionsPanel({
   selection,
   onDeleteCollection,
   onDeleteConnector,
+  onUpdateConnectorArrow,
   onPickSku,
+  searchNotice = null,
   searchRegion,
+  provider = "aws",
   regions,
   onUpdateCollectionRegion,
   isUpdatingCollectionRegion,
   width,
 }: CollectionsPanelProps) {
-  // 009-ui-fixes-next-iteration follow-up: collapsed/expanded state now survives a reload,
-  // the same per-browser `localStorage` mechanism `columnWidths.ts` already uses for this
-  // column's width — initialized lazily so the very first render already reflects it (no
-  // expand-then-collapse flash).
-  const [expanded, setExpanded] = useState(() => !readColumnCollapsed().collections);
+  // 009 follow-up: collapsed/expanded state survives a reload; 019 (FR-023): it is saved to
+  // the user's account (`columnCollapse.ts`), so it follows them to any device.
+  const expanded = !useColumnCollapsed().collections;
 
   function toggleExpanded() {
-    setExpanded((v) => {
-      const next = !v;
-      writeColumnCollapsed("collections", !next);
-      return next;
-    });
+    writeColumnCollapsed("collections", expanded);
   }
 
   return (
-    <section
-      className="flex h-full min-w-0 shrink-0 flex-col gap-3 overflow-hidden border-r border-border p-2 transition-[width]"
+    // 021 (FR-008, FR-012): the workspace's left sidebar, on the sidebar background, with its
+    // own scroll area so a long list never pushes the layout.
+    <aside
+      aria-label="Architecture Editor"
+      className="flex h-full min-w-0 shrink-0 flex-col gap-3 overflow-hidden border-r border-sidebar-border bg-sidebar p-3 text-sidebar-foreground transition-[width]"
       style={{ width: expanded ? width : 56 }}
     >
       <div className={`flex items-center ${expanded ? "justify-between" : "justify-center"}`}>
@@ -266,7 +348,7 @@ export function CollectionsPanel({
               }}
             >
               <select
-                className="rounded border border-border bg-background px-1.5 py-1 text-2xs"
+                className="rounded-md border border-input bg-background px-1.5 py-1 text-2xs"
                 value={newCollectionType}
                 onChange={(e) => onNewCollectionTypeChange(e.target.value as CollectionType)}
               >
@@ -276,7 +358,7 @@ export function CollectionsPanel({
                 <option value="vpc">VPC</option>
               </select>
               <input
-                className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-2xs"
+                className="min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 py-1 text-2xs"
                 placeholder="Collection name"
                 value={newCollectionName}
                 onChange={(e) => onNewCollectionNameChange(e.target.value)}
@@ -355,7 +437,7 @@ export function CollectionsPanel({
                     <SelectContent>
                       {regions.map((r) => (
                         <SelectItem key={r.code} value={r.code}>
-                          {r.code}
+                          {regionLabel(r)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -388,6 +470,13 @@ export function CollectionsPanel({
                 </Button>
               </div>
             )}
+            {selection?.kind === "connector" && onUpdateConnectorArrow && (
+              <ConnectorArrowControls
+                style={selection.arrowStyle}
+                reversed={selection.arrowReversed}
+                onChange={(change) => onUpdateConnectorArrow(selection.id, change)}
+              />
+            )}
           </div>
 
           <Separator />
@@ -400,7 +489,20 @@ export function CollectionsPanel({
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
             <h3 className="shrink-0 text-2xs font-medium text-muted-foreground">Add a Service</h3>
             {selection ? (
-              <CatalogSearchPanel onAdd={onPickSku} region={searchRegion} />
+              <CatalogSearchPanel
+                // A new provider starts a fresh search (its filters differ); for GCP and Azure so
+                // does switching between a box and a connector (its preset kind differs). AWS
+                // keeps its filters across selections, as before.
+                key={provider === "aws" ? "aws" : `${provider}-${selection.kind}`}
+                onAdd={onPickSku}
+                notice={searchNotice}
+                region={searchRegion}
+                provider={provider}
+                // 019 (T054): a connector's service is usually its data transfer.
+                defaultKind={
+                  provider !== "aws" && selection.kind === "connector" ? "data_transfer" : undefined
+                }
+              />
             ) : (
               <p className="text-2xs text-muted-foreground">
                 Select a Collection or Connector first.
@@ -409,6 +511,6 @@ export function CollectionsPanel({
           </div>
         </>
       )}
-    </section>
+    </aside>
   );
 }

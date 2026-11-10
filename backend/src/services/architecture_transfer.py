@@ -42,12 +42,9 @@ from src.models.schemas import (
     SKUSelectionDefinition,
 )
 from src.pricing_data.active_snapshot import get_active_snapshot
-from src.pricing_data.catalog import find_existing_skus
+from src.pricing_data.errors import PricingDataUnavailableError
+from src.pricing_data.providers.registry import get_provider, has_adapter
 from src.pricing_data.regions import list_available_regions
-
-# Only AWS has pricing data today (Constitution III: provider is modeled, not assumed — this is
-# a data-availability check, not a structural one).
-_SUPPORTED_PROVIDERS = frozenset({"aws"})
 
 ExistingSkusLookup = Callable[[str, set[tuple[str, str]]], set[tuple[str, str]]]
 
@@ -66,6 +63,8 @@ class SKUSelectionSpec:
     pricing_term: str
     purchase_option: str
     usage_quantity: Decimal
+    # 019 (research R15): the selection's typed options as stored JSON, or None.
+    provider_options: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -83,6 +82,8 @@ class ConnectorSpec:
     from_ref: str
     to_ref: str
     sku_selection: SKUSelectionSpec | None = None
+    arrow_style: str = "none"
+    arrow_reversed: bool = False
 
 
 def build_architecture(
@@ -138,6 +139,8 @@ def build_architecture(
                 architecture=architecture,
                 from_collection_id=ref_to_id[spec.from_ref],
                 to_collection_id=ref_to_id[spec.to_ref],
+                arrow_style=spec.arrow_style,
+                arrow_reversed=spec.arrow_reversed,
             )
         )
         if spec.sku_selection is not None:
@@ -161,6 +164,7 @@ def _sku_selection(
         pricing_term=spec.pricing_term,
         purchase_option=spec.purchase_option,
         usage_quantity=spec.usage_quantity,
+        provider_options=spec.provider_options,
         created_at=func.clock_timestamp(),
     )
 
@@ -177,6 +181,9 @@ def specs_from_definition(
             pricing_term=s.pricing_term.value,
             purchase_option=s.purchase_option.value,
             usage_quantity=s.usage_quantity,
+            provider_options=(
+                None if s.provider_options is None else s.provider_options.model_dump(mode="json")
+            ),
         )
 
     collections = [
@@ -194,6 +201,8 @@ def specs_from_definition(
         ConnectorSpec(
             from_ref=c.from_ref,
             to_ref=c.to_ref,
+            arrow_style=c.arrow_style,
+            arrow_reversed=c.arrow_reversed,
             sku_selection=_selection(c.sku_selection) if c.sku_selection is not None else None,
         )
         for c in definition.connectors
@@ -213,6 +222,7 @@ def _selection_definition(selection: SKUSelection) -> SKUSelectionDefinition:
         pricing_term=selection.pricing_term,
         purchase_option=selection.purchase_option,
         usage_quantity=Decimal(selection.usage_quantity).quantize(_QUANTITY),
+        provider_options=selection.provider_options,
     )
 
 
@@ -254,6 +264,8 @@ def serialize_architecture(architecture: Architecture) -> ArchitectureDefinition
         ConnectorDefinition(
             from_ref=refs[c.from_collection_id],
             to_ref=refs[c.to_collection_id],
+            arrow_style=c.arrow_style or "none",
+            arrow_reversed=bool(c.arrow_reversed),
             sku_selection=(
                 _selection_definition(c.sku_selection) if c.sku_selection is not None else None
             ),
@@ -390,8 +402,8 @@ def validate_definition(
                 return None, f'Invalid nesting: "{collection.name}" must be inside a VPC'
         seen.add(collection.ref)
 
-    # Rule 4a — provider has pricing data.
-    if definition.provider not in _SUPPORTED_PROVIDERS:
+    # Rule 4a — provider has pricing data (019: any provider with an adapter; Constitution III).
+    if not has_adapter(definition.provider):
         return None, f"Provider not supported: {definition.provider}"
 
     # Rule 5 — regions exist in the pricing data.
@@ -438,35 +450,58 @@ async def import_architectures(
             )
         ).scalars()
     )
-    available_regions = set(list_available_regions())
-
-    # Batch every referenced SKU per region before writing anything.
-    wanted: dict[str, set[tuple[str, str]]] = {}
+    # 019: regions and item checks per provider, through its adapter. A provider whose data is
+    # unavailable is skipped here; its entries then fail rule 5 with a clear message rather than
+    # blocking the other providers' entries (SC-008).
+    parsed_entries: list[ArchitectureDefinition | None] = []
     for raw in entries:
         try:
-            parsed = ArchitectureDefinition.model_validate(raw)
+            parsed_entries.append(ArchitectureDefinition.model_validate(raw))
         except ValidationError:
-            continue  # reported by `validate_definition` below
-        for region, pairs in definition_sku_pairs(parsed).items():
-            if region in available_regions:
-                wanted.setdefault(region, set()).update(pairs)
-    # 018-app-cloud-deployment: one snapshot for every region's check.
-    snapshot = get_active_snapshot()
-    existing = {
-        region: find_existing_skus(pairs, region=region, snapshot=snapshot)
-        for region, pairs in sorted(wanted.items())
-    }
+            parsed_entries.append(None)  # reported by `validate_definition` below
+    providers = sorted({d.provider for d in parsed_entries if d is not None})
+    if not providers:
+        providers = ["aws"]
+    regions_by_provider: dict[str, set[str]] = {}
+    for provider in providers:
+        try:
+            regions_by_provider[provider] = set(list_available_regions(provider))
+        except PricingDataUnavailableError:
+            if provider == "aws":
+                raise  # unchanged: an AWS outage aborts with nothing written (503)
+            regions_by_provider[provider] = set()
 
-    def existing_skus(region: str, pairs: set[tuple[str, str]]) -> set[tuple[str, str]]:
-        return pairs & existing.get(region, set())
+    # Batch every referenced item per provider and region before writing anything.
+    wanted: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for parsed in parsed_entries:
+        if parsed is None:
+            continue
+        for region, pairs in definition_sku_pairs(parsed).items():
+            if region in regions_by_provider.get(parsed.provider, set()):
+                wanted.setdefault((parsed.provider, region), set()).update(pairs)
+    # 018-app-cloud-deployment: one snapshot per provider for every region's check.
+    existing: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for provider in sorted({p for p, _r in wanted}):
+        adapter = get_provider(provider)
+        snapshot = get_active_snapshot(adapter.code)
+        for (p, region), pairs in sorted(wanted.items()):
+            if p == provider:
+                existing[(p, region)] = adapter.exists(snapshot, pairs, region=region)
+
+    def existing_for(provider: str):
+        def existing_skus(region: str, pairs: set[tuple[str, str]]) -> set[tuple[str, str]]:
+            return pairs & existing.get((provider, region), set())
+
+        return existing_skus
 
     results: list[ImportResult] = []
-    for raw in entries:
+    for raw, parsed in zip(entries, parsed_entries, strict=True):
+        provider = parsed.provider if parsed is not None else "aws"
         definition, error = validate_definition(
             raw,
             taken_names=taken_names,
-            available_regions=available_regions,
-            existing_skus=existing_skus,
+            available_regions=regions_by_provider.get(provider, set()),
+            existing_skus=existing_for(provider),
         )
         if definition is None:
             results.append(ImportResult(name=entry_name(raw), status="failed", error=error))

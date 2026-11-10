@@ -1,36 +1,58 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useParams } from "react-router-dom";
 
 import {
+  type ArchitectureDetail,
   type CalculationDuration,
   type CatalogSKU,
   type CollectionType,
+  type DataConnector,
+  type ProviderCode,
   api,
 } from "../api/client";
+import { PROVIDER_LABELS, asProviderCode } from "../lib/providerPricing";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { ArchitectureDiagramPanel } from "../components/workspace/ArchitectureDiagramPanel";
-import { CollectionsPanel, type CollectionsPanelSelection } from "../components/workspace/CollectionsPanel";
-import { ImportArchitectureDialog } from "../components/workspace/ImportArchitectureDialog";
+import {
+  CollectionsPanel,
+  type CollectionsPanelSelection,
+} from "../components/workspace/CollectionsPanel";
 import { PopoutCanvasDialog } from "../components/workspace/PopoutCanvasDialog";
+import { InspectorPanel } from "../components/workspace/InspectorPanel";
 import { PricingPanel } from "../components/workspace/PricingPanel";
-import { ProviderArchitecturePanel } from "../components/workspace/ProviderArchitecturePanel";
 import { RegionSelectDialog } from "../components/workspace/RegionSelectDialog";
 import { ServiceConfigPanel } from "../components/workspace/ServiceConfigPanel";
 import { ConfirmDeleteDialog } from "../components/ConfirmDeleteDialog";
 import {
   type ServiceConfigSelection,
   existingServiceSelection,
-  newServiceSelection,
 } from "../lib/serviceConfigSelection";
 import type { PricingInputs } from "../components/PricingInputsForm";
+import { defaultPricingInputs } from "../lib/pricingInputs";
+import { type ServiceLabel, serviceLabel } from "../lib/serviceLabel";
 import {
   type ColumnId,
   DEFAULT_WIDTHS,
   MIN_WIDTH,
   readColumnWidths,
+  useColumnWidths,
   writeColumnWidth,
 } from "../lib/columnWidths";
+import {
+  readColumnCollapsed,
+  useColumnCollapsed,
+  writeColumnCollapsed,
+} from "../lib/columnCollapse";
+import { fitZones } from "../lib/fitZones";
+import {
+  type InspectorAction,
+  nextArrangement,
+  readInspector,
+  writeInspector,
+} from "../lib/inspectorLayout";
+import { preferencesStore, usePreferences } from "../lib/preferences";
 import {
   decideBaselineUpdate,
   pricedContentsEqual,
@@ -40,7 +62,6 @@ import {
 import {
   applyCalculationSuccess,
   readPricingResult,
-  removePricingResult,
   shouldAutoCalculate,
   writePricingResult,
   type CalculationRequestVars,
@@ -53,7 +74,7 @@ function errorMessageOf(err: unknown): string {
 }
 
 /**
- * Columns 2, 4, and 5's empty/prompt state before an Architecture is selected, still
+ * The three zones' empty/prompt state before an Architecture is selected, still
  * loading, or not found (FR-011, Edge Cases, quickstart.md Scenario 9). Each of the three
  * panels independently shows this message in its own bordered panel — matching FR-011's
  * "MUST each show a clear empty/prompt state" — rather than one page-wide substitute message
@@ -79,7 +100,7 @@ function EmptyWorkspacePanels({ message }: { message: string }) {
         </div>
       </div>
       <aside
-        className={`flex w-72 shrink-0 items-center justify-center border-l border-border ${promptTextClassName}`}
+        className={`flex w-[360px] shrink-0 items-center justify-center border-l border-border ${promptTextClassName}`}
       >
         {message}
       </aside>
@@ -93,7 +114,13 @@ function EmptyWorkspacePanels({ message }: { message: string }) {
  * delta-x in pixels; the caller decides which column that delta grows or shrinks (a handle
  * left of a column adds the delta to its width, a handle right of one subtracts it).
  */
-function ColumnResizeHandle({ onDrag, ariaLabel }: { onDrag: (deltaX: number) => void; ariaLabel: string }) {
+function ColumnResizeHandle({
+  onDrag,
+  ariaLabel,
+}: {
+  onDrag: (deltaX: number) => void;
+  ariaLabel: string;
+}) {
   const lastXRef = useRef(0);
 
   return (
@@ -101,7 +128,15 @@ function ColumnResizeHandle({ onDrag, ariaLabel }: { onDrag: (deltaX: number) =>
       role="separator"
       aria-orientation="vertical"
       aria-label={ariaLabel}
-      className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 active:bg-primary"
+      // 021 (FR-006, FR-027): reachable by keyboard too — the arrow keys resize in 16px steps.
+      tabIndex={0}
+      className="focus-ring w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 focus-visible:bg-primary active:bg-primary"
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          onDrag(e.key === "ArrowLeft" ? -16 : 16);
+        }
+      }}
       onPointerDown={(e) => {
         e.preventDefault();
         lastXRef.current = e.clientX;
@@ -125,15 +160,20 @@ function ColumnResizeHandle({ onDrag, ariaLabel }: { onDrag: (deltaX: number) =>
 }
 
 /**
- * The five-column workspace shell (007-ui-overhaul-shadcn) that replaces the pre-007
- * `LandingPage` + `CreateArchitecturePage` two-page flow. Both `/` and
+ * The workspace shell (007-ui-overhaul-shadcn) that replaces the pre-007
+ * `LandingPage` + `CreateArchitecturePage` two-page flow. 021: three zones under the header —
+ * the Architecture Editor sidebar, the canvas, and the inspector (Pricing and Service tabs);
+ * the architecture list moved to the header's menu. Both `/` and
  * `/architectures/:architectureId` render this same component (research.md §4) — selecting an
- * Architecture in column 1 calls `navigate()` to update the URL without unmounting this shell,
+ * Architecture in the header menu calls `navigate()` to update the URL without unmounting this shell,
  * so there's no page-reload transition (US1) while Architectures stay individually
  * bookmarkable. This component owns every piece of state and every mutation the five panels
  * collectively need (research.md §5) and passes the relevant slice to each as props — no new
  * state-management library.
  */
+/** 021 US5 (FR-037): shown when a search result's arrow has nowhere to add the service. */
+export const NO_ADD_TARGET = "Select a box or connector on the canvas first";
+
 export function WorkspacePage() {
   return (
     <ReactFlowProvider>
@@ -144,104 +184,95 @@ export function WorkspacePage() {
 
 function WorkspacePageInner() {
   const { architectureId } = useParams<{ architectureId: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // --- Column widths (US4, FR-012/013): read once on mount, one localStorage write per
-  // resize (T020 — the read/write half of columnWidths.ts). ---
-  const [columnWidths, setColumnWidths] = useState<Record<ColumnId, number>>(() => ({
-    ...DEFAULT_WIDTHS,
-    ...readColumnWidths(),
-  }));
+  // --- Column widths (US4, FR-012/013): saved to the user's account since 019 (FR-023), each
+  // resize applied at once and saved in the background (columnWidths.ts). ---
+  const storedWidths = useColumnWidths();
+  const columnWidths: Record<ColumnId, number> = { ...DEFAULT_WIDTHS, ...storedWidths };
   const resizeColumn = useCallback((id: ColumnId, deltaX: number) => {
-    setColumnWidths((prev) => {
-      const next = Math.max(MIN_WIDTH, prev[id] + deltaX);
-      if (next === prev[id]) return prev;
-      writeColumnWidth(id, next);
-      return { ...prev, [id]: next };
-    });
+    const current = readColumnWidths()[id] ?? DEFAULT_WIDTHS[id];
+    const next = Math.max(MIN_WIDTH, current + deltaX);
+    if (next !== current) writeColumnWidth(id, next);
   }, []);
-
-  // --- Column 1: providers + Architectures ---
-  const [selectedProvider, setSelectedProvider] = useState("aws");
-  const [newArchitectureName, setNewArchitectureName] = useState("");
-  const [pendingDeleteArchitectureId, setPendingDeleteArchitectureId] = useState<string | null>(
-    null,
+  // 021 (FR-010): the sidebar and the inspector each collapse to a rail.
+  const collapsedColumns = useColumnCollapsed();
+  const inspectorCollapsed = collapsedColumns.inspector ?? false;
+  // 021 (research R4): rendered widths for the window; fitting never writes preferences.
+  // The row changes size only with the window, so it is measured on mount, on window resize
+  // and by a ResizeObserver — not after every render, which this page does very often.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [rowWidth, setRowWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    const measure = () => {
+      const next = el.getBoundingClientRect().width;
+      setRowWidth((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+  const RESIZE_HANDLES_PX = 8;
+  const fitted = fitZones(
+    rowWidth === null ? Number.POSITIVE_INFINITY : rowWidth - RESIZE_HANDLES_PX,
+    {
+      sidebar: columnWidths.collections,
+      sidebarCollapsed: collapsedColumns.collections ?? false,
+      inspector: columnWidths.inspector,
+      inspectorCollapsed,
+    },
   );
 
+  // --- The inspector's arrangement (021, research R5/R7): merged or split, which tab is in
+  // front. Every change goes through `nextArrangement` and is saved to the account. ---
+  const dispatchInspector = useCallback((action: InspectorAction) => {
+    const current = readInspector(preferencesStore.current.workspace);
+    const next = nextArrangement(current, action);
+    if (next !== current) writeInspector(next);
+  }, []);
+  // FR-018a: a calculation that finishes while the inspector is collapsed marks its rail.
+  const [newResult, setNewResult] = useState(false);
+  const setInspectorCollapsed = useCallback((collapsed: boolean) => {
+    writeColumnCollapsed("inspector", collapsed);
+    if (!collapsed) setNewResult(false);
+  }, []);
+  /** FR-015, FR-018a: selecting a service (or picking a SKU to add) brings Service forward,
+   * expanding a collapsed inspector. */
+  const serviceSelected = useCallback(() => {
+    dispatchInspector({ type: "service-selected" });
+    if (readColumnCollapsed().inspector) setInspectorCollapsed(false);
+  }, [dispatchInspector, setInspectorCollapsed]);
+
+  // --- The workspace provider (021, research R3) ---
+  // Column 1's provider picker is gone: the provider follows the open architecture. With none
+  // open, it is the last provider used (019, FR-023), if still active, else AWS.
   const providers = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
-  // 010-multi-region-support, FR-017: the region-selection prompt only ever offers regions the
-  // pricing dataset currently has data for.
-  const regions = useQuery({ queryKey: ["regions"], queryFn: api.listRegions });
-  const architectures = useQuery({
-    queryKey: ["architectures", selectedProvider],
-    queryFn: () => api.listArchitectures(selectedProvider),
-  });
-  // 012-user-accounts-sharing: same query key `TopTabs`'s `IdentityMenu` uses, so this never
-  // costs a second network round trip — only whether the sharing/import affordances render
-  // (guests never get them, FR-022/FR-027) depends on it here.
-  const currentUser = useQuery({ queryKey: ["currentUser"], queryFn: api.getCurrentUser });
-  const isGuest = currentUser.data?.username == null;
-
-  const createArchitecture = useMutation({
-    mutationFn: (name: string) => api.createArchitecture(name, selectedProvider),
-    onSuccess: (arch) => {
-      setNewArchitectureName("");
-      setArchitectureActionError(null);
-      queryClient.invalidateQueries({ queryKey: ["architectures"] });
-      navigate(`/architectures/${arch.id}`);
-    },
-    onError: (err) => setArchitectureActionError(errorMessageOf(err)),
-  });
-
-  const deleteArchitecture = useMutation({
-    mutationFn: (id: string) => api.deleteArchitecture(id),
-    onSuccess: (_data, id) => {
-      setPendingDeleteArchitectureId(null);
-      setArchitectureActionError(null);
-      // 015-canvas-service-icons, spec Edge Cases: a deleted Architecture's stored result goes too.
-      removePricingResult(id);
-      setResultEntries((prev) => {
-        const next = new Map(prev);
-        next.delete(id);
-        return next;
-      });
-      setCalculationErrors((prev) => {
-        const next = new Map(prev);
-        next.delete(id);
-        return next;
-      });
-      queryClient.invalidateQueries({ queryKey: ["architectures"] });
-      if (architectureId === id) navigate("/");
-    },
-    onError: (err) => {
-      setPendingDeleteArchitectureId(null);
-      setArchitectureActionError(errorMessageOf(err));
-    },
-  });
-
-  // 012-user-accounts-sharing, spec FR-020: owner-only public/private toggle.
-  const toggleArchitecturePublic = useMutation({
-    mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
-      api.setArchitecturePublic(id, isPublic),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["architectures"] }),
-    onError: (err) => setArchitectureActionError(errorMessageOf(err)),
-  });
-
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const importableArchitectures = useQuery({
-    queryKey: ["importableArchitectures"],
-    queryFn: api.listImportableArchitectures,
-    enabled: importDialogOpen,
-  });
-  const importArchitecture = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => api.importArchitecture(id, name),
-    onSuccess: () => {
-      setImportDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["architectures"] });
-    },
-    onError: (err) => setArchitectureActionError(errorMessageOf(err)),
-  });
+  const [prefs, patchSection, prefsLoaded] = usePreferences();
+  const inspectorArrangement = readInspector(prefs.workspace);
+  const storedProvider = prefs.workspace?.last_provider ?? null;
+  const storedActive =
+    storedProvider !== null &&
+    (!providers.data || providers.data.some((p) => p.code === storedProvider && p.active));
+  const fallbackProvider = storedActive ? storedProvider : "aws";
+  useEffect(() => {
+    if (prefsLoaded && providers.isSuccess && storedProvider !== null && !storedActive) {
+      patchSection("workspace", { ...prefs.workspace, last_provider: null });
+    }
+  }, [
+    prefsLoaded,
+    providers.isSuccess,
+    storedProvider,
+    storedActive,
+    prefs.workspace,
+    patchSection,
+  ]);
 
   // --- The selected Architecture's data (columns 2-5) ---
   const architecture = useQuery({
@@ -251,6 +282,35 @@ function WorkspacePageInner() {
   });
   const collections = useMemo(() => architecture.data?.collections ?? [], [architecture.data]);
   const connectors = useMemo(() => architecture.data?.connectors ?? [], [architecture.data]);
+  // 019 (FR-002, FR-006): the open architecture's provider picks the regions, catalog and
+  // editor fields (021, FR-004); with none open, the fallback above does.
+  const pricingProvider: ProviderCode = asProviderCode(
+    architecture.data?.provider ?? fallbackProvider,
+  );
+  const canvasTitle = architecture.data
+    ? `${PROVIDER_LABELS[pricingProvider]} · ${architecture.data.name}`
+    : "";
+  // 021 (research R3): opening (or creating) an architecture saves its provider as the last
+  // one used, as picking it in Column 1 did. Only an active provider is saved: the clean-up
+  // above clears an inactive one, and the two would otherwise undo each other forever.
+  const openedProvider = architecture.data?.provider;
+  const openedActive = Boolean(
+    openedProvider && providers.data?.some((p) => p.code === openedProvider && p.active),
+  );
+  useEffect(() => {
+    if (prefsLoaded && openedActive && openedProvider && openedProvider !== storedProvider) {
+      patchSection("workspace", {
+        ...prefs.workspace,
+        last_provider: asProviderCode(openedProvider),
+      });
+    }
+  }, [prefsLoaded, openedActive, openedProvider, storedProvider, prefs.workspace, patchSection]);
+  // 010-multi-region-support, FR-017: the region-selection prompt only ever offers regions the
+  // pricing dataset currently has data for — 019: the provider's own regions.
+  const regions = useQuery({
+    queryKey: ["regions", pricingProvider],
+    queryFn: () => api.listRegions(pricingProvider),
+  });
   const invalidateArchitecture = useCallback(
     () => queryClient.invalidateQueries({ queryKey: ["architecture", architectureId] }),
     [queryClient, architectureId],
@@ -260,7 +320,10 @@ function WorkspacePageInner() {
   // belongs to a Collection or a Data Connector — lets `ServiceConfigSelection`'s "existing"
   // case stay just an id; this is where it's resolved to the full object (research.md §6).
   const skuSelectionsById = useMemo(() => {
-    const map = new Map<string, { selection: (typeof collections)[number]["sku_selections"][number] }>();
+    const map = new Map<
+      string,
+      { selection: (typeof collections)[number]["sku_selections"][number] }
+    >();
     for (const c of collections) {
       for (const s of c.sku_selections) map.set(s.id, { selection: s });
     }
@@ -282,21 +345,12 @@ function WorkspacePageInner() {
     return map;
   }, [skuSelectionsById]);
 
-  // Every SKU Selection's pricing inputs, in `priceChange.ts`'s comparison shape (US5,
-  // FR-015/016) — the same flat set `skuSelectionsById` above indexes, just re-shaped and
-  // stripped of ids (a Price Change baseline is a value, not a set of live-row references,
-  // data-model.md).
-  const currentPriceChangeSelections = useMemo<PriceChangeSelection[]>(
-    () =>
-      Array.from(skuSelectionsById.values(), ({ selection: s }) => ({
-        service_code: s.service_code,
-        sku: s.sku,
-        pricing_term: s.pricing_term,
-        purchase_option: s.purchase_option,
-        usage_quantity: s.usage_quantity,
-      })),
-    [skuSelectionsById],
-  );
+  // 021 US7 (FR-047): readable names for the Price per Sku list, from the same map.
+  const skuLabelsById = useMemo(() => {
+    const map = new Map<string, ServiceLabel>();
+    for (const [id, { selection }] of skuSelectionsById) map.set(id, serviceLabel(selection));
+    return map;
+  }, [skuSelectionsById]);
 
   // 015-canvas-service-icons, FR-018a (data-model.md §4): the same pricing inputs plus the
   // region each is priced in — a Collection's own region, or a Connector's "from" Collection's
@@ -312,13 +366,22 @@ function WorkspacePageInner() {
         purchase_option: s.purchase_option,
         usage_quantity: s.usage_quantity,
         region: region ?? null,
+        // 020 (research R1): GCP vCPUs/memory and Azure OS change the price too.
+        provider_options: s.provider_options ?? null,
       });
     for (const c of collections) for (const s of c.sku_selections) add(s, c.region);
     for (const conn of connectors) {
-      if (conn.sku_selection) add(conn.sku_selection, regionByCollectionId.get(conn.from_collection_id));
+      if (conn.sku_selection)
+        add(conn.sku_selection, regionByCollectionId.get(conn.from_collection_id));
     }
     return entries;
   }, [collections, connectors]);
+
+  // Every SKU Selection's pricing inputs, in `priceChange.ts`'s comparison shape (US5,
+  // FR-015/016) — a Price Change baseline is a value, not a set of live-row references
+  // (data-model.md). 020 (data-model §3): the same entries as above, so a version 2 baseline
+  // carries each selection's region and options and the Duration-switch re-pricing can use them.
+  const currentPriceChangeSelections: PriceChangeSelection[] = currentPricedContents;
 
   // --- Selection state shared across columns 2-4 ---
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
@@ -329,17 +392,14 @@ function WorkspacePageInner() {
 
   const [pendingDeleteCollectionId, setPendingDeleteCollectionId] = useState<string | null>(null);
   const [pendingDeleteConnectorId, setPendingDeleteConnectorId] = useState<string | null>(null);
-  const [newCollectionType, setNewCollectionType] = useState<CollectionType>(
-    "application_component",
-  );
+  const [newCollectionType, setNewCollectionType] =
+    useState<CollectionType>("application_component");
   const [newCollectionName, setNewCollectionName] = useState("");
   // 010-multi-region-support, FR-001: shown before creating a new VPC or unattached
   // Application; skipped entirely when nesting an Application into a selected VPC (FR-001a).
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
-  // 016-canvas-icon-layout, FR-012: each column shows only its own errors — architecture
-  // actions (column 1) and collection/connector/nesting/move actions (column 2) used to share
-  // one message, so every error appeared in both columns.
-  const [architectureActionError, setArchitectureActionError] = useState<string | null>(null);
+  // 016-canvas-icon-layout, FR-012: each zone shows only its own errors (architecture actions
+  // now show in the header menu, 021).
   const [collectionActionError, setCollectionActionError] = useState<string | null>(null);
   const [skuActionError, setSkuActionError] = useState<string | null>(null);
 
@@ -373,12 +433,14 @@ function WorkspacePageInner() {
     setServiceConfigSelection(
       conn?.sku_selection ? existingServiceSelection(conn.sku_selection.id) : null,
     );
+    if (conn?.sku_selection) serviceSelected();
   }
 
   function selectService(skuSelectionId: string, containingCollectionId: string) {
     setSelectedCollectionId(containingCollectionId);
     setSelectedConnectorId(null);
     setServiceConfigSelection(existingServiceSelection(skuSelectionId));
+    serviceSelected();
   }
 
   // --- Collection/Connector mutations ---
@@ -459,6 +521,31 @@ function WorkspacePageInner() {
     },
   });
 
+  // 019 (FR-026, FR-028): arrow style and direction, applied to the cached architecture at
+  // once so the diagram redraws without waiting; a failure restores it from the server.
+  const updateConnectorArrow = useMutation({
+    mutationFn: ({
+      id,
+      change,
+    }: {
+      id: string;
+      change: { arrow_style?: DataConnector["arrow_style"]; arrow_reversed?: boolean };
+    }) => api.updateConnector(id, change),
+    onMutate: ({ id, change }) => {
+      queryClient.setQueryData<ArchitectureDetail>(["architecture", architectureId], (old) =>
+        old
+          ? {
+              ...old,
+              connectors: old.connectors.map((c) => (c.id === id ? { ...c, ...change } : c)),
+            }
+          : old,
+      );
+    },
+    onSuccess: () => setCollectionActionError(null),
+    onError: (err) => setCollectionActionError(errorMessageOf(err)),
+    onSettled: () => invalidateArchitecture(),
+  });
+
   const deleteConnector = useMutation({
     mutationFn: (id: string) => api.deleteConnector(id),
     onSuccess: () => {
@@ -528,10 +615,12 @@ function WorkspacePageInner() {
     try {
       await api.updateSkuSelection(id, inputs);
       setSkuActionError(null);
-      setServiceConfigSelection(null);
+      // 021 US5 (FR-038): the saved service stays selected and open in the Service tab.
       invalidateArchitecture();
+      return true;
     } catch (err) {
       setSkuActionError(errorMessageOf(err));
+      return false;
     }
   }
 
@@ -539,7 +628,10 @@ function WorkspacePageInner() {
     try {
       await api.deleteSkuSelection(id);
       setSkuActionError(null);
-      if (serviceConfigSelection?.kind === "existing" && serviceConfigSelection.skuSelectionId === id) {
+      if (
+        serviceConfigSelection?.kind === "existing" &&
+        serviceConfigSelection.skuSelectionId === id
+      ) {
         setServiceConfigSelection(null);
       }
       invalidateArchitecture();
@@ -548,8 +640,41 @@ function WorkspacePageInner() {
     }
   }
 
-  function pickSkuFromSearch(sku: CatalogSKU) {
-    setServiceConfigSelection(newServiceSelection(sku));
+  // 021 US5 (FR-037): a search result's arrow adds the service straight away, with the values
+  // the Service form starts with, to the selected box or connector, then opens it in the
+  // Service tab, where it can be adjusted and saved.
+  const [searchNotice, setSearchNotice] = useState<string | null>(null);
+  useEffect(() => setSearchNotice(null), [selectedCollectionId, selectedConnectorId]);
+  async function pickSkuFromSearch(sku: CatalogSKU) {
+    const collectionId = selectedCollectionId;
+    const connectorId = collectionId ? null : selectedConnectorId;
+    if (!collectionId && !connectorId) {
+      setSearchNotice(NO_ADD_TARGET);
+      return;
+    }
+    const body = {
+      service_code: sku.service_code,
+      sku: sku.sku,
+      ...defaultPricingInputs({
+        provider: pricingProvider,
+        priceTypes: sku.price_types,
+        kind: sku.kind,
+        attributes: sku.attributes,
+      }),
+    };
+    try {
+      const created = collectionId
+        ? await api.addSkuSelection(collectionId, body)
+        : await api.attachConnectorSku(connectorId!, body);
+      setSearchNotice(null);
+      setSkuActionError(null);
+      // Wait for the refetch, so the Service tab can show the new service at once.
+      await invalidateArchitecture();
+      setServiceConfigSelection(existingServiceSelection(created.id));
+      serviceSelected();
+    } catch (err) {
+      setSearchNotice(errorMessageOf(err));
+    }
   }
 
   // --- Column 5: duration + Calculate ---
@@ -590,10 +715,11 @@ function WorkspacePageInner() {
     ? (resultEntries.get(architectureId) ?? storedEntry ?? undefined)
     : undefined;
   const architectureLoaded = Boolean(architectureId) && architecture.data?.id === architectureId;
+  const architectureIdRef = useRef(architectureId);
+  architectureIdRef.current = architectureId;
 
   const calculate = useMutation({
-    mutationFn: (vars: CalculationRequestVars) =>
-      api.calculate(vars.architectureId, vars.duration),
+    mutationFn: (vars: CalculationRequestVars) => api.calculate(vars.architectureId, vars.duration),
     onMutate: (vars) => {
       setCalculationErrors((prev) => {
         const next = new Map(prev);
@@ -606,17 +732,21 @@ function WorkspacePageInner() {
         prior: vars.prior,
         currentSelections: vars.priceChangeSelections,
         newDuration: vars.duration,
+        provider: vars.provider,
       });
       // "direct": compare directly against the stored baseline's own total. "duration_
       // adjusted" (content AND Duration both changed, FR-016a) and "duration_only" (Duration
       // alone changed, 009 FR-002/003) both need the comparison total repriced from the
       // *prior* selections at the *new* Duration through the real calculation, never a
-      // scaled estimate.
+      // scaled estimate. 020 (research R2): the re-pricing carries the provider and each prior
+      // selection's region and options. "unavailable" (a legacy GCP/Azure baseline, FR-005)
+      // makes no snapshot call at all.
       const comparisonTotal =
         decision === "direct"
           ? vars.prior!.total
           : decision === "duration_adjusted" || decision === "duration_only"
-            ? (await api.calculateSnapshot(vars.duration, vars.prior!.selections)).total_price
+            ? (await api.calculateSnapshot(vars.duration, vars.prior!.selections, vars.provider))
+                .total_price
             : null;
       const { entry, newBaseline } = applyCalculationSuccess({
         entries: resultEntriesRef.current,
@@ -635,10 +765,17 @@ function WorkspacePageInner() {
       setResultEntries((prev) => new Map(prev).set(vars.architectureId, entry));
     },
     onError: (err, vars) =>
-      setCalculationErrors((prev) =>
-        new Map(prev).set(vars.architectureId, errorMessageOf(err)),
-      ),
-    onSettled: (_data, _err, vars) => markInFlight(vars.architectureId, false),
+      setCalculationErrors((prev) => new Map(prev).set(vars.architectureId, errorMessageOf(err))),
+    onSettled: (_data, _err, vars) => {
+      markInFlight(vars.architectureId, false);
+      // 021 (FR-016, FR-018a): a finished calculation of the open architecture — a result or an
+      // error, Calculate or the automatic one — brings Pricing forward; a collapsed inspector
+      // stays collapsed and marks its rail instead.
+      if (vars.architectureId === architectureIdRef.current) {
+        dispatchInspector({ type: "calculation-finished" });
+        if (readColumnCollapsed().inspector) setNewResult(true);
+      }
+    },
   });
 
   const { mutate: mutateCalculation } = calculate;
@@ -656,10 +793,12 @@ function WorkspacePageInner() {
         pricedContents: currentPricedContents,
         priceChangeSelections: currentPriceChangeSelections,
         prior: readPriorCalculation(architectureId),
+        provider: pricingProvider,
       });
     },
     [
       architectureId,
+      pricingProvider,
       mutateCalculation,
       currentPricedContents,
       currentPriceChangeSelections,
@@ -711,9 +850,6 @@ function WorkspacePageInner() {
   const selectedCollection = collections.find((c) => c.id === selectedCollectionId);
   const selectedConnector = connectors.find((c) => c.id === selectedConnectorId);
   const collectionToDelete = collections.find((c) => c.id === pendingDeleteCollectionId);
-  const architectureToDelete = architectures.data?.find(
-    (a) => a.id === pendingDeleteArchitectureId,
-  );
 
   // 010-multi-region-support, spec FR-003: a collection is locked once it has a service, or,
   // for a VPC, a nested Application — mirrors the server-side `is_collection_locked` check.
@@ -738,6 +874,8 @@ function WorkspacePageInner() {
           attachedSkuSummary: selectedConnector.sku_selection
             ? `${selectedConnector.sku_selection.service_code} / ${selectedConnector.sku_selection.sku}`
             : null,
+          arrowStyle: selectedConnector.arrow_style,
+          arrowReversed: selectedConnector.arrow_reversed,
         }
       : null;
 
@@ -776,9 +914,10 @@ function WorkspacePageInner() {
   // this feature's own T001/T008) could never reproduce: it needs enough re-render churn in
   // a narrow enough window, which this object literal was manufacturing on nearly every
   // render regardless of cause.
-  const diagramSelection = useMemo<
-    { kind: "collection" | "connector" | "service"; id: string } | null
-  >(
+  const diagramSelection = useMemo<{
+    kind: "collection" | "connector" | "service";
+    id: string;
+  } | null>(
     () =>
       serviceConfigSelection?.kind === "existing"
         ? { kind: "service", id: serviceConfigSelection.skuSelectionId }
@@ -791,50 +930,12 @@ function WorkspacePageInner() {
   );
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
-      <ProviderArchitecturePanel
-        providers={providers.data ?? []}
-        selectedProvider={selectedProvider}
-        onSelectProvider={setSelectedProvider}
-        architectures={architectures.data ?? []}
-        architecturesLoading={architectures.isLoading}
-        architecturesError={architectures.isError ? errorMessageOf(architectures.error) : null}
-        onRetryArchitectures={() => architectures.refetch()}
-        selectedArchitectureId={architectureId}
-        onSelectArchitecture={(id) => navigate(`/architectures/${id}`)}
-        newArchitectureName={newArchitectureName}
-        onNewArchitectureNameChange={setNewArchitectureName}
-        onCreateArchitecture={() => createArchitecture.mutate(newArchitectureName.trim())}
-        isCreatingArchitecture={createArchitecture.isPending}
-        onDeleteArchitecture={setPendingDeleteArchitectureId}
-        actionError={architectureActionError}
-        onDismissActionError={() => setArchitectureActionError(null)}
-        width={columnWidths.provider}
-        isGuest={isGuest}
-        onToggleArchitecturePublic={(id, isPublic) =>
-          toggleArchitecturePublic.mutate({ id, isPublic })
-        }
-        onOpenImportDialog={() => setImportDialogOpen(true)}
-      />
-
-      <ImportArchitectureDialog
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
-        data={importableArchitectures.data}
-        onConfirm={(id, name) => importArchitecture.mutate({ id, name })}
-        isSubmitting={importArchitecture.isPending}
-      />
-
-      <ColumnResizeHandle
-        ariaLabel="Resize provider/Architecture panel"
-        onDrag={(dx) => resizeColumn("provider", dx)}
-      />
-
+    <div ref={rowRef} className="flex h-full w-full overflow-hidden">
       {!architecture.data && (
         <EmptyWorkspacePanels
           message={
             !architectureId
-              ? "Select or create an Architecture to get started."
+              ? "Open or create an architecture from the Cloud Pricing menu (the arrow beside Cloud Pricing above) to get started."
               : architecture.isLoading
                 ? "Loading…"
                 : "Architecture not found."
@@ -863,14 +964,15 @@ function WorkspacePageInner() {
             selection={collectionsPanelSelection}
             onDeleteCollection={setPendingDeleteCollectionId}
             onDeleteConnector={setPendingDeleteConnectorId}
+            onUpdateConnectorArrow={(id, change) => updateConnectorArrow.mutate({ id, change })}
             onPickSku={pickSkuFromSearch}
+            searchNotice={searchNotice}
             searchRegion={searchRegion}
+            provider={pricingProvider}
             regions={regions.data?.regions ?? []}
-            onUpdateCollectionRegion={(id, region) =>
-              updateCollectionRegion.mutate({ id, region })
-            }
+            onUpdateCollectionRegion={(id, region) => updateCollectionRegion.mutate({ id, region })}
             isUpdatingCollectionRegion={updateCollectionRegion.isPending}
-            width={columnWidths.collections}
+            width={fitted.sidebar}
           />
 
           <ColumnResizeHandle
@@ -878,25 +980,23 @@ function WorkspacePageInner() {
             onDrag={(dx) => resizeColumn("collections", dx)}
           />
 
-          <ServiceConfigPanel
-            selection={serviceConfigSelection}
-            resolvedExisting={resolvedExistingSku}
-            onSubmitNew={submitNewSku}
-            onSubmitExisting={submitExistingSku}
-            onRemoveExisting={removeExistingSku}
-            actionError={skuActionError}
-            onDismissActionError={() => setSkuActionError(null)}
-            width={columnWidths.service}
-          />
-
-          <ColumnResizeHandle
-            ariaLabel="Resize Service Editor panel"
-            onDrag={(dx) => resizeColumn("service", dx)}
-          />
-
-          <div className="min-w-0 flex-1 p-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-2">
+            {/* 021 US5 (FR-005, FR-036): the open architecture's name, above the canvas. */}
+            {architecture.data && (
+              <h2 className="flex min-w-0 items-center text-sm font-semibold">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0} aria-label={canvasTitle} className="truncate rounded-sm">
+                      {canvasTitle}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{canvasTitle}</TooltipContent>
+                </Tooltip>
+              </h2>
+            )}
             <ArchitectureDiagramPanel
               architectureId={architectureId!}
+              provider={pricingProvider}
               collections={collections}
               connectors={connectors}
               ownHeights={ownHeights}
@@ -924,24 +1024,50 @@ function WorkspacePageInner() {
             />
           </div>
 
-          <ColumnResizeHandle
-            ariaLabel="Resize pricing panel"
-            onDrag={(dx) => resizeColumn("pricing", -dx)}
-          />
+          {!inspectorCollapsed && (
+            <ColumnResizeHandle
+              ariaLabel="Resize inspector"
+              onDrag={(dx) => resizeColumn("inspector", -dx)}
+            />
+          )}
 
-          <PricingPanel
-            duration={calculationDuration}
-            onDurationChange={setCalculationDuration}
-            onCalculate={() => startCalculation(calculationDuration)}
-            isCalculating={isActiveCalculating}
-            // As before 015, a result isn't shown while its own recalculation is running.
-            calculation={isActiveCalculating ? null : (activeEntry?.result ?? null)}
-            calculationError={(architectureId && calculationErrors.get(architectureId)) || null}
-            onRetry={() => startCalculation(calculationDuration)}
-            width={columnWidths.pricing}
-            priceChange={activeEntry?.priceChange ?? null}
-            skuAttributesById={skuAttributesById}
-            isOutOfDate={isOutOfDate && !isActiveCalculating}
+          {/* 021 (US2, US3): the Price Summary and the Service Editor as the inspector's tabs. */}
+          <InspectorPanel
+            arrangement={inspectorArrangement}
+            onAction={dispatchInspector}
+            collapsed={inspectorCollapsed}
+            onCollapsedChange={setInspectorCollapsed}
+            newResult={newResult}
+            width={fitted.inspector}
+            pricing={
+              <PricingPanel
+                duration={calculationDuration}
+                onDurationChange={setCalculationDuration}
+                onCalculate={() => startCalculation(calculationDuration)}
+                isCalculating={isActiveCalculating}
+                // As before 015, a result isn't shown while its own recalculation is running.
+                calculation={isActiveCalculating ? null : (activeEntry?.result ?? null)}
+                calculationError={(architectureId && calculationErrors.get(architectureId)) || null}
+                onRetry={() => startCalculation(calculationDuration)}
+                priceChange={activeEntry?.priceChange ?? null}
+                priceChangeUnavailable={activeEntry?.priceChangeUnavailable === true}
+                skuAttributesById={skuAttributesById}
+                skuLabelsById={skuLabelsById}
+                isOutOfDate={isOutOfDate && !isActiveCalculating}
+              />
+            }
+            service={
+              <ServiceConfigPanel
+                selection={serviceConfigSelection}
+                resolvedExisting={resolvedExistingSku}
+                onSubmitNew={submitNewSku}
+                onSubmitExisting={submitExistingSku}
+                onRemoveExisting={removeExistingSku}
+                actionError={skuActionError}
+                onDismissActionError={() => setSkuActionError(null)}
+                provider={pricingProvider}
+              />
+            }
           />
         </>
       )}
@@ -962,18 +1088,11 @@ function WorkspacePageInner() {
         />
       )}
 
-      {architectureToDelete && (
-        <ConfirmDeleteDialog
-          itemLabel={architectureToDelete.name}
-          onCancel={() => setPendingDeleteArchitectureId(null)}
-          onConfirm={() => deleteArchitecture.mutate(architectureToDelete.id)}
-        />
-      )}
-
       <RegionSelectDialog
         open={regionDialogOpen}
         onOpenChange={setRegionDialogOpen}
         regions={regions.data?.regions ?? []}
+        providerName={PROVIDER_LABELS[pricingProvider]}
         onConfirm={(region) => createCollection.mutate({ region })}
         isSubmitting={createCollection.isPending}
       />
@@ -983,6 +1102,7 @@ function WorkspacePageInner() {
           open={popoutOpen}
           onOpenChange={setPopoutOpen}
           architectureId={architectureId!}
+          provider={pricingProvider}
           collections={collections}
           connectors={connectors}
           onCreateConnector={(from, to) => createConnector.mutate({ from, to })}

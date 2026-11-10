@@ -250,3 +250,49 @@ async def test_update_region_to_unavailable_region_rejected(client, auth_headers
         headers=auth_headers,
     )
     assert resp.status_code == 400
+
+
+# --- 019 (T035, data-model §4): regions per provider ------------------------------------------
+
+
+async def _arch(client, auth_headers, provider):
+    resp = await client.post("/api/v1/architectures", json={"name": "A", "provider": provider},
+                             headers=auth_headers)
+    return resp.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_a_region_outside_the_providers_regions_is_refused(client, auth_headers):
+    arch = await _arch(client, auth_headers, "gcp")
+    for region in ("us-east-1", "global"):  # an AWS region; GCP's never-selectable partition
+        resp = await client.post(
+            f"/api/v1/architectures/{arch}/collections",
+            json={"type": "application_component", "name": "W", "region": region},
+            headers=auth_headers,
+        )
+        # The existing region rule (010) answers 400, kept for every provider.
+        assert resp.status_code == 400
+    ok = await client.post(
+        f"/api/v1/architectures/{arch}/collections",
+        json={"type": "application_component", "name": "W", "region": "us-east1"},
+        headers=auth_headers,
+    )
+    assert ok.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_a_23_character_gcp_region_is_accepted(client, auth_headers, monkeypatch):
+    from src.pricing_data.providers.gcp import GcpProvider
+
+    region = "northamerica-northeast1"
+    assert len(region) == 23
+    original = GcpProvider.locations
+    monkeypatch.setattr(GcpProvider, "locations", lambda self, s: [*original(self, s), region])
+    arch = await _arch(client, auth_headers, "gcp")
+    resp = await client.post(
+        f"/api/v1/architectures/{arch}/collections",
+        json={"type": "application_component", "name": "W", "region": region},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["region"] == region

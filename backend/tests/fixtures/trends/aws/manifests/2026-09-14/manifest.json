@@ -1,0 +1,199 @@
+{
+  "manifest_version": "1.0",
+  "provider": "aws",
+  "snapshot_date": "2026-09-14",
+  "run_id": "20260914T000001Z-000001",
+  "revision": 1,
+  "previous_revision": null,
+  "created_at": "2026-09-14T00:00:00Z",
+  "origin": "pipeline",
+  "status": "succeeded",
+  "regions": {
+    "requested": [
+      "us-east-1",
+      "us-west-2"
+    ],
+    "succeeded": [
+      "us-east-1",
+      "us-west-2"
+    ],
+    "failed": []
+  },
+  "run": {
+    "trigger": "scheduled",
+    "mode": "full",
+    "host": "test-fixture",
+    "started_at": "2026-09-14T00:00:00Z",
+    "ended_at": "2026-09-14T00:00:00Z",
+    "pipeline_version": {
+      "git_sha": "fixture",
+      "image_tag": "fixture"
+    },
+    "region_results": [
+      {
+        "region": "us-east-1",
+        "outcome": "succeeded",
+        "attempts": 1
+      },
+      {
+        "region": "us-west-2",
+        "outcome": "succeeded",
+        "attempts": 1
+      }
+    ]
+  },
+  "raw": null,
+  "tables": {
+    "service_dim": {
+      "schema_version": 1,
+      "row_count": 6,
+      "regions": {
+        "us-east-1": {
+          "written_by_run": "20260914T000001Z-000001",
+          "row_count": 3,
+          "files": [
+            {
+              "path": "aws/parquet/service_dim/snapshot_date=2026-09-14/region=us-east-1/part-20260914T000001Z-000001.parquet",
+              "bytes": 1271,
+              "sha256": "b42c5bd8f55bb5f9acb41e85bb0df2df89e82ab140aaa28e97499f3971cfccf6",
+              "row_count": 3
+            }
+          ]
+        },
+        "us-west-2": {
+          "written_by_run": "20260914T000001Z-000001",
+          "row_count": 3,
+          "files": [
+            {
+              "path": "aws/parquet/service_dim/snapshot_date=2026-09-14/region=us-west-2/part-20260914T000001Z-000001.parquet",
+              "bytes": 1271,
+              "sha256": "7dd13cfd13bd4e764fa0d19fe78a82bf2f1369aead41ff8679288420b256667e",
+              "row_count": 3
+            }
+          ]
+        }
+      }
+    },
+    "product_dim": {
+      "schema_version": 1,
+      "row_count": 11,
+      "regions": {
+        "us-east-1": {
+          "written_by_run": "20260914T000001Z-000001",
+          "row_count": 9,
+          "files": [
+            {
+              "path": "aws/parquet/product_dim/snapshot_date=2026-09-14/region=us-east-1/part-20260914T000001Z-000001.parquet",
+              "bytes": 2364,
+              "sha256": "7e54c41cc4f70009edf279128c60b72d5cbec6fe56389693a4bf5ce47e817ba0",
+              "row_count": 9
+            }
+          ]
+        },
+        "us-west-2": {
+          "written_by_run": "20260914T000001Z-000001",
+          "row_count": 2,
+          "files": [
+            {
+              "path": "aws/parquet/product_dim/snapshot_date=2026-09-14/region=us-west-2/part-20260914T000001Z-000001.parquet",
+              "bytes": 1909,
+              "sha256": "8b355d7bbab3fccb7fa709385bb008f3e50a58b458fe2a2283bf7eb3dd6feacd",
+              "row_count": 2
+            }
+          ]
+        }
+      }
+    },
+    "product_attribute": {
+      "schema_version": 1,
+      "row_count": 55,
+      "regions": {
+        "us-east-1": {
+          "written_by_run": "20260914T000001Z-000001",
+          "row_count": 45,
+          "files": [
+            {
+              "path": "aws/parquet/product_attribute/snapshot_date=2026-09-14/region=us-east-1/part-20260914T000001Z-000001.parquet",
+              "bytes": 1778,
+              "sha256": "5597066a7347d5fa465edb6771eb841d9250ecea489a4f0613eb86475d500402",
+              "row_count": 45
+            }
+          ]
+        },
+        "us-west-2": {
+          "written_by_run": "20260914T000001Z-000001",
+          "row_count": 10,
+          "files": [
+            {
+              "path": "aws/parquet/product_attribute/snapshot_date=2026-09-14/region=us-west-2/part-20260914T000001Z-000001.parquet",
+              "bytes": 1493,
+              "sha256": "688ee77199f43213b028f5ed3c4e309a0b2a60039de6ee1aefb6d55fd7a1837f",
+              "row_count": 10
+            }
+          ]
+        }
+      }
+    },
+    "region_dim": {
+      "schema_version": 1,
+      "row_count": 2,
+      "regions": {
+        "us-east-1": {
+          "written_by_run": "20260914T000001Z-000001",
+          "row_count": 1,
+          "files": [
+            {
+              "path": "aws/parquet/region_dim/snapshot_date=2026-09-14/region=us-east-1/part-20260914T000001Z-000001.parquet",
+              "bytes": 889,
+              "sha256": "a2c01860d9b9cee9d457e2aac83266d2d5c95fafaf043a0273e9682f52503c91",
+              "row_count": 1
+            }
+          ]
+        },
+        "us-west-2": {
+          "written_by_run": "20260914T000001Z-000001",
+          "row_count": 1,
+          "files": [
+            {
+              "path": "aws/parquet/region_dim/snapshot_date=2026-09-14/region=us-west-2/part-20260914T000001Z-000001.parquet",
+              "bytes": 864,
+              "sha256": "6105d8f269dad32016bb461153cdb09e9f4e4fbb15f10978c35e63609e630298",
+              "row_count": 1
+            }
+          ]
+        }
+      }
+    },
+    "price_fact": {
+      "schema_version": 1,
+      "row_count": 13,
+      "regions": {
+        "us-east-1": {
+          "written_by_run": "20260914T000001Z-000001",
+          "row_count": 11,
+          "files": [
+            {
+              "path": "aws/parquet/price_fact/snapshot_date=2026-09-14/region=us-east-1/part-20260914T000001Z-000001.parquet",
+              "bytes": 2830,
+              "sha256": "3838922baefd6dbd7d769d5c07dc78764f0ab347533688f57568550f522a653b",
+              "row_count": 11
+            }
+          ]
+        },
+        "us-west-2": {
+          "written_by_run": "20260914T000001Z-000001",
+          "row_count": 2,
+          "files": [
+            {
+              "path": "aws/parquet/price_fact/snapshot_date=2026-09-14/region=us-west-2/part-20260914T000001Z-000001.parquet",
+              "bytes": 1849,
+              "sha256": "fac09637127be25ffd27f7d6d5684cedcab414d22294e59ed8b93883c9747b21",
+              "row_count": 2
+            }
+          ]
+        }
+      }
+    }
+  },
+  "purged": null
+}

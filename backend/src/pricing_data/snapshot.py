@@ -16,8 +16,20 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from src.pricing_data.manifest import Manifest
 
-# The five pricing tables every snapshot has.
-TABLES = ("service_dim", "product_dim", "product_attribute", "region_dim", "price_fact")
+# 019 (research R1): each provider's own pricing tables (pipeline 004 data-model).
+PROVIDER_TABLES: dict[str, tuple[str, ...]] = {
+    "aws": ("service_dim", "product_dim", "product_attribute", "region_dim", "price_fact"),
+    "azure": ("price_item", "price_item_savings_plan"),
+    "gcp": ("service", "sku", "sku_price", "sku_price_tier"),
+}
+PROVIDERS: tuple[str, ...] = tuple(PROVIDER_TABLES)
+PROVIDER_NAMES: dict[str, str] = {"aws": "AWS", "gcp": "GCP", "azure": "Azure"}
+
+# The five AWS pricing tables (kept as a name for the AWS-only code paths).
+TABLES = PROVIDER_TABLES["aws"]
+
+# The location partition for prices that apply everywhere (Azure, GCP).
+GLOBAL = "global"
 
 
 @dataclass(frozen=True)
@@ -48,9 +60,29 @@ class ActiveSnapshot:
             return []
         return [str(self.base_dir / f.path) for f in entry.files]
 
+    def files_with_global(self, table: str, location: str) -> list[str]:
+        """A location's files plus the `global` partition's, which every location's lookups
+        also read (019, research R5). Just the location's own when it is `global` or the
+        snapshot has no `global` partition (AWS)."""
+        files = self.files(table, location)
+        if location != GLOBAL:
+            files += self.files(table, GLOBAL)
+        return files
+
     def regions(self, table: str) -> set[str]:
         return set(self.manifest.tables[table].regions)
 
+    @property
+    def tables(self) -> tuple[str, ...]:
+        """This provider's pricing tables (019, research R1)."""
+        return PROVIDER_TABLES[self.provider]
+
+    def locations(self) -> list[str]:
+        """Every location the snapshot has data for, as the manifest's `regions.succeeded`
+        lists them (019). Includes `global` and Azure geographies; the provider adapter decides
+        which are selectable regions (research R5)."""
+        return sorted(self.manifest.regions.succeeded)
+
     def common_regions(self) -> set[str]:
-        """Regions present in all five tables."""
-        return set.intersection(*(self.regions(t) for t in TABLES))
+        """Regions present in all of the provider's tables."""
+        return set.intersection(*(self.regions(t) for t in self.tables))

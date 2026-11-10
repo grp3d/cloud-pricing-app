@@ -183,13 +183,16 @@ async def test_database_error_rolls_back_only_that_entry(db_session, monkeypatch
 async def test_sku_existence_checked_once_per_region(db_session, monkeypatch):
     owner = await _owner(db_session)
     calls: list[str] = []
-    real = architecture_transfer.find_existing_skus
+    # 019 (T046): the lookup is reached through the AWS adapter's `exists`.
+    from src.pricing_data.providers import aws
+
+    real = aws.find_existing_skus
 
     def spy(pairs, *, region, snapshot=None):
         calls.append(region)
         return real(pairs, region=region, snapshot=snapshot)
 
-    monkeypatch.setattr(architecture_transfer, "find_existing_skus", spy)
+    monkeypatch.setattr(aws, "find_existing_skus", spy)
     await import_architectures(
         db_session, owner=owner, doc=_doc(_entry("A"), _entry("B"), _entry("C"))
     )

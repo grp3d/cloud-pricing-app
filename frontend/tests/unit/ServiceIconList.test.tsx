@@ -167,3 +167,167 @@ describe("ServiceList (canvas service icons)", () => {
     expect(screen.getByRole("button")).toHaveStyle({ left: "200px", top: "30px" });
   });
 });
+
+// --- 020 (T024): GCP and Azure icons and the fallback tile -----------------------------------
+
+describe("ServiceList provider icons (020)", () => {
+  const gcpMachine = selection({
+    id: "gcp-1",
+    service_code: "6F81-5844-456A",
+    sku: "BB77-5FDA-69D9",
+    product_family: "Compute > GCE > VMs On Demand",
+    attributes: {},
+    service_name: "Compute Engine",
+  });
+  const gcpMarketplace = selection({
+    id: "gcp-2",
+    service_code: "0017-8C5E-5B91",
+    sku: "MKT-SKU",
+    product_family: "Marketplace Services > OpenLogic",
+    attributes: {},
+    service_name:
+      "OpenLogic CentOS 7.8 (v20200922) - Security Hardened with a very long marketplace name",
+  });
+
+  function srcs() {
+    return screen.getAllByRole("button").map((b) => b.querySelector("img")?.getAttribute("src"));
+  }
+
+  it("renders a mapped GCP service's own icon", () => {
+    render(
+      wrap(
+        <ServiceList
+          innerWidth={360}
+          skuSelections={[gcpMachine]}
+          onSelectService={vi.fn()}
+          provider="gcp"
+        />,
+      ),
+    );
+    const [src] = srcs();
+    expect(src).toContain("Compute-Engine");
+    expect(src).not.toMatch(/aws-icons/);
+    expect(screen.queryByTestId("fallback-service-name")).toBeNull();
+  });
+
+  it("renders the fallback tile with the provider logo and the name, keeping the full name accessible", () => {
+    render(
+      wrap(
+        <ServiceList
+          innerWidth={360}
+          skuSelections={[gcpMarketplace]}
+          onSelectService={vi.fn()}
+          provider="gcp"
+        />,
+      ),
+    );
+    const [src] = srcs();
+    expect(src).toContain("gcp_icon");
+    const name = screen.getByTestId("fallback-service-name");
+    expect(name.textContent).toBe(gcpMarketplace.service_name);
+    expect(name).toHaveClass("line-clamp-3", "break-words", "text-foreground");
+    const button = screen.getByRole("button");
+    expect(button.querySelector(".size-\\[60px\\]")).not.toBeNull();
+    // FR-009: the full name first (the tile cuts it), then the usual lines. 021 US7: those
+    // lines now start with the name themselves, so it isn't repeated.
+    const lines = buildServicePopupLines(gcpMarketplace);
+    expect(lines[0]).toBe(gcpMarketplace.service_name);
+    expect(button).toHaveAccessibleName(lines.join(", "));
+  });
+
+  it("gives each fallback tile its own name", () => {
+    render(
+      wrap(
+        <ServiceList
+          innerWidth={360}
+          skuSelections={[
+            gcpMarketplace,
+            { ...gcpMarketplace, id: "gcp-3", service_name: "Another Product" },
+          ]}
+          onSelectService={vi.fn()}
+          provider="gcp"
+        />,
+      ),
+    );
+    expect(screen.getAllByTestId("fallback-service-name").map((n) => n.textContent)).toEqual([
+      gcpMarketplace.service_name,
+      "Another Product",
+    ]);
+  });
+
+  it("renders Azure managed disks with the Disks icon, not the VM's", () => {
+    render(
+      wrap(
+        <ServiceList
+          innerWidth={360}
+          skuSelections={[
+            selection({
+              id: "vm",
+              service_code: "DZH313Z7MMC8",
+              product_family: "Virtual Machines Dsv5 Series",
+            }),
+            selection({
+              id: "disk",
+              service_code: "DZH317F1HKN0",
+              product_family: "Premium SSD Managed Disks",
+            }),
+          ]}
+          onSelectService={vi.fn()}
+          provider="azure"
+        />,
+      ),
+    );
+    const [vm, disk] = srcs();
+    expect(vm).toContain("Virtual-Machine");
+    expect(disk).toContain("Disks");
+  });
+
+  it("renders AWS exactly as before when no provider is given, or aws", () => {
+    const { container: before } = render(
+      wrap(
+        <ServiceList innerWidth={360} skuSelections={[selection()]} onSelectService={vi.fn()} />,
+      ),
+    );
+    const { container: aws } = render(
+      wrap(
+        <ServiceList
+          innerWidth={360}
+          skuSelections={[selection()]}
+          onSelectService={vi.fn()}
+          provider="aws"
+        />,
+      ),
+    );
+    expect(aws.innerHTML).toBe(before.innerHTML);
+    expect(aws.querySelector("img")?.getAttribute("src")).toContain("Amazon-DynamoDB");
+  });
+
+  it("keeps icon positions the same for every provider (FR-013)", () => {
+    const positions = (provider: "aws" | "gcp" | "azure") => {
+      const { container, unmount } = render(
+        wrap(
+          <ServiceList
+            innerWidth={360}
+            skuSelections={[
+              { ...gcpMachine, id: "a" },
+              { ...gcpMarketplace, id: "b" },
+              { ...gcpMachine, id: "c" },
+              { ...gcpMarketplace, id: "d" },
+            ]}
+            savedPositions={{ c: { x: 120, y: 60 } }}
+            onSelectService={vi.fn()}
+            provider={provider}
+          />,
+        ),
+      );
+      const result = Array.from(container.querySelectorAll("button")).map(
+        (b) => `${b.style.left},${b.style.top}`,
+      );
+      unmount();
+      return result;
+    };
+    const aws = positions("aws");
+    expect(positions("gcp")).toEqual(aws);
+    expect(positions("azure")).toEqual(aws);
+  });
+});

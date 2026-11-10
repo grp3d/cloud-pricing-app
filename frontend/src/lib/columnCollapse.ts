@@ -1,48 +1,58 @@
 /**
- * Per-browser column collapsed/expanded persistence (009-ui-fixes-next-iteration follow-up).
- * Modeled directly on `columnWidths.ts`'s established pattern (same `cloud-pricing-` key
- * prefix, `localStorage`-under-try/catch, never throws, silently no-ops when unavailable) —
- * columns 1-3 (`ProviderArchitecturePanel`/`CollectionsPanel`/`ServiceConfigPanel`) each
- * already own a local `expanded` boolean and its own collapse/expand toggle button; this only
- * adds persistence for that existing state, not a new interaction. Column 4 (the diagram) has
- * no collapsed state of its own (`columnWidths.ts`'s own comment), and column 5 (pricing) has
- * never had one either (008-ui-updates-corrections, FR-011) — so there are only three ids
- * here, not the four `columnWidths.ts` has.
+ * Collapsed columns (009-ui-fixes-next-iteration follow-up), saved to the user's account since
+ * 019 (FR-023): the `workspace.collapsed` preferences section, keys `col1` to `col3`. Values an
+ * earlier version saved in this browser are used until they are moved to the account, once
+ * (FR-024, `preferences.ts`). 021: the sidebar (`col2`) and the inspector (`col4`, newly
+ * collapsible) are the two collapsible zones; `col1` and `col3` are no longer read.
  */
+import type { ColumnKey } from "./browserPrefs";
+import {
+  type PreferencesStore,
+  effectiveWorkspace,
+  preferencesStore,
+  usePreferences,
+} from "./preferences";
 
-export type CollapsibleColumnId = "provider" | "collections" | "service";
+export type CollapsibleColumnId = "collections" | "inspector";
 
-const STORAGE_KEY = "cloud-pricing-column-collapsed";
-const COLUMN_IDS: readonly CollapsibleColumnId[] = ["provider", "collections", "service"];
+const KEYS: Record<CollapsibleColumnId, ColumnKey> = {
+  // col1 (the removed Column 1, 021) is no longer read; a stored value is left in place.
+  collections: "col2",
+  // col3 (the removed Service Editor column, 021) is no longer read either.
+  // 021: the inspector collapses to a rail (FR-010), stored under col4.
+  inspector: "col4",
+};
 
-/** Reads whatever collapsed/expanded flags are stored. A missing key, malformed JSON, or an
- * invalid entry for one column never throws — that column simply falls back to its own
- * default (expanded), matching `columnWidths.ts`'s per-entry tolerance. */
-export function readColumnCollapsed(): Partial<Record<CollapsibleColumnId, boolean>> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const result: Partial<Record<CollapsibleColumnId, boolean>> = {};
-    for (const id of COLUMN_IDS) {
-      const value = (parsed as Record<string, unknown>)[id];
-      if (typeof value === "boolean") result[id] = value;
-    }
-    return result;
-  } catch {
-    return {};
+/** The stored collapsed flags; a column with no stored flag is left out (expanded). */
+export function readColumnCollapsed(
+  store: PreferencesStore = preferencesStore,
+): Partial<Record<CollapsibleColumnId, boolean>> {
+  const stored = effectiveWorkspace(store.current, store.readBrowser).collapsed ?? {};
+  const result: Partial<Record<CollapsibleColumnId, boolean>> = {};
+  for (const [id, key] of Object.entries(KEYS) as [CollapsibleColumnId, ColumnKey][]) {
+    const value = stored[key];
+    if (typeof value === "boolean") result[id] = value;
   }
+  return result;
 }
 
-/** Writes one column's collapsed state, leaving every other stored column untouched.
- * Silently no-ops if `localStorage` is unavailable — the toggle just won't survive a reload
- * this session, matching `columnWidths.ts`'s best-effort persistence. */
-export function writeColumnCollapsed(id: CollapsibleColumnId, collapsed: boolean): void {
-  try {
-    const next = { ...readColumnCollapsed(), [id]: collapsed };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // See comment above — persistence is best-effort.
-  }
+/** Saves one column's collapsed state, leaving every other column untouched. */
+export function writeColumnCollapsed(
+  id: CollapsibleColumnId,
+  collapsed: boolean,
+  store: PreferencesStore = preferencesStore,
+): void {
+  const workspace = store.current.workspace ?? {};
+  store.patchSection("workspace", {
+    ...workspace,
+    collapsed: { ...workspace.collapsed, [KEYS[id]]: collapsed },
+  });
+}
+
+/** The stored collapsed flags, re-rendering when they change. */
+export function useColumnCollapsed(
+  store: PreferencesStore = preferencesStore,
+): Partial<Record<CollapsibleColumnId, boolean>> {
+  usePreferences(store);
+  return readColumnCollapsed(store);
 }

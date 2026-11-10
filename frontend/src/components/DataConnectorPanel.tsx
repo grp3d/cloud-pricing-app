@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { type CatalogSKU, type DataConnector, api } from "../api/client";
+import { type CatalogSKU, type DataConnector, type ProviderCode, api } from "../api/client";
 import { CatalogSearchPanel } from "./CatalogSearchPanel";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { ErrorMessage } from "./ErrorMessage";
@@ -11,6 +11,11 @@ interface Props {
   connector: DataConnector;
   onChanged: () => void;
   onClose: () => void;
+  /** 019 (T054): the architecture's provider; GCP and Azure searches start at data transfer,
+   * AWS keeps its data-transfer region fields (`awsDataTransfer.ts`). */
+  provider?: ProviderCode;
+  /** The connector's "from" region, which every provider prices its data transfer in. */
+  region?: string;
 }
 
 function errorMessageOf(err: unknown): string {
@@ -21,7 +26,13 @@ function errorMessageOf(err: unknown): string {
  * Side panel for one Data Connector (FR-009): optionally attach a specific AWS SKU (e.g. a
  * NAT Gateway) representing the connecting service, with its own pricing inputs.
  */
-export function DataConnectorPanel({ connector, onChanged, onClose }: Props) {
+export function DataConnectorPanel({
+  connector,
+  onChanged,
+  onClose,
+  provider = "aws",
+  region,
+}: Props) {
   const [pickedSku, setPickedSku] = useState<CatalogSKU | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -80,10 +91,23 @@ export function DataConnectorPanel({ connector, onChanged, onClose }: Props) {
             Selected: {pickedSku.service_name} — {pickedSku.summary}
           </p>
           <SkuDetail attributes={pickedSku.attributes} />
-          <PricingInputsForm onSubmit={attach} submitLabel="Attach" unit={pickedSku.unit} />
+          <PricingInputsForm
+            onSubmit={attach}
+            submitLabel="Attach"
+            unit={pickedSku.unit}
+            provider={provider}
+            priceTypes={pickedSku.price_types}
+            kind={pickedSku.kind}
+            attributes={pickedSku.attributes}
+          />
         </>
       ) : (
-        <CatalogSearchPanel onAdd={setPickedSku} region={undefined} />
+        <CatalogSearchPanel
+          onAdd={setPickedSku}
+          region={region}
+          provider={provider}
+          defaultKind={provider === "aws" ? undefined : "data_transfer"}
+        />
       )}
 
       <button onClick={() => setConfirmingDelete(true)}>Delete this connector</button>

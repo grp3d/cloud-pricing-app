@@ -5,7 +5,9 @@ import {
   POPUP_ATTRIBUTE_KEYS,
   buildServicePopupLines,
   servicePopupAccessibleName,
+  servicePopupCodesLine,
 } from "../../src/lib/servicePopup";
+import { serviceLabel, serviceLabelText } from "../../src/lib/serviceLabel";
 import { summarizeAttributes } from "../../src/lib/skuDetail";
 
 describe("buildServicePopupLines", () => {
@@ -146,5 +148,57 @@ describe("labeled attribute lines", () => {
       attributes: { tenancy: "", storageType: "gp3" },
     });
     expect(lines).toEqual(["AmazonEC2", "Sku: X", "storageType: gp3"]);
+  });
+});
+
+describe("readable GCP and Azure labels (021 US7, FR-044 to FR-047)", () => {
+  const gcp = {
+    service_code: "95FF-2EF5-5EA1",
+    sku: "EE2C-E844-D760",
+    service_name: "Cloud Storage",
+    summary: "Multi-Region HNS Nearline Class A Operations",
+    attributes: { geo_taxonomy_type: "TYPE_GLOBAL", location: "global" },
+  };
+
+  it("leads with the name and description, then the codes", () => {
+    expect(buildServicePopupLines(gcp)).toEqual([
+      "Cloud Storage",
+      "Multi-Region HNS Nearline Class A Operations",
+      "95FF-2EF5-5EA1 / EE2C-E844-D760",
+    ]);
+    expect(servicePopupCodesLine(gcp)).toBe("95FF-2EF5-5EA1 / EE2C-E844-D760");
+  });
+
+  it("uses the name alone when there is no description", () => {
+    expect(buildServicePopupLines({ ...gcp, summary: null })).toEqual([
+      "Cloud Storage",
+      "95FF-2EF5-5EA1 / EE2C-E844-D760",
+    ]);
+  });
+
+  it("leaves AWS unchanged, with no muted codes line", () => {
+    const aws = { service_code: "AmazonS3", sku: "S3SKU", attributes: { usagetype: "X" } };
+    expect(buildServicePopupLines({ ...aws, service_name: null, summary: null })).toEqual([
+      "AmazonS3",
+      "Sku: S3SKU",
+      "UsageType: X",
+    ]);
+    expect(servicePopupCodesLine(aws)).toBeNull();
+  });
+});
+
+describe("serviceLabel", () => {
+  it("drops a description that only repeats the name", () => {
+    expect(
+      serviceLabel({ service_code: "C", sku: "S", service_name: "Storage", summary: "Storage" }),
+    ).toEqual({ name: "Storage", description: null, codes: "C / S", readable: true });
+  });
+
+  it("joins name and description for one-line use", () => {
+    expect(
+      serviceLabelText(
+        serviceLabel({ service_code: "C", sku: "S", service_name: "Disks", summary: "P10 LRS" }),
+      ),
+    ).toBe("Disks — P10 LRS");
   });
 });

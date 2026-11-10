@@ -7,7 +7,6 @@ import {
   Controls,
   EdgeLabelRenderer,
   Handle,
-  MarkerType,
   NodeResizeControl,
   Panel,
   Position,
@@ -33,7 +32,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { createPortal } from "react-dom";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
 
-import { type Collection, type DataConnector } from "../../api/client";
+import { type Collection, type DataConnector, type ProviderCode } from "../../api/client";
+import { ARROW_MARKER, connectorMarkers } from "../../lib/connectorArrows";
 import { useMeasuredHeight } from "../../hooks/useMeasuredHeight";
 import { decideNestingChange } from "../../pages/dropTargetDetection";
 import { updateOrderedSelection } from "../../pages/connectorSelection";
@@ -45,7 +45,7 @@ import {
 } from "../../pages/nodeLayout";
 import { edgeOffsetIndex } from "../../lib/edgeOffset";
 import { awsDataTransferLabel } from "../../lib/awsDataTransfer";
-import { resolveAwsServiceIcon } from "../../lib/awsServiceIcons";
+import { resolveServiceIcon } from "../../lib/serviceIcons";
 import {
   findVisibleSlot,
   flowGridPlacer,
@@ -71,7 +71,11 @@ import {
   type IconPosition,
   type IconPositions,
 } from "../../lib/iconLayout";
-import { buildServicePopupLines, servicePopupAccessibleName } from "../../lib/servicePopup";
+import {
+  buildServicePopupLines,
+  servicePopupAccessibleName,
+  servicePopupCodesLine,
+} from "../../lib/servicePopup";
 import {
   readDiagramLayout,
   writeCollectionLayout,
@@ -111,17 +115,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
  * the canvas zoom through React Flow's viewport transform like every other node label (FR-013).
  * Hovering or focusing it shows the service's details one labeled line each (FR-008-FR-011,
  * `servicePopup.ts`), which are also its accessible name (FR-012). The pop-up portals outside
- * the zoomed viewport, so it can't inherit the canvas's scale: its font size tracks the live
- * zoom instead (FR-014, research.md §5) — the tooltip's normal `text-xs` at the canvas's default
- * zoom (the readout's "100%"), proportionally larger or smaller from there. Sized through real
- * `font-size`/`em` rather than a CSS `transform`, so Radix's placement and collision handling
- * still measure the true box. */
+ * the zoomed viewport. 021 US9 (FR-050, superseding 015's FR-014): it stays at the tooltip's
+ * normal `text-xs` at every zoom, rather than tracking it, so it stays readable when the canvas
+ * is magnified or shrunk. */
 function ServiceIconButton({
   selection,
   isSelected,
   onSelectService,
   position,
   onDrop,
+  provider,
 }: {
   selection: Collection["sku_selections"][number];
   isSelected: boolean;
@@ -131,9 +134,18 @@ function ServiceIconButton({
   /** 016-canvas-icon-layout, FR-004–FR-005: called when a drag ends, with the pointer's screen
    * position — the canvas decides where the icon (or service) goes. */
   onDrop?: (selectionId: string, clientX: number, clientY: number) => void;
+  /** 020 (FR-006): the architecture's provider picks the icon set; AWS when absent. */
+  provider: ProviderCode;
 }) {
-  const icon = resolveAwsServiceIcon(selection.service_code, selection.product_family);
-  const popupLines = buildServicePopupLines(selection);
+  const icon = resolveServiceIcon(provider, selection);
+  // 020 (FR-009): a fallback tile cuts its name to three lines, so hovering shows it in full,
+  // above the usual lines (whose first is only the service's code).
+  // 021 US7: unless the lines already start with that name.
+  const baseLines = buildServicePopupLines(selection);
+  const popupLines =
+    icon.kind === "fallback" && baseLines[0] !== icon.name ? [icon.name, ...baseLines] : baseLines;
+  const codesLine = servicePopupCodesLine(selection);
+  // The drag ghost still matches the icon's on-screen size (the pop-up no longer scales).
   const zoom = useStore((state) => state.transform[2]);
   // Pointer-driven drag (research.md §8). A press that moves no more than DRAG_THRESHOLD screen
   // px is still a click (FR-007); beyond that, a floating copy follows the pointer (rendered
@@ -176,8 +188,8 @@ function ServiceIconButton({
             dragRef.current = null;
             setGhost(null);
           }}
-          className={`nodrag nopan absolute size-[60px] touch-none rounded-sm p-0 hover:ring-2 hover:ring-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-            isSelected ? "ring-2 ring-primary" : ""
+          className={`nodrag nopan absolute size-[60px] touch-none rounded-sm p-0 transition-shadow hover:ring-1 hover:ring-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:ring-2 active:ring-input ${
+            isSelected ? "ring-2 ring-ring" : ""
           } ${ghost ? "opacity-30" : ""}`}
           style={{ left: position.x, top: position.y }}
           onClick={(e) => {
@@ -189,7 +201,9 @@ function ServiceIconButton({
             onSelectService(selection.id);
           }}
         >
-          {icon.lightUrl === icon.darkUrl ? (
+          {icon.kind === "fallback" ? (
+            <FallbackServiceTile name={icon.name} logoUrl={icon.logoUrl} />
+          ) : icon.lightUrl === icon.darkUrl ? (
             <img src={icon.lightUrl} alt="" draggable={false} className="size-[60px]" />
           ) : (
             <>
@@ -212,7 +226,7 @@ function ServiceIconButton({
       {ghost &&
         createPortal(
           <img
-            src={icon.lightUrl}
+            src={icon.kind === "fallback" ? icon.logoUrl : icon.lightUrl}
             alt=""
             aria-hidden
             className="pointer-events-none fixed z-[1000] rounded-sm opacity-80 shadow-lg"
@@ -226,14 +240,36 @@ function ServiceIconButton({
           document.body,
         )}
       <TooltipContent
-        className="max-w-[40em] flex-col items-start gap-0 px-[0.8em] py-[0.5em]"
-        style={{ fontSize: `calc(var(--text-xs) * ${zoom / DEFAULT_DIAGRAM_ZOOM})` }}
+        className="max-w-[40em] flex-col items-start gap-0 px-[0.8em] py-[0.5em] text-xs"
       >
         {popupLines.map((line, i) => (
-          <div key={i}>{line}</div>
+          <div key={i} className={line === codesLine ? "opacity-70" : undefined}>
+            {line}
+          </div>
         ))}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/** 020 (FR-009, research R7): a GCP or Azure service with no icon of its own — the provider's
+ * logo (14px, on a small white badge so the GCP logo's white background looks intended in both
+ * themes) above the service's name, cut to three lines, in the same 60px tile an icon uses.
+ * Sized so three whole lines fit: 1px border + 2px padding each side, a 16px badge, a 1px gap,
+ * then 3 × 12px lines = 59px. The button's tooltip and accessible name carry the full name. */
+function FallbackServiceTile({ name, logoUrl }: { name: string; logoUrl: string }) {
+  return (
+    <span className="flex size-[60px] flex-col items-center gap-px overflow-hidden rounded-sm border border-border bg-card p-0.5">
+      <span className="flex size-[16px] shrink-0 items-center justify-center rounded-sm bg-white">
+        <img src={logoUrl} alt="" draggable={false} className="size-[14px] object-contain" />
+      </span>
+      <span
+        data-testid="fallback-service-name"
+        className="line-clamp-3 w-full break-words text-center text-[10px] leading-[12px] text-foreground"
+      >
+        {name}
+      </span>
+    </span>
   );
 }
 
@@ -255,6 +291,7 @@ export function ServiceList({
   innerWidth,
   savedPositions,
   onIconDrop,
+  provider = "aws",
 }: {
   skuSelections: Collection["sku_selections"];
   selectedServiceId?: string;
@@ -273,6 +310,8 @@ export function ServiceList({
   savedPositions?: IconPositions;
   /** 016-canvas-icon-layout, FR-004: reports an icon drag's drop point to the canvas. */
   onIconDrop?: (selectionId: string, clientX: number, clientY: number) => void;
+  /** 020 (FR-006): the architecture's provider; AWS when absent. */
+  provider?: ProviderCode;
 }) {
   const positions = useMemo(
     () =>
@@ -298,6 +337,7 @@ export function ServiceList({
           onSelectService={onSelectService}
           position={positions[s.id]}
           onDrop={onIconDrop}
+          provider={provider}
         />
       ))}
     </div>
@@ -540,6 +580,8 @@ interface ApplicationComponentNodeData {
   /** 016-canvas-icon-layout, FR-006: this Architecture's hand-placed icon positions. */
   savedPositions: IconPositions;
   onIconDrop: (selectionId: string, clientX: number, clientY: number) => void;
+  /** 020: the architecture's provider, for the service icons. */
+  provider: ProviderCode;
 }
 
 /** Custom node type for an Application Component (spec FR-007, 005, 006). See prior features'
@@ -572,6 +614,7 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
     boxWidth,
     savedPositions,
     onIconDrop,
+    provider,
   } = data as unknown as ApplicationComponentNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
@@ -587,9 +630,10 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
       <SideHandles />
       <div
         // 009-ui-fixes-next-iteration, US7, FR-018: darker border shade than 008's
-        // `border-border` (verified live against both light and dark theme).
-        className={`box-border h-full w-full overflow-auto rounded bg-card p-2 ${
-          selected ? "border-2 border-primary" : "border border-gray-400 dark:border-gray-600"
+        // `border-border`. 021 (FR-028): a thin 1px border on a light, see-through background;
+        // selection adds a 1px ring outside the border, so the box never changes size.
+        className={`box-border h-full w-full overflow-auto rounded bg-card/80 p-2 backdrop-blur-[1px] ${
+          selected ? "border border-ring ring-1 ring-ring" : "border border-foreground/30"
         }`}
       >
         <div ref={contentRef} className="h-auto">
@@ -601,6 +645,7 @@ function ApplicationComponentNode({ data, selected }: NodeProps) {
             innerWidth={innerWidthOf(boxWidth)}
             savedPositions={savedPositions}
             onIconDrop={onIconDrop}
+            provider={provider}
           />
         </div>
       </div>
@@ -634,6 +679,8 @@ interface VpcNodeData {
   /** 016-canvas-icon-layout, FR-006: this Architecture's hand-placed icon positions. */
   savedPositions: IconPositions;
   onIconDrop: (selectionId: string, clientX: number, clientY: number) => void;
+  /** 020: the architecture's provider, for the service icons. */
+  provider: ProviderCode;
 }
 
 /** Custom node type for a VPC (002-006). 007 adds the same per-service click targets; 008
@@ -654,6 +701,7 @@ function VpcNode({ data, selected }: NodeProps) {
     boxWidth,
     savedPositions,
     onIconDrop,
+    provider,
   } = data as unknown as VpcNodeData;
   const [contentRef, measuredHeight] = useMeasuredHeight<HTMLDivElement>();
 
@@ -671,8 +719,9 @@ function VpcNode({ data, selected }: NodeProps) {
         // 009-ui-fixes-next-iteration, US7, FR-018: darker resting border than 008's
         // `border-primary` alone (which didn't otherwise distinguish selected from
         // unselected); selection still highlights via `border-primary`.
+        // 021 (FR-028): 1px, still darker than an Application's so a VPC reads as the container.
         className={`box-border h-full w-full overflow-auto rounded p-2 ${
-          selected ? "border-2 border-primary" : "border-2 border-gray-600 dark:border-gray-400"
+          selected ? "border border-ring ring-1 ring-ring" : "border border-foreground/55"
         }`}
       >
         <div ref={contentRef} className="h-auto">
@@ -685,6 +734,7 @@ function VpcNode({ data, selected }: NodeProps) {
             innerWidth={innerWidthOf(boxWidth)}
             savedPositions={savedPositions}
             onIconDrop={onIconDrop}
+            provider={provider}
           />
         </div>
       </div>
@@ -829,6 +879,7 @@ function OffsetEdge({
   targetY,
   sourcePosition,
   targetPosition,
+  markerStart,
   markerEnd,
   style,
   label,
@@ -982,6 +1033,7 @@ function OffsetEdge({
         <BaseEdge
           id={id}
           path={path}
+          markerStart={markerStart}
           markerEnd={markerEnd}
           style={style}
           label={label}
@@ -1020,6 +1072,7 @@ function OffsetEdge({
         <BaseEdge
           id={id}
           path={path}
+          markerStart={markerStart}
           markerEnd={markerEnd}
           style={style}
           label={label}
@@ -1044,6 +1097,7 @@ function OffsetEdge({
       <BaseEdge
         id={id}
         path={defaultPath}
+        markerStart={markerStart}
         markerEnd={markerEnd}
         style={style}
         label={label}
@@ -1185,6 +1239,9 @@ export interface ArchitectureDiagramPanelProps {
    * every pre-existing caller (just column 4 itself) keeps working without a prop; only
    * `PopoutCanvasDialog` passes a different value. */
   instanceId?: string;
+  /** 020 (FR-006): the architecture's provider, which picks the service icons. Defaults to
+   * `"aws"`, so AWS diagrams render exactly as before. */
+  provider?: ProviderCode;
 }
 
 /**
@@ -1216,6 +1273,7 @@ export function ArchitectureDiagramPanel({
   onRefresh,
   onOpenPopout,
   instanceId = "main",
+  provider = "aws",
 }: ArchitectureDiagramPanelProps) {
   const { getIntersectingNodes, getNodes, screenToFlowPosition } = useReactFlow();
 
@@ -1564,6 +1622,7 @@ export function ArchitectureDiagramPanel({
           savedPositions: iconLayout,
           onIconDrop: (selectionId: string, x: number, y: number) =>
             void onIconDrop(selectionId, c.id, x, y),
+          provider,
         },
         style: { width: finalWidth, height: finalHeight },
       });
@@ -1601,6 +1660,7 @@ export function ArchitectureDiagramPanel({
             savedPositions: iconLayout,
             onIconDrop: (selectionId: string, x: number, y: number) =>
               void onIconDrop(selectionId, child.id, x, y),
+            provider,
           },
           style: { width: childFinalWidth, height: childFinalHeight },
         });
@@ -1617,6 +1677,7 @@ export function ArchitectureDiagramPanel({
     selectedServiceId,
     iconLayout,
     onIconDrop,
+    provider,
   ]);
 
   // 009-ui-fixes-next-iteration, US4, FR-010: multiple Connectors between the same pair of
@@ -1683,11 +1744,17 @@ export function ArchitectureDiagramPanel({
         // inline style object, which `BaseEdge` does support) instead of a styled element.
         label: conn.sku_selection ? dataTransferLabel ?? conn.sku_selection.sku : undefined,
         labelStyle: { fontSize: "var(--text-2xs)", textDecoration: isSelected ? "underline" : "none" },
-        // 010-multi-region-support, spec FR-009: a directional arrow pointing from "from" to
-        // "to" — `OffsetEdge` already forwards `markerEnd` to `<BaseEdge>` (it just never had a
-        // value before this). `width`/`height` 3x React Flow's own default (12.5) per live user
-        // request — the default read as too small against this diagram's box sizes.
-        markerEnd: { type: MarkerType.ArrowClosed, width: 37.5, height: 37.5 },
+        // 019 (FR-026, FR-028): the connector's arrow style and direction (010 drew every
+        // connector with an arrowhead at "to"; migration 0008 keeps that look as `one_way`).
+        ...connectorMarkers(
+          conn.arrow_style,
+          conn.arrow_reversed,
+          // 021 (FR-028): arrowheads match the line: the theme's colour, blue when selected.
+          isSelected ? { ...ARROW_MARKER, color: "var(--ring)" } : ARROW_MARKER,
+        ),
+        // 021 (FR-028): this app selects connectors itself (never React Flow's `selected`), so
+        // the selected stroke is set here; the resting stroke comes from the theme (index.css).
+        ...(isSelected ? { style: { stroke: "var(--ring)", strokeWidth: 2 } } : {}),
       };
     });
     const offsets = edgeOffsetIndex(rawEdges);
@@ -1930,6 +1997,8 @@ export function ArchitectureDiagramPanel({
       style={{ height: diagramHeight }}
     >
       <ReactFlow
+        // 021 (FR-028): arrowheads take the theme's line colour (React Flow's default is grey).
+        defaultMarkerColor="var(--muted-foreground)"
         // Keyed by `architectureId` (see the comment above `defaultViewport`) so switching
         // Architectures gets a genuinely fresh pan-zoom instance — `defaultViewport` is only
         // ever read once, at mount, and this component doesn't otherwise remount on its own.

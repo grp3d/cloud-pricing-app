@@ -3,7 +3,8 @@
 A web application for designing cloud architectures and pricing them from real provider price
 lists. You lay out an architecture on a canvas — application components, VPCs and the data
 connectors between them — pick the exact services and SKUs each part uses from a searchable
-catalog, and get a priced total for a chosen duration (on-demand or reserved terms, per region).
+catalog, and get a priced total for a chosen duration (on-demand, reserved, savings plan or
+committed-use terms, per region). AWS, GCP and Azure are supported.
 Every price comes straight from the provider's published price list; anything that can't be
 priced is shown as such, never estimated.
 
@@ -12,13 +13,23 @@ priced is shown as such, never estimated.
 What it does today:
 
 - **Architecture canvas**: nested collections (application components inside VPCs), connectors
-  for data transfer between them, service icons, drag-and-drop layout.
-- **AWS pricing**: catalog search across services and regions, unit-aware pricing over a chosen
-  duration, reserved-term upfront and recurring costs, per-region totals.
+  for data transfer between them (plain, one-way or two-way arrows, reversible), each provider's
+  own service icons (a labelled provider tile for GCP and Azure services without one),
+  drag-and-drop layout.
+- **AWS, GCP and Azure pricing**: catalog search across services and regions, unit-aware pricing
+  over a chosen duration, graduated (tiered) prices, reserved-term upfront and recurring costs,
+  per-region totals, and the Price Change since the last calculation. Each provider is enabled
+  when it has a usable pricing snapshot, and one provider's missing data never affects the
+  others.
+- **Trends**: per provider, how many SKUs' list prices went up or down each week over the last
+  52 weeks, by category and region, and the biggest % price increases and decreases over a
+  chosen period.
+- **Saved settings**: Trends selections, column widths, collapsed columns and the last provider
+  are saved to the user's account and follow them to any device.
 - **Accounts and sharing**: user accounts, shared architectures, standard architecture templates,
   import and export.
-- **Admin tab**: users, and the state of the pricing data (active snapshot and revision, latest
-  pipeline run, cache, issues).
+- **Admin tab**: users, and the state of each provider's pricing data (active snapshot and
+  revision, latest pipeline run, cache, issues, Trends price history).
 
 Additional Information:
 
@@ -40,6 +51,8 @@ which publishes versioned snapshots that the app reads through their manifests f
 - [x] Web interface
 - [x] AWS pricing integration
 - [x] On-demand AWS deployment
-- [ ] GCP pricing integration
-- [ ] Azure pricing integration
+- [x] GCP pricing integration (production waits on the pipeline's GCP rollout)
+- [x] Azure pricing integration (production waits on the pipeline's Azure rollout)
+- [x] Trends page
+- [ ] Branching (one-to-many, many-to-one) diagram connectors
 - [ ] LLM integration
