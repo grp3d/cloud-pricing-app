@@ -12,11 +12,19 @@ import json
 import os
 
 import pytest
+from alembic import command
 
-from src.ops import alerts, params
+from src.ops import alerts, db_init, params
 from src.ops.backup import run_backup
 from src.ops.backup_store import open_backup_store
-from src.ops.db import OpsError, alembic_revision, alembic_upgrade, connect
+from src.ops.db import (
+    OpsError,
+    _alembic_config,
+    alembic_revision,
+    alembic_upgrade,
+    connect,
+    known_revisions,
+)
 from src.ops.db_init import run_db_init
 from src.services.auth_service import hash_password, verify_password
 from tests.helpers.pg import execute, require_pg_tools, scratch_database
@@ -211,6 +219,50 @@ def test_backup_from_a_newer_release_refuses_with_exit_3(target, store, tmp_path
         _init(target, store, tmp_path)
     assert excinfo.value.code == 3
     assert not _has_alembic_version(target)
+
+
+def test_backup_from_an_older_release_is_restored_then_migrated(
+    target, store, tmp_path, owner_parameter
+):
+    # v0.0.1's backups are at 0005: tables added later (0006+) aren't in the dump, so the
+    # restore check must count only what the backup has, and the migrations then add the rest.
+    require_pg_tools()
+    rev_0005 = "7c2e9d41b8a3"
+    with scratch_database(TEST_DATABASE_URL) as source:
+        command.upgrade(_alembic_config(source), rev_0005)
+        execute(
+            source,
+            "INSERT INTO users (id, username, is_admin, is_active, is_default_admin) "
+            "VALUES (gen_random_uuid(), 'alice', false, true, false)",
+        )
+        old = run_backup("scheduled", database_url=source, store=store, keep=14,
+                         release="v0.0.1", environment="test")
+    assert "service_category_rules" not in store.get(old["backup_id"])["row_counts"]
+
+    result = _init(target, store, tmp_path)
+
+    assert result["db"] == "restored"
+    assert result["backup_id"] == old["backup_id"]
+    assert "alice" in _usernames(target)
+    with connect(target) as conn:
+        head = alembic_revision(conn)
+    assert head in known_revisions() and head != rev_0005
+    assert "service_category_rules" in result["row_counts"]
+
+
+def test_an_unexpected_error_is_still_written_as_failed(target, store, tmp_path, monkeypatch):
+    # The health check waits for this file; without it a crash looks like "not finished yet"
+    # and the bring-up only fails after its 10-minute wait.
+    def boom(_url):
+        raise RuntimeError("migration exploded")
+
+    monkeypatch.setattr(db_init, "alembic_upgrade", boom)
+    with pytest.raises(RuntimeError):
+        _init(target, store, tmp_path, owner_password_parameter=None,
+              allow_default_admin_password=True)
+    written = json.loads((tmp_path / "db-init.json").read_text())
+    assert written["db"] == "failed"
+    assert "migration exploded" in written["error"]
 
 
 # --- existing ---------------------------------------------------------------------------------

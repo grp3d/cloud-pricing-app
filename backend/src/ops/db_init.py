@@ -119,9 +119,12 @@ def run_db_init(
             owner_password_parameter=owner_password_parameter,
             allow_default_admin_password=allow_default_admin_password,
         )
-    except OpsError as exc:
-        logger.error("db-init failed", error=str(exc), exit_code=exc.code)
-        _write_result(result_path, {"db": "failed", "error": str(exc), "exit_code": exc.code})
+    except Exception as exc:
+        # Any failure, not only an OpsError, is written down: the health check waits for this
+        # file, and without it a crash looks like "not finished" until its timeout.
+        code = exc.code if isinstance(exc, OpsError) else 1
+        logger.error("db-init failed", error=str(exc), exit_code=code)
+        _write_result(result_path, {"db": "failed", "error": str(exc), "exit_code": code})
         raise
     _write_result(result_path, result)
     logger.info("db-init finished", db=result["db"], backup_id=result["backup_id"],
@@ -149,7 +152,7 @@ def _run(
         if metadata is not None:
             try:
                 _restore(database_url, store, metadata)
-            except OpsError:
+            except Exception:
                 _wipe(database_url)
                 raise
             state, restored_from = "restored", metadata["id"]

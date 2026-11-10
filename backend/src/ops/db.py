@@ -50,8 +50,12 @@ def user_tables() -> list[str]:
 
 
 def row_counts(conn: psycopg.Connection) -> dict[str, int]:
+    """Rows per user table that exists. A database restored from an older release's backup
+    hasn't been migrated yet, so tables added since then are skipped rather than failing."""
     counts = {}
     for table in user_tables():
+        if conn.execute("SELECT to_regclass(%s)", (f'public."{table}"',)).fetchone()[0] is None:
+            continue
         counts[table] = conn.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
     return counts
 
