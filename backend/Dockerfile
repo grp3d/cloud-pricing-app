@@ -1,6 +1,6 @@
 # Backend image (018-app-cloud-deployment, FR-018, FR-053; research.md R5, R9).
 # Runs the API (default command) and the ops CLI (`python -m src.ops …`). Every base image is
-# pinned by digest; upgrade them as described in docs/deployment.md ("Pinned versions").
+# pinned by digest; upgrade them as described in docs/operations.md ("Pinned versions").
 
 FROM ghcr.io/astral-sh/uv:0.12.19@sha256:04d046b13e60d6bcec73cbc5e1cad25d680dea90c8573340950a0ac2d1aef424 AS uv
 

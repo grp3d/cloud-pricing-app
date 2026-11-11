@@ -1,6 +1,6 @@
 # Example settings for qa (018-app-cloud-deployment). To add the environment, copy this to
 # qa.tfvars and prod.backend.hcl to qa.backend.hcl, check the data bucket and policy names exist,
-# and follow docs/deployment.md "Adding an environment". No account IDs or personal IPs here.
+# and follow docs/setup.md "Adding an environment". No account IDs or personal IPs here.
 
 environment = "qa"
 aws_region  = "us-east-1"

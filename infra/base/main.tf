@@ -4,7 +4,7 @@
 
 # --- Account-wide items, looked up only (FR-056) ----------------------------------------------
 # A missing item fails the plan in its lookup, before anything is created, and the provider's
-# error names it. docs/deployment.md has a check command for each one.
+# error names it. docs/setup.md (step 1) has a check command for each one.
 
 data "aws_iam_openid_connect_provider" "github" {
   url = var.github_oidc_provider_url

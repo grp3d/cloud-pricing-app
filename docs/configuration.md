@@ -33,7 +33,7 @@ refuses to start**, and the error names the setting.
 ### Deployment settings
 
 Used by the packaged stack and the `ops` commands (`python -m src.ops …`); the web server only
-displays them. In the cloud, cloud-init sets them; see [deployment.md](deployment.md).
+displays them. In the cloud, cloud-init sets them; see [setup.md](setup.md).
 
 | Environment variable | Default | What it controls |
 |---|---|---|

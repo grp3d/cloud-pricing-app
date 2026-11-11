@@ -13,7 +13,7 @@ locals {
   gh_owner  = split("/", var.github_repository)[0]
   gh_name   = split("/", var.github_repository)[1]
   # The immutable subject format (repositories created after 2026-07-15), with the repo's
-  # subject template set to ["repo", "context", "ref"] (docs/deployment.md, one-time setup).
+  # subject template set to ["repo", "context", "ref"] (docs/setup.md, one-time setup).
   gh_sub_repo = "repo:${local.gh_owner}@${var.github_owner_id}/${local.gh_name}@${var.github_repo_id}"
 
   gha_subjects = {

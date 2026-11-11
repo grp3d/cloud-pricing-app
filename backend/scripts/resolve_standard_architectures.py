@@ -1,7 +1,7 @@
 """Resolve the four standard architectures to concrete pricing-data SKUs and write the seed
 (014-architecture-templates-import-export, research.md §1-§5).
 
-Reads `docs/common_aws_architectures.md` (pure JSON) as the reference for which architectures,
+Reads `docs/brief/common_aws_architectures.md` (pure JSON) as the reference for which architectures,
 regions, and components exist, applies the explicit per-figure rules in
 `scripts/standard_architectures/match_rules.py` against the real pricing dataset, and writes:
 
@@ -15,7 +15,7 @@ snapshot produces byte-identical files. Afterwards, rebuild the CI Parquet fixtu
 the seeded SKUs (`scripts/build_test_pricing_fixture.py`).
 
     uv run python scripts/resolve_standard_architectures.py \\
-        [--source ../docs/common_aws_architectures.md] [--data-uri file:///…/DATA/pipeline]
+        [--source ../docs/brief/common_aws_architectures.md] [--data-uri file:///…/DATA/pipeline]
 
 018-app-cloud-deployment: the pricing data is read through the pipeline's manifests, exactly as
 the app reads it (`--data-uri` defaults to `PRICING_DATA_URI`; pin a date with
@@ -46,7 +46,7 @@ from src.pricing_data.active_snapshot import PROVIDER, select_snapshot  # noqa: 
 from src.pricing_data.snapshot import ActiveSnapshot  # noqa: E402
 from src.pricing_data.storage import LocalStore, open_store  # noqa: E402
 
-DEFAULT_SOURCE = BACKEND.parent / "docs" / "common_aws_architectures.md"
+DEFAULT_SOURCE = BACKEND.parent / "docs" / "brief" / "common_aws_architectures.md"
 SEED_DIR = BACKEND / "src" / "db" / "seed"
 
 

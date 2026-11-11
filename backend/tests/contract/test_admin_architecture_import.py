@@ -105,7 +105,7 @@ async def test_import_into_the_admins_own_row(client, admin_headers):
         _doc(format_version=2),
         {k: v for k, v in _doc().items() if k != "architectures"},
         _doc(architectures={"not": "a list"}),
-        # The old baseline JSON shape from docs/functionality_2026-09-25.md (no `format`).
+        # The old baseline JSON shape from docs/brief/functionality_2026-09-25.md (no `format`).
         {"version": "1.0", "architectures": [{"id": "arch_x", "components": []}]},
     ],
 )

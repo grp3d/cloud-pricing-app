@@ -121,7 +121,7 @@ def test_valid_envelope_passes():
         _envelope(architectures={"not": "a list"}),
         {k: v for k, v in _envelope().items() if k != "architectures"},
         {k: v for k, v in _envelope().items() if k != "format"},
-        # The old baseline JSON shape from docs/functionality_2026-09-25.md.
+        # The old baseline JSON shape from docs/brief/functionality_2026-09-25.md.
         {"version": "1.0", "architectures": [{"id": "arch_x", "components": []}]},
     ],
 )

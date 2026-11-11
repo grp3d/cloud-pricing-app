@@ -1,6 +1,6 @@
 # Example settings for dev (018-app-cloud-deployment). To add the environment, copy this to
 # dev.tfvars and prod.backend.hcl to dev.backend.hcl, check the data bucket and policy names exist,
-# and follow docs/deployment.md "Adding an environment". No account IDs or personal IPs here.
+# and follow docs/setup.md "Adding an environment". No account IDs or personal IPs here.
 
 environment = "dev"
 aws_region  = "us-east-1"

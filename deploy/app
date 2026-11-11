@@ -147,7 +147,7 @@ tfvar() {
 require_tools() {
   local tool
   for tool in "$@"; do
-    command -v "$tool" >/dev/null 2>&1 || die 3 "$tool is required (see docs/deployment.md, laptop tools)"
+    command -v "$tool" >/dev/null 2>&1 || die 3 "$tool is required (see docs/setup.md, laptop tools)"
   done
   if [[ " $* " == *" aws "* ]]; then
     aws --version 2>&1 | grep -q '^aws-cli/2\.' || die 3 "AWS CLI v2 is required"
@@ -169,7 +169,7 @@ read_base() {
   state_bucket="$(sed -n -E 's/^[[:space:]]*bucket[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' "$BACKEND_HCL" | head -n 1)"
   if ! state="$(awsx s3 cp "s3://$state_bucket/app/$ENV_NAME/base.tfstate" - 2>/dev/null)" \
       || [[ "$(jq -r '.outputs.backup_bucket.value // empty' <<<"$state")" == "" ]]; then
-    die 3 "the base stack for $ENV_NAME has not been applied; run the one-time setup in docs/deployment.md"
+    die 3 "the base stack for $ENV_NAME has not been applied; run the one-time setup in docs/setup.md"
   fi
   BASE_OUTPUTS="$(jq '.outputs | map_values(.value)' <<<"$state")"
   BACKUP_BUCKET="$(jq -r .backup_bucket <<<"$BASE_OUTPUTS")"
@@ -426,7 +426,7 @@ first_deploy_guards() {
   awsx ec2 describe-images --image-ids "$ami" --query 'Images[0].ImageId' --output text >/dev/null 2>&1 \
     || die 3 "AMI $ami does not exist in $AWS_REGION"
   parameter_exists "$PARAMETER_PREFIX/owner-password" \
-    || die 3 "the owner password parameter $PARAMETER_PREFIX/owner-password is missing (docs/deployment.md, one-time setup)"
+    || die 3 "the owner password parameter $PARAMETER_PREFIX/owner-password is missing (docs/setup.md, one-time setup)"
   local allowlist
   allowlist="$(awsx ssm get-parameter --name "$ALLOWLIST_PARAMETER" --query Parameter.Value --output text)" \
     || die 3 "the allowlist parameter $ALLOWLIST_PARAMETER is not readable"
@@ -694,7 +694,7 @@ cmd_cert() {
     || die 3 "the $ENV_NAME TLS root does not exist yet (the first deploy/app up creates it)"
   if [[ -n "$OUT_FILE" ]]; then
     printf '%s\n' "$cert" >"$OUT_FILE"
-    log "wrote $OUT_FILE — install it on your devices (docs/deployment.md)"
+    log "wrote $OUT_FILE — install it on your devices (docs/setup.md, certificates and devices)"
   else
     printf '%s\n' "$cert"
   fi

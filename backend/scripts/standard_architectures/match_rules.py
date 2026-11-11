@@ -1,7 +1,7 @@
 """Explicit per-usage-figure match rules for the four standard architectures
 (014-architecture-templates-import-export, research.md §3-§5, §7).
 
-Source: `docs/common_aws_architectures.md` (version 1.1). Every usage figure of every component
+Source: `docs/brief/common_aws_architectures.md` (version 1.1). Every usage figure of every component
 there has exactly one rule below, in the source's component order. A rule either names the
 exact pricing-data SKU filters (service code candidates, product family, exact attribute
 equalities, expected On-Demand unit) plus the quantity to enter, or carries an `omit_reason`
