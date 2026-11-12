@@ -1,27 +1,25 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 → 1.1.0
-- Bump rationale: MINOR. AWS reached a working end-to-end version (feature 018), which is the
-  condition the old Principle III and the stack section set for adding providers. GCP and Azure
-  move into scope, and the guidance on multi-provider design is materially expanded. No
-  principle is removed, and the gate is met rather than reversed.
+- Version change: 1.1.0 → 1.2.0
+- Bump rationale: MINOR. The AI agent features (agent-01 to agent-04) move into scope. Two
+  principles are added and two are extended; none is removed or redefined.
 - Modified principles:
-  - I. Pricing Data Integrity: now covers AWS, GCP and Azure; adds per-provider snapshot
-    independence and no currency conversion.
-  - II. Clear Data-Layer Separation: user-defined data now includes per-user preferences.
-  - III. Provider-Extensibility by Design → III. Multi-Provider by Design: the AWS-first gate
-    is recorded as met; adds shared request/response shapes with provider-specific retrieval
-    behind them.
-  - V. Test-First Development: provider-specific retrieval and normalization code is now
-    explicitly test-first.
-  - VI. Simplicity & YAGNI: shared abstractions are justified for implemented providers only;
-    still no speculative abstractions (other providers, LLM agent integrations).
+  - I. Pricing Data Integrity: every monetary figure the agent shows comes from the app's
+    pricing operations; USD to 2 decimal places, totals summed from unrounded values.
+  - V. Test-First Development: automated tests use a deterministic, scripted model; real-model
+    evaluations are a separate opt-in run; agent specs include golden conversations.
+  - VI. Simplicity & YAGNI: "LLM agent integrations" removed from the examples of future
+    state, since they are now in scope; further providers remain the example.
+- Added principles:
+  - VII. The Agent Acts as the User, and the User Decides.
+  - VIII. Replaceable Models, Bounded Cost, Protected Secrets.
 - Added sections: none
 - Removed sections: none
-- Technology Stack & Architecture Constraints: provider scope is now AWS, GCP and Azure; pricing
-  data is per-provider tables; application data includes user preferences.
-- Development Workflow & Quality Gates: adds a review check for provider-specific code staying
-  behind the shared contract.
+- Technology Stack & Architecture Constraints: adds the AI agent's model provider, chosen by
+  settings (Principle VIII).
+- Development Workflow & Quality Gates: adds review checks for Principles VII and VIII and for
+  agent tests that never call live models.
+- Source: ../speckit-inputs/agent-00-constitution-additions.md (revised 2026-11-11).
 - Templates requiring follow-up: none. Dependent templates and commands read this file at
   runtime and are not modified by this command.
 - Deferred placeholders: none.
@@ -42,12 +40,21 @@ price the source omits, stores as null, or publishes in another currency), the a
 MUST surface that gap explicitly (e.g., "unavailable") rather than approximate it, treat it as
 zero, or convert it.
 
+Every monetary figure the AI agent shows (price, total, difference, percentage, savings) MUST
+come from the app's pricing operations. The model MAY choose which operations to run and MAY
+explain their results; it MUST NOT calculate, estimate, round or recall a price itself.
+Anything that can't be priced is shown as unpriceable, as the rest of the app does. Agent
+figures are in USD, shown to 2 decimal places, and totals are summed from the pricing engine's
+unrounded values so they match the Pricing tab.
+
 Each provider's snapshots MUST be read and validated independently: one provider's failed,
 partial or stale snapshot MUST NOT hide or block another provider's data.
 
 Rationale: This is a pricing tool; a single silently-wrong number destroys user trust. Since
 the pricing data is owned and refreshed by a separate upstream project, this codebase's
-only correct relationship to it is faithful, attributable retrieval.
+only correct relationship to it is faithful, attributable retrieval. Language models are
+unreliable at arithmetic and at remembering prices, so the agent explains figures but never
+produces them.
 
 ### II. Clear Data-Layer Separation
 The system maintains two categorically different kinds of data, and the boundary between
@@ -110,21 +117,62 @@ presentational code MAY follow tests-after where a test-first cycle adds no veri
 value, but any logic that computes or transforms a price, a price trend, or a user-defined
 data relationship is NON-NEGOTIABLE test-first.
 
+Automated tests MUST NOT call live language models; they MUST use a deterministic, scripted
+model. Evaluations against real models are a separate, opt-in run that produces a pass/fail
+report per model. Each AI agent feature's spec MUST include golden conversations (example user
+messages, the follow-up questions the agent should ask, and the expected outcome); together
+they form the shared evaluation set.
+
 Rationale: Correctness of pricing output is the product's core value proposition; the
 cost of a testing discipline is far lower than the cost of a wrong price shown to a user.
+Tests must be free, fast and repeatable, while real-model quality still needs measuring.
 
 ### VI. Simplicity & YAGNI
 Prefer the simplest design that satisfies the current requirement. Shared multi-provider
 abstractions are justified only for providers that are actually implemented (AWS, GCP and
 Azure). Do not build abstractions, configuration systems, or plugin architectures for
 providers or capabilities that are not being implemented (for example, further cloud
-providers or LLM agent integrations recorded as future state). Complexity (a new service
+providers recorded as future state). Complexity (a new service
 boundary, a new abstraction layer, a new data store) MUST be justified by a concrete,
 current requirement, not a hypothetical future one.
 
 Rationale: Principle III protects the codebase from single-provider lock-in through a shared
 contract; building abstractions beyond the providers and features actually in scope adds
 cost and risk without corresponding present value.
+
+### VII. The Agent Acts as the User, and the User Decides
+- **The agent is a user, not an administrator.** It MUST act only through the operations,
+  validation and permissions the logged-in user already has. It MUST NOT get special access to
+  data, to other users' architectures or to storage. It is available to named accounts only,
+  never to guests.
+- **Propose, then apply.** Any change to saved data (creating, changing or importing an
+  architecture) MUST first be shown as a proposal the user can review. Nothing is saved until
+  the user accepts. The changes made in response to one user message MUST be undoable in one
+  action.
+- **Content is data, not instructions.** Text inside architectures (names, descriptions,
+  imported content) and any operation output MUST be treated as data. It can never change the
+  agent's rules or trigger operations.
+- **Transparency.** Users MUST be able to see which operations the agent ran, with what
+  inputs, and the pricing snapshot date behind every figure. The agent states the assumptions
+  it made.
+
+Rationale: Mistakes and manipulation stay limited to what the user could already do, users
+stay in control of their work, shared architectures are untrusted input, and every answer can
+be checked.
+
+### VIII. Replaceable Models, Bounded Cost, Protected Secrets
+- **No dependence on one model vendor.** No feature may require a specific model or vendor.
+  The provider and model MUST be chosen by settings, and supported models are checked against
+  the shared evaluation set (Principle V).
+- **The app works without the agent.** The agent MUST be able to be switched off, and the rest
+  of the app MUST work fully when it is off or unavailable.
+- **Bounded cost.** Usage MUST have per-user limits and a global monthly cap. Once a limit is
+  reached, no further model usage happens.
+- **Secrets stay on the server.** Model keys MUST NOT reach the browser and MUST NOT be stored
+  in the database.
+
+Rationale: This avoids lock-in, allows free local development, keeps the app usable when a
+model service is down, and keeps a reachable agent endpoint from becoming an open billing risk.
 
 ## Technology Stack & Architecture Constraints
 
@@ -139,6 +187,8 @@ cost and risk without corresponding present value.
   etc.).
 - **Provider scope**: AWS, GCP and Azure. Adding any other provider requires a constitution
   amendment.
+- **AI agent model**: a language model reached from the backend only, with the provider and
+  model chosen by settings (Principle VIII). It is not a datastore and holds no pricing truth.
 
 Any deviation from this stack (introducing a new datastore, a new frontend framework, a
 different API style) requires an explicit constitution amendment, not an ad-hoc choice
@@ -152,8 +202,13 @@ inside a feature branch.
   TypeScript types in sync per Principle IV before merge; a build/type-check MUST pass.
 - Code review MUST verify: no hardcoded/estimated pricing values (Principle I), no blurring
   of the vendor-data/user-data boundary (Principle II), provider-specific code kept behind the
-  shared contract with no single-provider assumptions in shared code (Principle III), and no
-  unjustified complexity (Principle VI).
+  shared contract with no single-provider assumptions in shared code (Principle III), no
+  unjustified complexity (Principle VI), agent actions limited to the user's own operations and
+  permissions with changes proposed before they are saved (Principle VII), and no hard
+  dependence on one model vendor, unbounded model usage, or model keys outside the server
+  (Principle VIII).
+- Every change touching the AI agent MUST keep its automated tests on a deterministic,
+  scripted model (Principle V); no test in the default run may call a live model.
 - Feature specs and plans produced by Spec Kit commands MUST be checked against this
   constitution during `/speckit-analyze`; unresolved conflicts block `/speckit-implement`.
 
@@ -173,4 +228,4 @@ be flagged and simplified per Principle VI. Runtime development guidance for AI 
 working in this repository (Spec Kit commands, templates) reads this file as the source of
 truth for these principles.
 
-**Version**: 1.1.0 | **Ratified**: 2026-09-02 | **Last Amended**: 2026-11-02
+**Version**: 1.2.0 | **Ratified**: 2026-09-02 | **Last Amended**: 2026-11-12
