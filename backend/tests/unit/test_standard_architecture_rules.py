@@ -280,3 +280,28 @@ def test_output_is_deterministic(dataset):
     ).model_dump_json()
     assert render_report(first) == render_report(second)
     assert "left out" in render_report(first)
+
+
+# --- 022 SC-004: every AWS figure is covered on GCP and Azure --------------------------------
+
+
+@pytest.mark.parametrize("provider", ["gcp", "azure"])
+def test_every_aws_figure_has_a_provider_rule_and_nothing_else(provider):
+    """Every (component, figure) of the AWS rules is matched or left out on the provider, and
+    every provider rule stands in for a real AWS figure (FR-011)."""
+    import importlib
+
+    from scripts.standard_architectures.match_rules import RULES as AWS_RULES
+
+    rules = importlib.import_module(f"scripts.standard_architectures.match_rules_{provider}")
+    aws = {(r.architecture_id, r.component_id, r.figure) for r in AWS_RULES}
+    theirs = {(r.architecture_id, r.component_id, r.figure) for r in rules.RULES}
+    assert theirs == aws
+
+
+@pytest.mark.parametrize("provider", ["gcp", "azure"])
+def test_provider_rules_use_only_the_mapped_regions(provider):
+    import importlib
+
+    rules = importlib.import_module(f"scripts.standard_architectures.match_rules_{provider}")
+    assert {r.region for r in rules.RULES} <= set(rules.REGIONS.values())

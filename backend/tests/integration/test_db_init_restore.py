@@ -250,6 +250,39 @@ def test_backup_from_an_older_release_is_restored_then_migrated(
     assert "service_category_rules" in result["row_counts"]
 
 
+def _standard_architectures(url) -> dict[str, int]:
+    rows = execute(
+        url,
+        "SELECT a.provider, count(*) FROM architectures a JOIN users u ON u.id = a.user_id "
+        "WHERE u.is_default_admin AND a.deleted_at IS NULL GROUP BY a.provider",
+    )
+    return dict(rows)
+
+
+def test_backup_from_before_0009_gains_the_eight_standard_architectures(
+    target, store, tmp_path, owner_parameter
+):
+    """022 SC-003: a backup taken before the GCP and Azure standard architectures existed gains
+    exactly those eight when restored and migrated; bringing it up again adds nothing."""
+    require_pg_tools()
+    rev_0008 = "6c3e9a1b5f08"
+    with scratch_database(TEST_DATABASE_URL) as source:
+        command.upgrade(_alembic_config(source), rev_0008)
+        assert _standard_architectures(source) == {"aws": 4}
+        old = run_backup("scheduled", database_url=source, store=store, keep=14,
+                         release="v0.1.1", environment="test")
+
+    result = _init(target, store, tmp_path)
+
+    assert result["db"] == "restored"
+    assert result["backup_id"] == old["backup_id"]
+    assert _standard_architectures(target) == {"aws": 4, "gcp": 4, "azure": 4}
+
+    again = _init(target, store, tmp_path)
+    assert again["db"] == "existing"
+    assert _standard_architectures(target) == {"aws": 4, "gcp": 4, "azure": 4}
+
+
 def test_an_unexpected_error_is_still_written_as_failed(target, store, tmp_path, monkeypatch):
     # The health check waits for this file; without it a crash looks like "not finished yet"
     # and the bring-up only fails after its 10-minute wait.

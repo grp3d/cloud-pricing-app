@@ -1,0 +1,341 @@
+{
+  "format": "cloud-pricing-architectures",
+  "format_version": 1,
+  "exported_at": "2026-11-02T00:00:00Z",
+  "source_username": "Admin",
+  "architectures": [
+    {
+      "name": "Active-Standby Multi-Region Web Application",
+      "provider": "azure",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VNet (eastus)",
+          "region": "eastus",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "DZH318Z695ZG",
+              "sku": "DZH318Z0BNX0/0020/d54686f0-77ff-43f3-9e7c-2099030d32a7",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "322580.6452"
+            },
+            {
+              "service_code": "DZH319SLRJG5",
+              "sku": "DZH318Z0BNXH/0002/27827eb0-7f60-4928-940b-f5fe15e7a4cb",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "DZH313Z7MMC8",
+              "sku": "DZH318Z08M9W/004T/db8c0962-f3f8-5b44-99aa-f3c7c1e668c8",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "96.0000",
+              "provider_options": {
+                "kind": "azure_vm",
+                "version": 1,
+                "os": "linux"
+              }
+            },
+            {
+              "service_code": "DZH3199QPQTD",
+              "sku": "DZH318Z0KDX1/008R/37812a7d-d8b2-55f2-8068-a77eff7c98bc",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "DZH3199QPQTD",
+              "sku": "DZH318Z0DCRX/000R/05116300-a5d3-5c8f-a80e-bc6bf8109556",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "250.0000"
+            },
+            {
+              "service_code": "DZH317F1HKN0",
+              "sku": "DZH318Z0BPH7/006M/272492b3-1c92-4a5f-bee9-52a8e10ca514",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "2000.0000"
+            },
+            {
+              "service_code": "DZH317F1HKN0",
+              "sku": "DZH318Z0BPH7/006M/14854f12-8d37-4299-842a-b0f2df82a305",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "1612.9032"
+            },
+            {
+              "service_code": "DZH317F1HKN0",
+              "sku": "DZH318Z0BPH7/006M/c5248cf8-ecba-4807-9304-6a8f14b5805a",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "16129.0323"
+            },
+            {
+              "service_code": "DZH318FHKQ5W",
+              "sku": "DZH318Z0BNVX/001D/48a72138-d041-55c5-8b83-45703d4b2aed",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "8.0645"
+            }
+          ]
+        },
+        {
+          "ref": "c2",
+          "type": "vpc",
+          "name": "VNet (westus2)",
+          "region": "westus2",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "DZH319SLRJG5",
+              "sku": "DZH318Z0BNXH/0002/27827eb0-7f60-4928-940b-f5fe15e7a4cb",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "DZH313Z7MMC8",
+              "sku": "DZH318Z08M9W/006J/5ab68e24-08ef-5e5b-ba9a-771e5054e963",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "96.0000",
+              "provider_options": {
+                "kind": "azure_vm",
+                "version": 1,
+                "os": "linux"
+              }
+            },
+            {
+              "service_code": "DZH3199QPQTD",
+              "sku": "DZH318Z0KDX1/00H7/1a05df1a-04cd-5992-a78a-23a8641997a3",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "DZH3199QPQTD",
+              "sku": "DZH318Z0DCRX/000V/aa0fdd92-2d97-5f66-80fe-befa93c9b24c",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "250.0000"
+            },
+            {
+              "service_code": "DZH317F1HKN0",
+              "sku": "DZH318Z0BPH7/004C/e490b7ca-7d10-4b35-8b4d-81336dd54bfe",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "2000.0000"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    },
+    {
+      "name": "Modern Data Lake & ETL Analytics Pipeline",
+      "provider": "azure",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VNet (eastus)",
+          "region": "eastus",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "DZH318TR2LMQ",
+              "sku": "DZH318Z0BQFF/002W/62d94a65-9300-48a6-8c15-0e70fc41eb44",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "96.0000"
+            },
+            {
+              "service_code": "DZH315FBNNW2",
+              "sku": "DZH318Z0C1BN/000P/3942310a-a1e3-4df6-854c-70a18805957e",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "80.0000"
+            },
+            {
+              "service_code": "DZH317F1HKN0",
+              "sku": "DZH318Z0BJRM/003V/6ed87501-e3eb-415f-9db6-b55aeb803db1",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "10000.0000"
+            },
+            {
+              "service_code": "DZH317F1HKN0",
+              "sku": "DZH318Z0BJRM/003V/6ed87501-e3eb-415f-9db6-b55aeb803db1",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "5000.0000"
+            },
+            {
+              "service_code": "DZH317F1HKN0",
+              "sku": "DZH318Z0BJRM/01MD/8a4c9305-7a2c-50c7-ad3f-536a0fc38594",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "50000.0000"
+            },
+            {
+              "service_code": "DZH3194T4H8H",
+              "sku": "DZH318Z0CGNP/000M/508de5d2-658f-5a83-b65d-5c63f25d02db",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "1.9355"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    },
+    {
+      "name": "Serverless Microservices Back-End",
+      "provider": "azure",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VNet (westeurope)",
+          "region": "westeurope",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "DZH318VB48FM",
+              "sku": "DZH318Z0BX2R/0001/d9592a55-045a-4810-8951-e7ab64b353a4",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "10000.0000"
+            },
+            {
+              "service_code": "DZH318FZ20SD",
+              "sku": "DZH318Z0BQCM/005P/24a347dc-dc21-40fd-b0cb-dcae147d3f9a",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "645161.2903"
+            },
+            {
+              "service_code": "DZH319HJX2WX",
+              "sku": "DZH318Z0BNWB/000M/4e5cd9e2-c20f-4d7f-acbe-58931b8b49ef",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "483870.9677"
+            },
+            {
+              "service_code": "DZH317DL9CC7",
+              "sku": "DZH318Z0BPJH/0028/aa57abaf-ec18-4387-9348-07b177eab8db",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "50.0000"
+            },
+            {
+              "service_code": "DZH317DL9CC7",
+              "sku": "DZH318Z0D20N/001H/718d4f90-b362-5802-87d0-279b5514712c",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "161290.3226"
+            },
+            {
+              "service_code": "DZH317DL9CC7",
+              "sku": "DZH318Z0D20N/001H/718d4f90-b362-5802-87d0-279b5514712c",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "322580.6452"
+            },
+            {
+              "service_code": "DZH3179N6FXW",
+              "sku": "DZH318Z0BQN0/0052/2a9992f8-e914-490b-a7a6-6d21ba55acda",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "322580.6452"
+            },
+            {
+              "service_code": "DZH315NX4WLD",
+              "sku": "DZH318Z0BQG3/000H/d207c4bb-d8a3-4f48-bc91-4b324a1399c2",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "64516.1290"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    },
+    {
+      "name": "Containerized Microservices Platform (EKS)",
+      "provider": "azure",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VNet (westus2)",
+          "region": "westus2",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "DZH315HTQSK6",
+              "sku": "DZH318Z0CQSH/0004/251a08e1-40d6-48e6-8368-4c3e5ee3bbff",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "DZH313Z7MMC8",
+              "sku": "DZH318Z08M9W/0071/bd647562-16a4-5759-94dd-03265007ed7d",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "144.0000",
+              "provider_options": {
+                "kind": "azure_vm",
+                "version": 1,
+                "os": "linux"
+              }
+            },
+            {
+              "service_code": "DZH315F9L8DM",
+              "sku": "DZH318Z0BQV5/0024/6331e61c-1b44-4a10-9fb1-e9c0b470c4d5",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "100.0000"
+            },
+            {
+              "service_code": "DZH319SLRJG5",
+              "sku": "DZH318Z0BNXH/0002/27827eb0-7f60-4928-940b-f5fe15e7a4cb",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "DZH314LP4PZS",
+              "sku": "DZH318Z0BQH2/006S/4e38119e-b416-4bc5-992c-95120a689104",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "DZH317NR0P99",
+              "sku": "DZH318Z0TRNB/0005/64d99bf2-ce6c-56c3-8f9f-2e5989e9f941",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "192.0000"
+            },
+            {
+              "service_code": "DZH317NR0P99",
+              "sku": "DZH318Z0DCQ4/000R/137b716b-1903-598e-89b1-edf92d3e8e25",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "500.0000"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    }
+  ]
+}

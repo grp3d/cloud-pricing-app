@@ -15,6 +15,10 @@ for every written file. The expected prices are documented in each provider's RE
 
     uv run python scripts/build_provider_fixtures.py \
         --source-uri file:///path/to/DATA/pipeline [--provider azure|gcp]
+
+022: `--standard-architectures` instead builds `tests/fixtures/pricing_parquet_standard/`, holding
+only the items the GCP and Azure standard architectures use (read from their seed files), in the
+locations the designs use. Re-run it after regenerating those seeds.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from urllib.parse import urlparse
 import duckdb
 
 DEFAULT_OUT = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "pricing_parquet"
+STANDARD_OUT = DEFAULT_OUT.with_name("pricing_parquet_standard")
 
 # --- What each fixture holds --------------------------------------------------------------------
 # Per provider: the snapshot, the kept locations, and per location a WHERE clause on the
@@ -92,6 +97,47 @@ GCP = {
 
 PROVIDERS = {"azure": AZURE, "gcp": GCP}
 
+# 022: every item the GCP and Azure standard architectures use, read from their seed files (as
+# `build_test_pricing_fixture.py` does for AWS), so the seeds price in CI. A GCP machine's RAM SKU
+# (`provider_options.ram_sku`) is included too. Global-only items live in `global`.
+SEED_DIR = Path(__file__).resolve().parent.parent / "src" / "db" / "seed"
+SEEDED_LOCATIONS = {
+    "gcp": ("us-east1", "us-west1", "europe-west1", "global"),
+    "azure": ("eastus", "westus2", "westeurope", "global"),
+}
+
+
+def _seeded_items(provider: str) -> list[str]:
+    path = SEED_DIR / f"standard_architectures_{provider}.json"
+    if not path.exists():
+        return []
+    items: set[str] = set()
+    for architecture in json.loads(path.read_text())["architectures"]:
+        for collection in architecture["collections"]:
+            for selection in collection["sku_selections"]:
+                items.add(selection["sku"])
+                options = selection.get("provider_options") or {}
+                if options.get("ram_sku"):
+                    items.add(options["ram_sku"])
+    return sorted(items)
+
+
+def _standard_spec(provider: str) -> dict:
+    """The `--standard-architectures` fixture: only the seeded items, in the locations the
+    designs use. It is a separate root (`pricing_parquet_standard/`) so the small hand-picked
+    fixture the other tests count on stays as it is."""
+    items = _seeded_items(provider)
+    if not items:
+        raise SystemExit(f"no {provider} standard-architecture seed to build from")
+    listed = ", ".join(f"'{item}'" for item in items)
+    clause = (
+        f"sku_id IN ({listed})" if provider == "gcp" else f"(sku_id || '/' || meter_id) IN ({listed})"
+    )
+    return {
+        **PROVIDERS[provider],
+        "locations": dict.fromkeys(SEEDED_LOCATIONS[provider], clause),
+    }
+
 
 # --- Building -----------------------------------------------------------------------------------
 
@@ -112,8 +158,8 @@ def _file_entry(out: Path, key: str, row_count: int) -> dict:
     }
 
 
-def _build(provider: str, source_root: Path, out: Path) -> None:
-    spec = PROVIDERS[provider]
+def _build(provider: str, source_root: Path, out: Path, *, standard: bool = False) -> None:
+    spec = _standard_spec(provider) if standard else PROVIDERS[provider]
     snapshot_date = spec["date"]
     source_manifest = json.loads(
         (source_root / provider / "manifests" / snapshot_date / "manifest.json").read_text()
@@ -123,8 +169,14 @@ def _build(provider: str, source_root: Path, out: Path) -> None:
     run_id = source_manifest["run_id"]
     locations = list(spec["locations"])
     dest_root = out / provider
+    # The hand-written README (expected prices) survives a rebuild.
+    readme = dest_root / "README.md"
+    readme_text = readme.read_text() if readme.exists() else None
     if dest_root.exists():
         shutil.rmtree(dest_root)
+    if readme_text is not None:
+        dest_root.mkdir(parents=True)
+        readme.write_text(readme_text)
 
     con = duckdb.connect(config={"threads": 1})
 
@@ -225,13 +277,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source-uri", required=True, help="file:// pipeline storage root")
     parser.add_argument("--provider", choices=sorted(PROVIDERS), action="append")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument(
+        "--standard-architectures",
+        action="store_true",
+        help="build only the GCP/Azure standard architectures' items into "
+        "tests/fixtures/pricing_parquet_standard/ (022)",
+    )
     args = parser.parse_args()
+    out = args.out or (STANDARD_OUT if args.standard_architectures else DEFAULT_OUT)
     parsed = urlparse(args.source_uri)
     if parsed.scheme != "file":
         raise SystemExit("--source-uri must be a file:// pipeline storage root")
     for provider in args.provider or sorted(PROVIDERS):
-        _build(provider, Path(parsed.path), args.out)
+        _build(provider, Path(parsed.path), out, standard=args.standard_architectures)
 
 
 if __name__ == "__main__":

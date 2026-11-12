@@ -1,0 +1,227 @@
+{
+  "created_at": "2026-11-11T23:20:42Z",
+  "manifest_version": "1.1",
+  "origin": "pipeline",
+  "previous_revision": 1,
+  "provider": "azure",
+  "purged": null,
+  "raw": {
+    "eastus": {
+      "bytes": 1525315,
+      "file_count": 26,
+      "location": "azure/raw/2026-11-02/eastus/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T22:01:28Z"
+    },
+    "eastus2": {
+      "bytes": 1500040,
+      "file_count": 26,
+      "location": "azure/raw/2026-11-02/eastus2/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T22:01:09Z"
+    },
+    "global": {
+      "bytes": 375676,
+      "file_count": 8,
+      "location": "azure/raw/2026-11-02/global/20261111T231911Z-f76891/",
+      "purge_after": "2026-12-12",
+      "stored_at": "2026-11-11T23:19:45Z"
+    },
+    "north-america": {
+      "bytes": 507,
+      "file_count": 1,
+      "location": "azure/raw/2026-11-02/north-america/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T21:46:07Z"
+    },
+    "westeurope": {
+      "bytes": 1473665,
+      "file_count": 25,
+      "location": "azure/raw/2026-11-02/westeurope/20261111T231911Z-f76891/",
+      "purge_after": "2026-12-12",
+      "stored_at": "2026-11-11T23:20:42Z"
+    },
+    "westus": {
+      "bytes": 1325852,
+      "file_count": 23,
+      "location": "azure/raw/2026-11-02/westus/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T21:58:40Z"
+    },
+    "westus2": {
+      "bytes": 1296342,
+      "file_count": 23,
+      "location": "azure/raw/2026-11-02/westus2/20261102T214600Z-d37916/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T21:59:59Z"
+    }
+  },
+  "regions": {
+    "failed": [],
+    "requested": [
+      "eastus",
+      "westus2",
+      "westeurope",
+      "global"
+    ],
+    "succeeded": [
+      "eastus",
+      "westus2",
+      "westeurope",
+      "global"
+    ]
+  },
+  "revision": 2,
+  "run": {
+    "ended_at": "2026-11-11T23:20:42Z",
+    "host": "local",
+    "mode": "regions",
+    "pipeline_version": {
+      "git_sha": "local",
+      "image_tag": "local"
+    },
+    "region_results": [
+      {
+        "attempts": 1,
+        "duplicates_removed": 0,
+        "items_received": 24610,
+        "outcome": "succeeded",
+        "region": "westeurope",
+        "requests_made": 25,
+        "services_downloaded": 25,
+        "services_without_price_list": 0,
+        "throttled_responses": 0,
+        "unlocated_rows": 0,
+        "unparseable_prices": 0
+      },
+      {
+        "attempts": 1,
+        "duplicates_removed": 0,
+        "items_received": 7518,
+        "outcome": "succeeded",
+        "region": "global",
+        "requests_made": 8,
+        "services_downloaded": 8,
+        "services_without_price_list": 0,
+        "throttled_responses": 0,
+        "unlocated_rows": 3967,
+        "unparseable_prices": 0
+      }
+    ],
+    "started_at": "2026-11-11T23:19:11Z",
+    "trigger": "manual"
+  },
+  "run_id": "20261111T231911Z-f76891",
+  "snapshot_date": "2026-11-02",
+  "status": "succeeded",
+  "tables": {
+    "price_item": {
+      "regions": {
+        "eastus": {
+          "files": [
+            {
+              "bytes": 7005,
+              "path": "azure/parquet/price_item/snapshot_date=2026-11-02/region=eastus/part-20261111T231911Z-f76891.parquet",
+              "row_count": 17,
+              "sha256": "de2c5aac77934b409fbd6b7f63acd8aa557fe44daf226073aced38f532571dce"
+            }
+          ],
+          "row_count": 17,
+          "written_by_run": "20261111T231911Z-f76891"
+        },
+        "global": {
+          "files": [
+            {
+              "bytes": 4969,
+              "path": "azure/parquet/price_item/snapshot_date=2026-11-02/region=global/part-20261111T231911Z-f76891.parquet",
+              "row_count": 4,
+              "sha256": "9bc870475a479c58e7189a9d92eb38bd067537e8e8f16140065730b0858b56d9"
+            }
+          ],
+          "row_count": 4,
+          "written_by_run": "20261111T231911Z-f76891"
+        },
+        "westeurope": {
+          "files": [
+            {
+              "bytes": 6123,
+              "path": "azure/parquet/price_item/snapshot_date=2026-11-02/region=westeurope/part-20261111T231911Z-f76891.parquet",
+              "row_count": 12,
+              "sha256": "1fc0d532d4df81838397d3a52e61adc2653bd5ff332ccc7cfa473634376b5558"
+            }
+          ],
+          "row_count": 12,
+          "written_by_run": "20261111T231911Z-f76891"
+        },
+        "westus2": {
+          "files": [
+            {
+              "bytes": 6710,
+              "path": "azure/parquet/price_item/snapshot_date=2026-11-02/region=westus2/part-20261111T231911Z-f76891.parquet",
+              "row_count": 12,
+              "sha256": "b987df9018336bf9210692ea11f7cae65620e81dcad28d7a719acc000b9da524"
+            }
+          ],
+          "row_count": 12,
+          "written_by_run": "20261111T231911Z-f76891"
+        }
+      },
+      "row_count": 45,
+      "schema_version": 1
+    },
+    "price_item_savings_plan": {
+      "regions": {
+        "eastus": {
+          "files": [
+            {
+              "bytes": 1276,
+              "path": "azure/parquet/price_item_savings_plan/snapshot_date=2026-11-02/region=eastus/part-20261111T231911Z-f76891.parquet",
+              "row_count": 4,
+              "sha256": "b1b47aba27ecbf9b26284d4e633f37a52b2139e744fc619118b75ea67a342e76"
+            }
+          ],
+          "row_count": 4,
+          "written_by_run": "20261111T231911Z-f76891"
+        },
+        "global": {
+          "files": [
+            {
+              "bytes": 232,
+              "path": "azure/parquet/price_item_savings_plan/snapshot_date=2026-11-02/region=global/part-20261111T231911Z-f76891.parquet",
+              "row_count": 0,
+              "sha256": "2af7d79fc23122adf574c6b411fa47240c6c359908cf7d87d539c95030f7a00d"
+            }
+          ],
+          "row_count": 0,
+          "written_by_run": "20261111T231911Z-f76891"
+        },
+        "westeurope": {
+          "files": [
+            {
+              "bytes": 1263,
+              "path": "azure/parquet/price_item_savings_plan/snapshot_date=2026-11-02/region=westeurope/part-20261111T231911Z-f76891.parquet",
+              "row_count": 2,
+              "sha256": "3febe1b12f79fcd74fa2911c6395ed575dbc2e9eb7bc4ca39770864eea528beb"
+            }
+          ],
+          "row_count": 2,
+          "written_by_run": "20261111T231911Z-f76891"
+        },
+        "westus2": {
+          "files": [
+            {
+              "bytes": 1603,
+              "path": "azure/parquet/price_item_savings_plan/snapshot_date=2026-11-02/region=westus2/part-20261111T231911Z-f76891.parquet",
+              "row_count": 8,
+              "sha256": "8955924464efc388944549946a9c5d456c37d0d064c14a6af3a987d597c2221d"
+            }
+          ],
+          "row_count": 8,
+          "written_by_run": "20261111T231911Z-f76891"
+        }
+      },
+      "row_count": 14,
+      "schema_version": 1
+    }
+  }
+}

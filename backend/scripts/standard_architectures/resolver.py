@@ -10,8 +10,9 @@ run (research.md §6) rather than seeding an entry that would silently show as u
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 import duckdb
@@ -25,6 +26,7 @@ from src.models.schemas import (
     SKUSelectionDefinition,
 )
 from src.pricing_data.duration import classify_unit
+from src.pricing_data.providers.units import parse_azure_unit, parse_gcp_unit
 
 
 class UnrecognizedUnitError(RuntimeError):
@@ -32,19 +34,60 @@ class UnrecognizedUnitError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class GcpMachine:
+    """022 research R6: a GCP machine (or Cloud SQL instance) priced as vCPUs x the core SKU's
+    rate plus GiB x the RAM SKU's rate. The rule's own filters find the core SKU; these find
+    the matching RAM SKU (billed per `GiBy.h`)."""
+
+    vcpus: int
+    memory_gib: Decimal
+    ram_filters: dict[str, str] = field(default_factory=dict)
+    ram_patterns: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ProviderRule:
+    """022 research R4: one usage figure of one AWS reference component, matched on GCP or
+    Azure. `component_id` is the AWS reference component this stands in for (FR-011).
+
+    `filters` are exact column equalities and `patterns` full-string regular expressions, on the
+    provider's own columns (`_GCP_COLUMNS`, `_AZURE_COLUMNS`). `expected_unit` is the source
+    unit as published (GCP `unit`, Azure `unit_of_measure`)."""
+
+    architecture_id: str
+    component_id: str
+    figure: str
+    region: str
+    filters: dict[str, str] = field(default_factory=dict)
+    patterns: dict[str, str] = field(default_factory=dict)
+    expected_unit: str | None = None
+    quantity: Decimal = Decimal(0)
+    machine: GcpMachine | None = None
+    azure_os: str | None = None
+    size_note: str | None = None
+    omit_reason: str | None = None
+    note: str | None = None
+
+
+AnyRule = MatchRule | ProviderRule
+
+
+@dataclass(frozen=True)
 class Match:
-    rule: MatchRule
+    rule: AnyRule
     service_code: str
     sku: str
     unit: str
     # More than one On-Demand price row (usage tiers) — the existing price lookup takes the
     # first row read, so the report flags these (research.md §7.3).
     tiered: bool
+    # 022: `gcp_machine` / `azure_vm` options for the selection; None otherwise.
+    provider_options: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
 class Omission:
-    rule: MatchRule
+    rule: AnyRule
     reason: str
 
 
@@ -126,7 +169,198 @@ def _find(
     return Match(rule=rule, service_code=service_code, sku=sku, unit=unit, tiered=rows_for_unit > 1)
 
 
-def resolve(rules: Sequence[MatchRule], *, files: FilesFor, snapshot_date: str) -> Resolution:
+GLOBAL = "global"
+
+# 022: the columns a GCP or Azure rule may filter on (never interpolated from anywhere else).
+_GCP_COLUMNS = frozenset(
+    {"service_name", "service_id", "sku_id", "display_name", "geo_taxonomy_type", "taxonomy"}
+)
+_AZURE_COLUMNS = frozenset(
+    {
+        "service_family", "service_name", "service_id", "product_name", "sku_id", "sku_name",
+        "arm_sku_name", "meter_id", "meter_name",
+    }
+)
+
+
+def _conditions(
+    filters: dict[str, str], patterns: dict[str, str], allowed: frozenset[str], alias: str
+) -> tuple[list[str], list[Any]]:
+    conditions: list[str] = []
+    params: list[Any] = []
+    for kind, mapping in (("=", filters), ("~", patterns)):
+        for column, value in sorted(mapping.items()):
+            if column not in allowed:
+                raise ValueError(f"unknown filter column {column!r}")
+            ref = f"{alias}.{column}"
+            if kind == "=":
+                conditions.append(f"{ref} = ?")
+            else:
+                conditions.append(f"regexp_full_match({ref}, ?)")
+            params.append(value)
+    return conditions, params
+
+
+def _gcp_lookup(
+    con: duckdb.DuckDBPyConnection,
+    region: str,
+    filters: dict[str, str],
+    patterns: dict[str, str],
+    expected_unit: str | None,
+    *,
+    files: FilesFor,
+) -> tuple[str, str, str, str] | None:
+    """(service_id, sku_id, location, consumption_model) of the lowest matching `Default`-priced
+    SKU in the region or `global`, as `providers/gcp.py` prices it (region first)."""
+    locations = [region] if region == GLOBAL else [region, GLOBAL]
+    sku_files = [f for loc in locations for f in files("sku", loc)]
+    price_files = [f for loc in locations for f in files("sku_price", loc)]
+    service_files = files("service", GLOBAL)
+    if not sku_files or not price_files:
+        return None
+    conditions, params = _conditions(filters, patterns, _GCP_COLUMNS, "k")
+    unit_condition = " AND p.unit = ?" if expected_unit is not None else ""
+    service_cte = (
+        "SELECT service_id, any_value(display_name) AS service_name FROM read_parquet(?) "
+        "GROUP BY service_id"
+        if service_files
+        else "SELECT NULL::VARCHAR AS service_id, NULL::VARCHAR AS service_name WHERE false"
+    )
+    row = con.execute(
+        f"""
+        WITH svc AS ({service_cte}),
+        k AS (
+            SELECT s.location, s.sku_id, s.service_id, s.display_name, s.geo_taxonomy_type,
+                array_to_string(s.product_taxonomy, ' > ') AS taxonomy, svc.service_name
+            FROM read_parquet(?) s LEFT JOIN svc USING (service_id)
+        )
+        SELECT k.service_id, k.sku_id, k.location, p.consumption_model FROM k
+        JOIN read_parquet(?) p ON p.sku_id = k.sku_id AND p.location = k.location
+        WHERE k.location IN ({",".join("?" for _ in locations)})
+          AND p.consumption_model_description = 'Default'{unit_condition}
+          {"".join(f" AND {c}" for c in conditions)}
+        ORDER BY k.location = 'global', k.sku_id
+        LIMIT 1
+        """,
+        [
+            *([service_files] if service_files else []),
+            sku_files,
+            price_files,
+            *locations,
+            *([expected_unit] if expected_unit is not None else []),
+            *params,
+        ],
+    ).fetchone()
+    return None if row is None else (row[0], row[1], row[2], row[3])
+
+
+def _find_gcp(
+    con: duckdb.DuckDBPyConnection, rule: ProviderRule, *, files: FilesFor
+) -> Match | Omission:
+    found = _gcp_lookup(
+        con, rule.region, rule.filters, rule.patterns, rule.expected_unit, files=files
+    )
+    if found is None:
+        return Omission(rule=rule, reason=f"no matching SKU in {rule.region} with the rule's filters")
+    service_id, sku, location, model = found
+    locations = [location]
+    unit, unit_quantity = con.execute(
+        "SELECT unit, unit_quantity FROM read_parquet(?) WHERE sku_id = ? AND location = ? "
+        "AND consumption_model = ? LIMIT 1",
+        [list(files("sku_price", location)), sku, location, model],
+    ).fetchone()
+    if parse_gcp_unit(unit, unit_quantity).classification.category == "unrecognized":
+        raise UnrecognizedUnitError(
+            f"{rule.architecture_id}/{rule.component_id}/{rule.figure}: GCP {sku} bills in unit "
+            f"{unit!r}, which providers/units.py doesn't recognize"
+        )
+    tier_files = [f for loc in locations for f in files("sku_price_tier", loc)]
+    tiers = (
+        con.execute(
+            "SELECT count(*) FROM read_parquet(?) WHERE sku_id = ? AND location = ? "
+            "AND consumption_model = ?",
+            [tier_files, sku, location, model],
+        ).fetchone()[0]
+        if tier_files
+        else 0
+    )
+    options = None
+    if rule.machine is not None:
+        ram = _gcp_lookup(
+            con, rule.region, {**rule.filters, **rule.machine.ram_filters},
+            {k: v for k, v in rule.patterns.items() if k not in rule.machine.ram_patterns}
+            | rule.machine.ram_patterns,
+            "GiBy.h", files=files,
+        )
+        if ram is None:
+            return Omission(rule=rule, reason=f"no matching RAM SKU in {rule.region} for the machine")
+        options = {
+            "kind": "gcp_machine",
+            "version": 1,
+            "vcpus": rule.machine.vcpus,
+            "memory_gib": str(rule.machine.memory_gib),
+            "ram_sku": ram[1],
+        }
+    return Match(
+        rule=rule, service_code=service_id, sku=sku, unit=unit, tiered=tiers > 1,
+        provider_options=options,
+    )
+
+
+def _find_azure(
+    con: duckdb.DuckDBPyConnection, rule: ProviderRule, *, files: FilesFor
+) -> Match | Omission:
+    """The lowest matching `Consumption` meter (`<sku_id>/<meter_id>`, `providers/azure.py`)
+    in the region or `global`."""
+    locations = [rule.region] if rule.region == GLOBAL else [rule.region, GLOBAL]
+    item_files = [f for loc in locations for f in files("price_item", loc)]
+    reason = f"no matching meter in {rule.region} with the rule's filters"
+    if not item_files:
+        return Omission(rule=rule, reason=reason)
+    conditions, params = _conditions(rule.filters, rule.patterns, _AZURE_COLUMNS, "i")
+    unit_condition = " AND i.unit_of_measure = ?" if rule.expected_unit is not None else ""
+    row = con.execute(
+        f"""
+        SELECT i.service_id, i.sku_id, i.meter_id, i.location, i.unit_of_measure
+        FROM read_parquet(?) i
+        WHERE i.location IN ({",".join("?" for _ in locations)})
+          AND i.price_type = 'Consumption'{unit_condition}
+          {"".join(f" AND {c}" for c in conditions)}
+        ORDER BY i.location = 'global', i.sku_id, i.meter_id
+        LIMIT 1
+        """,
+        [
+            item_files,
+            *locations,
+            *([rule.expected_unit] if rule.expected_unit is not None else []),
+            *params,
+        ],
+    ).fetchone()
+    if row is None:
+        return Omission(rule=rule, reason=reason)
+    service_id, sku_id, meter_id, location, unit = row
+    if parse_azure_unit(unit).classification.category == "unrecognized":
+        raise UnrecognizedUnitError(
+            f"{rule.architecture_id}/{rule.component_id}/{rule.figure}: Azure {sku_id}/{meter_id} "
+            f"bills in unit {unit!r}, which providers/units.py doesn't recognize"
+        )
+    tiers = con.execute(
+        "SELECT count(*) FROM read_parquet(?) WHERE location = ? AND sku_id = ? AND meter_id = ? "
+        "AND price_type = 'Consumption'",
+        [item_files, location, sku_id, meter_id],
+    ).fetchone()[0]
+    options = (
+        {"kind": "azure_vm", "version": 1, "os": rule.azure_os} if rule.azure_os is not None else None
+    )
+    return Match(
+        rule=rule, service_code=service_id, sku=f"{sku_id}/{meter_id}", unit=unit,
+        tiered=tiers > 1, provider_options=options,
+    )
+
+
+def resolve(
+    rules: Sequence[AnyRule], *, files: FilesFor, snapshot_date: str, provider: str = "aws"
+) -> Resolution:
     matches: list[Match] = []
     omissions: list[Omission] = []
     con: duckdb.DuckDBPyConnection | None = None
@@ -136,6 +370,12 @@ def resolve(rules: Sequence[MatchRule], *, files: FilesFor, snapshot_date: str) 
             continue
         if con is None:
             con = duckdb.connect(":memory:")
+        if provider != "aws":
+            assert isinstance(rule, ProviderRule)
+            finder = _find_gcp if provider == "gcp" else _find_azure
+            outcome = finder(con, rule, files=files)
+            (matches if isinstance(outcome, Match) else omissions).append(outcome)
+            continue
         match = None
         for service_code in rule.service_codes:
             match = _find(con, rule, service_code, files=files)
@@ -158,14 +398,29 @@ def resolve(rules: Sequence[MatchRule], *, files: FilesFor, snapshot_date: str) 
     )
 
 
-def to_export_file(resolution: Resolution, source: dict[str, Any]) -> ArchitectureExportFile:
+# 022 research R8: each provider's own term for the network a collection stands for.
+_NETWORK_TERM = {"aws": "VPC", "gcp": "VPC", "azure": "VNet"}
+
+
+def to_export_file(
+    resolution: Resolution,
+    source: dict[str, Any],
+    *,
+    provider: str = "aws",
+    regions: dict[str, str] | None = None,
+) -> ArchitectureExportFile:
     """Build the seed in the export format: one VPC per listed region (source order), each
     holding its region's matched entries in rule order. No connectors or application
-    components (spec FR-005, FR-007)."""
+    components (spec FR-005, FR-007).
+
+    022: for GCP and Azure, `regions` maps each AWS reference region to the provider's region
+    (research R1); collections are named in the provider's own term (research R8)."""
+    regions = regions or {}
     architectures = []
     for arch in source["architectures"]:
         collections = []
-        for index, region in enumerate(arch["regions"], start=1):
+        for index, aws_region in enumerate(arch["regions"], start=1):
+            region = regions.get(aws_region, aws_region)
             selections = [
                 SKUSelectionDefinition(
                     service_code=m.service_code,
@@ -173,6 +428,7 @@ def to_export_file(resolution: Resolution, source: dict[str, Any]) -> Architectu
                     pricing_term="on_demand",
                     purchase_option="not_applicable",
                     usage_quantity=m.rule.quantity,
+                    provider_options=m.provider_options,
                 )
                 for m in resolution.matches
                 if m.rule.architecture_id == arch["id"] and m.rule.region == region
@@ -181,7 +437,7 @@ def to_export_file(resolution: Resolution, source: dict[str, Any]) -> Architectu
                 CollectionDefinition(
                     ref=f"c{index}",
                     type="vpc",
-                    name=f"VPC ({region})",
+                    name=f"{_NETWORK_TERM[provider]} ({region})",
                     region=region,
                     parent_ref=None,
                     sku_selections=selections,
@@ -189,7 +445,7 @@ def to_export_file(resolution: Resolution, source: dict[str, Any]) -> Architectu
             )
         architectures.append(
             ArchitectureDefinition(
-                name=arch["name"], provider="aws", collections=collections, connectors=[]
+                name=arch["name"], provider=provider, collections=collections, connectors=[]
             )
         )
     return ArchitectureExportFile(
@@ -202,7 +458,12 @@ def to_export_file(resolution: Resolution, source: dict[str, Any]) -> Architectu
     )
 
 
-def render_report(resolution: Resolution, source: dict[str, Any] | None = None) -> str:
+def render_report(
+    resolution: Resolution, source: dict[str, Any] | None = None, *, provider: str = "aws"
+) -> str:
+    """The resolution report. AWS keeps its 014 layout; GCP and Azure (022, contracts/
+    generator.md) name the provider, the AWS component each row stands in for, and the original
+    and chosen sizes."""
     names = {a["id"]: a["name"] for a in (source or {}).get("architectures", [])}
     architecture_ids = list(
         dict.fromkeys(
@@ -210,33 +471,56 @@ def render_report(resolution: Resolution, source: dict[str, Any] | None = None) 
             + [o.rule.architecture_id for o in resolution.omissions]
         )
     )
+    aws = provider == "aws"
     lines = [
         "# Standard architectures — resolution report",
         "",
         "Generated by `scripts/resolve_standard_architectures.py` — do not edit by hand.",
         "",
+    ]
+    if not aws:
+        lines += [f"Provider: `{provider}`", ""]
+    lines += [
         f"Pricing snapshot: `{resolution.snapshot_date}`",
         "",
         "`tiered` marks SKUs with more than one On-Demand price row (usage tiers); the price "
         "lookup uses the first row read (research.md §7.3).",
     ]
+    if not aws:
+        lines += [
+            "",
+            "Each row names the AWS reference component it stands in for. `Size` gives the AWS "
+            "original and the chosen size: the smallest with at least the same vCPU and memory "
+            "(022 clarification).",
+        ]
+    component = "Component" if aws else "AWS component"
     for arch_id in architecture_ids:
         lines += ["", f"## {names.get(arch_id, arch_id)}", ""]
-        lines += [
-            "| Component | Figure | Region | Service | SKU | Unit | Quantity | Tiered | Note |",
-            "|---|---|---|---|---|---|---|---|---|",
-        ]
+        if aws:
+            lines += [
+                "| Component | Figure | Region | Service | SKU | Unit | Quantity | Tiered | Note |",
+                "|---|---|---|---|---|---|---|---|---|",
+            ]
+        else:
+            lines += [
+                "| AWS component | Figure | Region | Service | SKU | Unit | Quantity | Tiered | "
+                "Size | Note |",
+                "|---|---|---|---|---|---|---|---|---|---|",
+            ]
         for m in resolution.matches:
             if m.rule.architecture_id != arch_id:
                 continue
             r = m.rule
+            size = "" if aws else f" {getattr(r, 'size_note', None) or ''} |"
             lines.append(
                 f"| {r.component_id} | {r.figure} | {r.region} | {m.service_code} | {m.sku} | "
-                f"{m.unit} | {r.quantity} | {'yes' if m.tiered else ''} | {r.note or ''} |"
+                f"{m.unit} | {r.quantity} | {'yes' if m.tiered else ''} |{size} {r.note or ''} |"
             )
         omitted = [o for o in resolution.omissions if o.rule.architecture_id == arch_id]
         if omitted:
-            lines += ["", "**Left out**", "", "| Component | Figure | Reason |", "|---|---|---|"]
+            lines += [
+                "", "**Left out**", "", f"| {component} | Figure | Reason |", "|---|---|---|",
+            ]
             for o in omitted:
                 lines.append(f"| {o.rule.component_id} | {o.rule.figure} | {o.reason} |")
     return "\n".join(lines) + "\n"
