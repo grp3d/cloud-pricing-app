@@ -24,10 +24,24 @@ SEED_PATH = Path(__file__).resolve().parents[2] / "src" / "db" / "seed" / (
     "standard_architectures.json"
 )
 SEED = ArchitectureExportFile.model_validate_json(SEED_PATH.read_text())
+STANDARD_PRICING_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "pricing_parquet_standard"
+# 022: the GCP and Azure standard architectures price fully too (SC-002).
+DEFINITIONS = list(SEED.architectures) + [
+    definition
+    for provider in ("gcp", "azure")
+    for definition in ArchitectureExportFile.model_validate_json(
+        SEED_PATH.with_name(f"standard_architectures_{provider}.json").read_text()
+    ).architectures
+]
 
 
-@pytest.mark.parametrize("definition", SEED.architectures, ids=lambda d: d.name)
-async def test_seeded_architecture_prices_with_no_unpriceable_items(db_session, definition):
+@pytest.mark.parametrize("definition", DEFINITIONS, ids=lambda d: f"{d.provider}: {d.name}")
+async def test_seeded_architecture_prices_with_no_unpriceable_items(
+    db_session, definition, use_pricing_root
+):
+    if definition.provider != "aws":
+        # 022: the GCP and Azure seeds' items are in their own fixture root.
+        use_pricing_root(STANDARD_PRICING_ROOT)
     owner = User(id=uuid.uuid4())
     db_session.add(owner)
     collections, connectors = specs_from_definition(definition)

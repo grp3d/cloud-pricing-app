@@ -3,6 +3,10 @@
 Releases of the app, newest first. Each feature links to its specification folder, which has
 the full design (spec, plan, tasks). Versions stay below 1.0.0 until a deliberate 1.0 release.
 
+## Unreleased
+
+- 022 GCP and Azure standard architectures: the four standard designs on GCP and Azure, created once in every environment ([spec](specs/022-gcp-azure-standard-architectures/))
+
 ## v0.1.1 — 2026-11-10
 
 - Fix: bringing the app up from a backup made by an older release failed. The restore check

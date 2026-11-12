@@ -1,0 +1,382 @@
+{
+  "format": "cloud-pricing-architectures",
+  "format_version": 1,
+  "exported_at": "2026-11-02T00:00:00Z",
+  "source_username": "Admin",
+  "architectures": [
+    {
+      "name": "Active-Standby Multi-Region Web Application",
+      "provider": "gcp",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VPC (us-east1)",
+          "region": "us-east1",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "FA26-5236-B8B5",
+              "sku": "6DFF-5025-A128",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "322580.6452"
+            },
+            {
+              "service_code": "E505-1604-58F8",
+              "sku": "5D5C-9D70-6B3E",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "6F81-5844-456A",
+              "sku": "CF4E-A0C7-E3BF",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "96.0000",
+              "provider_options": {
+                "kind": "gcp_machine",
+                "version": 1,
+                "vcpus": 4,
+                "memory_gib": "16",
+                "ram_sku": "F449-33EC-A5EF"
+              }
+            },
+            {
+              "service_code": "9662-B51E-5089",
+              "sku": "965E-7C36-08E6",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000",
+              "provider_options": {
+                "kind": "gcp_machine",
+                "version": 1,
+                "vcpus": 4,
+                "memory_gib": "32",
+                "ram_sku": "93DA-3F55-CB04"
+              }
+            },
+            {
+              "service_code": "9662-B51E-5089",
+              "sku": "C18F-7FE0-0717",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "250.0000"
+            },
+            {
+              "service_code": "95FF-2EF5-5EA1",
+              "sku": "E5F0-6A5D-7BAD",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "2000.0000"
+            },
+            {
+              "service_code": "95FF-2EF5-5EA1",
+              "sku": "4DBF-185F-A415",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "1612.9032"
+            },
+            {
+              "service_code": "95FF-2EF5-5EA1",
+              "sku": "7870-010B-2763",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "16129.0323"
+            },
+            {
+              "service_code": "6F81-5844-456A",
+              "sku": "C8EA-1A86-3D28",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "8.0645"
+            }
+          ]
+        },
+        {
+          "ref": "c2",
+          "type": "vpc",
+          "name": "VPC (us-west1)",
+          "region": "us-west1",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "E505-1604-58F8",
+              "sku": "0E91-5E0F-9B98",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "6F81-5844-456A",
+              "sku": "CF4E-A0C7-E3BF",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "96.0000",
+              "provider_options": {
+                "kind": "gcp_machine",
+                "version": 1,
+                "vcpus": 4,
+                "memory_gib": "16",
+                "ram_sku": "F449-33EC-A5EF"
+              }
+            },
+            {
+              "service_code": "9662-B51E-5089",
+              "sku": "965E-7C36-08E6",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000",
+              "provider_options": {
+                "kind": "gcp_machine",
+                "version": 1,
+                "vcpus": 4,
+                "memory_gib": "32",
+                "ram_sku": "93DA-3F55-CB04"
+              }
+            },
+            {
+              "service_code": "9662-B51E-5089",
+              "sku": "C18F-7FE0-0717",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "250.0000"
+            },
+            {
+              "service_code": "95FF-2EF5-5EA1",
+              "sku": "E5F0-6A5D-7BAD",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "2000.0000"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    },
+    {
+      "name": "Modern Data Lake & ETL Analytics Pipeline",
+      "provider": "gcp",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VPC (us-east1)",
+          "region": "us-east1",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "A1E8-BE35-7EBC",
+              "sku": "027D-B6C7-CCA2",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "0.0154"
+            },
+            {
+              "service_code": "57D6-8E6B-2DE0",
+              "sku": "2BB3-442C-FDB0",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "80.0000"
+            },
+            {
+              "service_code": "57D6-8E6B-2DE0",
+              "sku": "8045-C316-15B7",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "320.0000"
+            },
+            {
+              "service_code": "95FF-2EF5-5EA1",
+              "sku": "E5F0-6A5D-7BAD",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "10000.0000"
+            },
+            {
+              "service_code": "95FF-2EF5-5EA1",
+              "sku": "E5F0-6A5D-7BAD",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "5000.0000"
+            },
+            {
+              "service_code": "95FF-2EF5-5EA1",
+              "sku": "D85F-8CE9-F6EF",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "50000.0000"
+            },
+            {
+              "service_code": "24E6-581D-38E5",
+              "sku": "64D0-8F19-B5DE",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "1.9355"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    },
+    {
+      "name": "Serverless Microservices Back-End",
+      "provider": "gcp",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VPC (europe-west1)",
+          "region": "europe-west1",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "DC5D-D207-FD2F",
+              "sku": "25AA-EC24-EA10",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "322.5806"
+            },
+            {
+              "service_code": "29E7-DA93-CA13",
+              "sku": "92DF-0F0E-630F",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "483870.9677"
+            },
+            {
+              "service_code": "29E7-DA93-CA13",
+              "sku": "A1C2-4FB0-00D9",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "120967.7419"
+            },
+            {
+              "service_code": "29E7-DA93-CA13",
+              "sku": "ED22-F30B-BB42",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "120967.7419"
+            },
+            {
+              "service_code": "EE2C-7FAC-5E08",
+              "sku": "F5F8-168B-6A8E",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "50.0000"
+            },
+            {
+              "service_code": "EE2C-7FAC-5E08",
+              "sku": "2A97-6C01-54F6",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "161290.3226"
+            },
+            {
+              "service_code": "EE2C-7FAC-5E08",
+              "sku": "EE67-CF10-6229",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "64516.1290"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    },
+    {
+      "name": "Containerized Microservices Platform (EKS)",
+      "provider": "gcp",
+      "collections": [
+        {
+          "ref": "c1",
+          "type": "vpc",
+          "name": "VPC (us-west1)",
+          "region": "us-west1",
+          "parent_ref": null,
+          "sku_selections": [
+            {
+              "service_code": "CCD8-9BF1-090E",
+              "sku": "B561-BFBD-1264",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "6F81-5844-456A",
+              "sku": "CF4E-A0C7-E3BF",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "144.0000",
+              "provider_options": {
+                "kind": "gcp_machine",
+                "version": 1,
+                "vcpus": 2,
+                "memory_gib": "8",
+                "ram_sku": "F449-33EC-A5EF"
+              }
+            },
+            {
+              "service_code": "CCD8-9BF1-090E",
+              "sku": "1C7A-489D-CCD0",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "240000.0000"
+            },
+            {
+              "service_code": "CCD8-9BF1-090E",
+              "sku": "08E8-ED50-9CF5",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "480.0000"
+            },
+            {
+              "service_code": "149C-F9EC-3994",
+              "sku": "8502-299A-ABAF",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "100.0000"
+            },
+            {
+              "service_code": "E505-1604-58F8",
+              "sku": "840D-269F-F0E4",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000"
+            },
+            {
+              "service_code": "5AF5-2C11-D467",
+              "sku": "A4A4-53B9-26CD",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "168.0000"
+            },
+            {
+              "service_code": "9662-B51E-5089",
+              "sku": "2C7C-7705-6CE7",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "24.0000",
+              "provider_options": {
+                "kind": "gcp_machine",
+                "version": 1,
+                "vcpus": 4,
+                "memory_gib": "16",
+                "ram_sku": "E33C-229F-2DA2"
+              }
+            },
+            {
+              "service_code": "9662-B51E-5089",
+              "sku": "D65A-D0C3-34F4",
+              "pricing_term": "on_demand",
+              "purchase_option": "not_applicable",
+              "usage_quantity": "500.0000"
+            }
+          ]
+        }
+      ],
+      "connectors": []
+    }
+  ]
+}

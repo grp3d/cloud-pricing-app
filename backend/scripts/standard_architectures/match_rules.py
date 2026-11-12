@@ -20,69 +20,20 @@ as `src/pricing_data/duration.py`. Edit rules here, then re-run
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
-_Q = Decimal("0.0001")
-_DAYS_PER_MONTH = Decimal(31)  # the pricing engine's fixed month (004, FR-006)
-_HOURS_PER_DAY = Decimal(24)
-_KINESIS_PAYLOAD_UNIT_KB = Decimal(25)
-
-
-def _q(value: Decimal) -> Decimal:
-    """Round to `SKUSelection.usage_quantity`'s `Numeric(18, 4)`."""
-    return value.quantize(_Q, rounding=ROUND_HALF_UP)
-
-
-# --- Quantity formulas (research.md §5) ----------------------------------------------------
-
-
-def always_on(count: int | Decimal) -> Decimal:
-    """An always-on resource (730 running hours/month in the source) — 24 hours/day each."""
-    return _q(Decimal(count) * _HOURS_PER_DAY)
-
-
-def per_hour_rate(units_per_hour: int | Decimal) -> Decimal:
-    """A continuous per-hour rate (e.g. load balancer LCUs) — 24 hours/day."""
-    return _q(Decimal(units_per_hour) * _HOURS_PER_DAY)
-
-
-def monthly(amount_per_month: int | Decimal) -> Decimal:
-    """A monthly count (requests, queries, GB transferred, TB scanned) as a daily rate."""
-    return _q(Decimal(amount_per_month) / _DAYS_PER_MONTH)
-
-
-def daily_dpu(dpus: int | Decimal, hours_per_day: int | Decimal) -> Decimal:
-    return _q(Decimal(dpus) * Decimal(hours_per_day))
-
-
-def lambda_gb_seconds(executions_per_month: int, avg_duration_ms: int, memory_mb: int) -> Decimal:
-    """Lambda compute: executions x duration (s) x memory (GB), as a daily rate."""
-    gb_seconds = (
-        Decimal(executions_per_month)
-        * (Decimal(avg_duration_ms) / Decimal(1000))
-        * (Decimal(memory_mb) / Decimal(1024))
-    )
-    return _q(gb_seconds / _DAYS_PER_MONTH)
-
-
-def fargate_vcpu(pods: int, vcpu_per_pod: int | Decimal) -> Decimal:
-    return _q(Decimal(pods) * Decimal(vcpu_per_pod) * _HOURS_PER_DAY)
-
-
-def fargate_gb(pods: int, gb_per_pod: int | Decimal) -> Decimal:
-    return _q(Decimal(pods) * Decimal(gb_per_pod) * _HOURS_PER_DAY)
-
-
-def kinesis_put_payload_units(mb_per_month: int | Decimal) -> Decimal:
-    """Kinesis PUT payload units (25 KB chunks) from ingested MB/month, as a daily rate."""
-    units = Decimal(mb_per_month) * Decimal(1024) / _KINESIS_PAYLOAD_UNIT_KB
-    return _q(units / _DAYS_PER_MONTH)
-
-
-def as_stored(amount: int | Decimal) -> Decimal:
-    """A stored amount or monthly per-unit count billed per month — entered unconverted."""
-    return _q(Decimal(amount))
-
+from scripts.standard_architectures.quantities import (  # noqa: F401  (re-exported for tests)
+    _q,
+    always_on,
+    as_stored,
+    daily_dpu,
+    fargate_gb,
+    fargate_vcpu,
+    kinesis_put_payload_units,
+    lambda_gb_seconds,
+    monthly,
+    per_hour_rate,
+)
 
 # --- Rules -----------------------------------------------------------------------------------
 

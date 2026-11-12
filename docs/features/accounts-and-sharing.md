@@ -42,21 +42,39 @@ layout aren't copied.
 
 ## Standard architectures
 
-Four public architectures owned by Admin are created once, when the database is first set up:
+Each provider (AWS, GCP and Azure) has four public architectures owned by Admin, with the same
+names on all three:
 
 - Active-Standby Multi-Region Web Application
 - Modern Data Lake & ETL Analytics Pipeline
 - Serverless Microservices Back-End
 - Containerized Microservices Platform (EKS)
 
-They're AWS architectures with one VPC per region they use and one priced service per usage
-figure; any figure with no matching SKU was left out rather than approximated. Anyone logged in
-can import a copy from the Admin group. If the Admin deletes or renames one, it isn't recreated.
-How they're generated is in [development.md](../development.md#standard-architectures).
+Each has one collection per region it uses (a VPC on AWS and GCP, a VNet on Azure) and one
+priced service per usage figure. The GCP and Azure versions are the equivalents of the AWS
+designs, with the same sizes and usage figures, so the three totals of a design can be compared:
+
+- **Regions:** the nearest equivalent the pricing data has. us-east-1 → us-east1 / eastus,
+  us-west-2 → us-west1 / westus2, eu-west-1 → europe-west1 / westeurope (Azure's Ireland region
+  isn't collected).
+- **Sizes:** where no size matches exactly, the smallest with at least the same vCPU and memory.
+- **Left out:** a figure is matched only when the provider bills the same kind of unit (with at
+  most a simple scale); anything else, and anything the AWS version leaves out, is left out
+  rather than approximated. So some totals cover less than the AWS one: for example Redshift
+  isn't in the GCP or Azure data lake, and the Fargate pods aren't in the Azure EKS platform.
+  What was matched and left out, with the reasons, is in each provider's report
+  (`backend/src/db/seed/standard_architectures*_report.md`); the app itself doesn't show it.
+
+Anyone logged in can import a copy from the Admin group. Each is created once per database: the
+AWS four when the database is first set up, the GCP and Azure eight by the release that added
+them (existing databases get them on their next bring-up). If the Admin deletes or renames one,
+it isn't recreated. How they're generated is in
+[development.md](../development.md#standard-architectures).
 
 ## Specs
 
 [001](../../specs/001-assemble-price-aws-architecture/spec.md) (US3),
 [012](../../specs/012-user-accounts-sharing/spec.md) (US2–US4),
 [014](../../specs/014-architecture-templates-import-export/spec.md) (US1),
-[021](../../specs/021-workspace-layout-redesign/spec.md) (US1, US6: the menu replaced Column 1).
+[021](../../specs/021-workspace-layout-redesign/spec.md) (US1, US6: the menu replaced Column 1),
+[022](../../specs/022-gcp-azure-standard-architectures/spec.md) (GCP and Azure standard architectures).

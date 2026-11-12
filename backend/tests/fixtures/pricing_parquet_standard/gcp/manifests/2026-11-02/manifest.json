@@ -1,0 +1,276 @@
+{
+  "catalog": {
+    "api_version": "v2beta",
+    "prices_without_sku": 0,
+    "requests_made": 0,
+    "skus_out_of_scope": 98,
+    "skus_received": 105008,
+    "skus_unconfigured_locations": 86600,
+    "skus_unlocated": 444,
+    "skus_without_price": 0
+  },
+  "created_at": "2026-11-11T23:19:05Z",
+  "manifest_version": "1.1",
+  "origin": "pipeline",
+  "previous_revision": 1,
+  "provider": "gcp",
+  "purged": null,
+  "raw": {
+    "catalog": {
+      "bytes": 8110264,
+      "file_count": 45,
+      "location": "gcp/raw/2026-11-02/catalog/20261102T221145Z-e838b7/",
+      "purge_after": "2026-12-03",
+      "stored_at": "2026-11-02T22:15:13Z"
+    }
+  },
+  "regions": {
+    "failed": [],
+    "requested": [
+      "us-east1",
+      "us-west1",
+      "europe-west1",
+      "global"
+    ],
+    "succeeded": [
+      "us-east1",
+      "us-west1",
+      "europe-west1",
+      "global"
+    ]
+  },
+  "revision": 2,
+  "run": {
+    "ended_at": "2026-11-11T23:19:05Z",
+    "host": "local",
+    "mode": "transform-only",
+    "pipeline_version": {
+      "git_sha": "local",
+      "image_tag": "local"
+    },
+    "region_results": [
+      {
+        "attempts": 0,
+        "items_received": 2433,
+        "outcome": "succeeded",
+        "region": "europe-west1",
+        "services_downloaded": 45,
+        "services_without_price_list": 0,
+        "unlocated_rows": 0,
+        "unparseable_prices": 0
+      },
+      {
+        "attempts": 0,
+        "items_received": 15877,
+        "outcome": "succeeded",
+        "region": "global",
+        "services_downloaded": 45,
+        "services_without_price_list": 0,
+        "unlocated_rows": 444,
+        "unparseable_prices": 0
+      }
+    ],
+    "started_at": "2026-11-11T23:19:02Z",
+    "trigger": "manual"
+  },
+  "run_id": "20261111T231902Z-66d172",
+  "snapshot_date": "2026-11-02",
+  "status": "succeeded",
+  "tables": {
+    "service": {
+      "regions": {
+        "europe-west1": {
+          "files": [],
+          "row_count": 0,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "global": {
+          "files": [
+            {
+              "bytes": 1850,
+              "path": "gcp/parquet/service/snapshot_date=2026-11-02/region=global/part-20261111T231902Z-66d172.parquet",
+              "row_count": 14,
+              "sha256": "3e0f37895ae1cba78b0467ee17b46ab8611d09d1b4dd75266a92ad02243145bf"
+            }
+          ],
+          "row_count": 14,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "us-east1": {
+          "files": [],
+          "row_count": 0,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "us-west1": {
+          "files": [],
+          "row_count": 0,
+          "written_by_run": "20261111T231902Z-66d172"
+        }
+      },
+      "row_count": 14,
+      "schema_version": 1
+    },
+    "sku": {
+      "regions": {
+        "europe-west1": {
+          "files": [
+            {
+              "bytes": 2898,
+              "path": "gcp/parquet/sku/snapshot_date=2026-11-02/region=europe-west1/part-20261111T231902Z-66d172.parquet",
+              "row_count": 5,
+              "sha256": "7328ae25b77ca7ee022beafb2444c21af03a79fb1fa402fe5b7b845e7d4f795e"
+            }
+          ],
+          "row_count": 5,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "global": {
+          "files": [
+            {
+              "bytes": 2841,
+              "path": "gcp/parquet/sku/snapshot_date=2026-11-02/region=global/part-20261111T231902Z-66d172.parquet",
+              "row_count": 8,
+              "sha256": "44834f54077b4ffe489c641e650e1d7e06cba11e377848f61f793f859cc83b2e"
+            }
+          ],
+          "row_count": 8,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "us-east1": {
+          "files": [
+            {
+              "bytes": 3643,
+              "path": "gcp/parquet/sku/snapshot_date=2026-11-02/region=us-east1/part-20261111T231902Z-66d172.parquet",
+              "row_count": 16,
+              "sha256": "f9fd6506911830e1cf7e35070a425cb481073d50315978fa7a60acee2628729a"
+            }
+          ],
+          "row_count": 16,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "us-west1": {
+          "files": [
+            {
+              "bytes": 3640,
+              "path": "gcp/parquet/sku/snapshot_date=2026-11-02/region=us-west1/part-20261111T231902Z-66d172.parquet",
+              "row_count": 15,
+              "sha256": "53a7000f06b1717387ee7edeb5b2b12ca730fc16a1dd0d2511b72cbb03292e59"
+            }
+          ],
+          "row_count": 15,
+          "written_by_run": "20261111T231902Z-66d172"
+        }
+      },
+      "row_count": 44,
+      "schema_version": 1
+    },
+    "sku_price": {
+      "regions": {
+        "europe-west1": {
+          "files": [
+            {
+              "bytes": 3237,
+              "path": "gcp/parquet/sku_price/snapshot_date=2026-11-02/region=europe-west1/part-20261111T231902Z-66d172.parquet",
+              "row_count": 13,
+              "sha256": "a688e5597873d6742311c35e1cb44e80958149b7225e971e02db76b2e76942b7"
+            }
+          ],
+          "row_count": 13,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "global": {
+          "files": [
+            {
+              "bytes": 3175,
+              "path": "gcp/parquet/sku_price/snapshot_date=2026-11-02/region=global/part-20261111T231902Z-66d172.parquet",
+              "row_count": 10,
+              "sha256": "368a8308e638bdd825aacbce4c0dd8c2afdf7e41f2321d6b2c1d3ac7c1401533"
+            }
+          ],
+          "row_count": 10,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "us-east1": {
+          "files": [
+            {
+              "bytes": 3579,
+              "path": "gcp/parquet/sku_price/snapshot_date=2026-11-02/region=us-east1/part-20261111T231902Z-66d172.parquet",
+              "row_count": 30,
+              "sha256": "e06624e78b8c25076499eaa3550ebe58789d1bf6dfb3d535449544b409e00afa"
+            }
+          ],
+          "row_count": 30,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "us-west1": {
+          "files": [
+            {
+              "bytes": 3631,
+              "path": "gcp/parquet/sku_price/snapshot_date=2026-11-02/region=us-west1/part-20261111T231902Z-66d172.parquet",
+              "row_count": 37,
+              "sha256": "eda844e88eeab7a3ce2e34ecb4c8ce3ff6e62b603d8833ec42fcee289a101328"
+            }
+          ],
+          "row_count": 37,
+          "written_by_run": "20261111T231902Z-66d172"
+        }
+      },
+      "row_count": 90,
+      "schema_version": 1
+    },
+    "sku_price_tier": {
+      "regions": {
+        "europe-west1": {
+          "files": [
+            {
+              "bytes": 1930,
+              "path": "gcp/parquet/sku_price_tier/snapshot_date=2026-11-02/region=europe-west1/part-20261111T231902Z-66d172.parquet",
+              "row_count": 13,
+              "sha256": "729d6b1b4a41f7bf6bf8957d5b9878db30734f650711d2913583088136337bfd"
+            }
+          ],
+          "row_count": 13,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "global": {
+          "files": [
+            {
+              "bytes": 2060,
+              "path": "gcp/parquet/sku_price_tier/snapshot_date=2026-11-02/region=global/part-20261111T231902Z-66d172.parquet",
+              "row_count": 22,
+              "sha256": "d6036c6f81c53a25ddb7175a55e10bbe97cc5f68ea684d46569cd8b32abd1aac"
+            }
+          ],
+          "row_count": 22,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "us-east1": {
+          "files": [
+            {
+              "bytes": 2149,
+              "path": "gcp/parquet/sku_price_tier/snapshot_date=2026-11-02/region=us-east1/part-20261111T231902Z-66d172.parquet",
+              "row_count": 33,
+              "sha256": "85849ee29761e487458bc538f8cc140c17cea2d1c1a1fe69ad8bfa0f42335bcd"
+            }
+          ],
+          "row_count": 33,
+          "written_by_run": "20261111T231902Z-66d172"
+        },
+        "us-west1": {
+          "files": [
+            {
+              "bytes": 2205,
+              "path": "gcp/parquet/sku_price_tier/snapshot_date=2026-11-02/region=us-west1/part-20261111T231902Z-66d172.parquet",
+              "row_count": 39,
+              "sha256": "0c1392f273cad0cb3c603d8ec43861d44d9ef437092e03c2986dfccbc1859ba2"
+            }
+          ],
+          "row_count": 39,
+          "written_by_run": "20261111T231902Z-66d172"
+        }
+      },
+      "row_count": 107,
+      "schema_version": 1
+    }
+  }
+}

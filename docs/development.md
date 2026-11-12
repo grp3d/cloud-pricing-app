@@ -153,6 +153,29 @@ uv run python scripts/build_test_pricing_fixture.py --source-uri file:///path/to
 A database that has already run `0005` keeps its seed. To bring back a standard architecture
 the Admin deleted, import `standard_architectures.json` on the Admin row of the Admin tab.
 
+**GCP and Azure (022).** Migration `0009_gcp_azure_standard_architectures` seeds the GCP and Azure
+equivalents the same way, from `standard_architectures_gcp.json` and
+`standard_architectures_azure.json` (skipping any the Admin already owns with the same name and
+provider). Their rules are in `match_rules_gcp.py` and `match_rules_azure.py`: each rule names
+the AWS component and figure it stands in for, and the shared usage formulas are in
+`quantities.py`. Generate with:
+
+```bash
+uv run python scripts/resolve_standard_architectures.py --provider gcp    # or azure
+```
+
+It uses the provider's latest local snapshot, which must hold every region the rules use
+(europe-west1 and westeurope included; the command stops if one is missing). Then rebuild the
+small fixture those tests use, which holds only the seeded items:
+
+```bash
+uv run python scripts/build_provider_fixtures.py --source-uri file:///path/to/DATA/pipeline \
+    --standard-architectures
+```
+
+The AWS seed was generated from the 2026-09-24 snapshot; to re-run it unchanged, pin
+`ACTIVE_SNAPSHOT_DATE=2026-09-24`.
+
 ## Making a change
 
 - **Features** go through Spec Kit: `/speckit-specify`, `/speckit-clarify`, `/speckit-plan`,
