@@ -13,8 +13,7 @@ import {
   api,
 } from "../api/client";
 import { PROVIDER_LABELS, asProviderCode } from "../lib/providerPricing";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
-import { AgentColumn } from "../components/agent/AgentPanel";
+import { WorkspaceCenter } from "../components/agent/AgentPanel";
 import { ArchitectureDiagramPanel } from "../components/workspace/ArchitectureDiagramPanel";
 import {
   CollectionsPanel,
@@ -329,20 +328,25 @@ function WorkspacePageInner() {
   const navigate = useNavigate();
   const [reopening, setReopening] = useState(false);
   const unopenableRef = useRef(new Set<string>());
+  // The architecture last open on this page wins over the saved one, which may not have been
+  // updated yet (the preferences load, and the save, take a moment after a page load).
+  const openOnPageRef = useRef<string | null>(null);
+  if (architectureId) openOnPageRef.current = architectureId;
+  const reopenId = openOnPageRef.current ?? storedArchitectureId;
   useEffect(() => {
-    if (architectureId || !prefsLoaded || !storedArchitectureId) return;
-    if (unopenableRef.current.has(storedArchitectureId)) return;
+    if (architectureId || !prefsLoaded || !reopenId) return;
+    if (unopenableRef.current.has(reopenId)) return;
     let current = true;
     setReopening(true);
     queryClient
       .fetchQuery({
-        queryKey: ["architecture", storedArchitectureId],
-        queryFn: () => api.getArchitecture(storedArchitectureId),
+        queryKey: ["architecture", reopenId],
+        queryFn: () => api.getArchitecture(reopenId),
       })
       .then(() => {
-        if (current) navigate(`/architectures/${storedArchitectureId}`, { replace: true });
+        if (current) navigate(`/architectures/${reopenId}`, { replace: true });
       })
-      .catch(() => unopenableRef.current.add(storedArchitectureId))
+      .catch(() => unopenableRef.current.add(reopenId))
       .finally(() => {
         if (current) setReopening(false);
       });
@@ -350,7 +354,7 @@ function WorkspacePageInner() {
       current = false;
       setReopening(false);
     };
-  }, [architectureId, prefsLoaded, storedArchitectureId, queryClient, navigate]);
+  }, [architectureId, prefsLoaded, reopenId, queryClient, navigate]);
   // 010-multi-region-support, FR-017: the region-selection prompt only ever offers regions the
   // pricing dataset currently has data for — 019: the provider's own regions.
   const regions = useQuery({
@@ -1029,24 +1033,14 @@ function WorkspacePageInner() {
           />
 
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-2">
-            {/* 021 US5 (FR-005, FR-036): the open architecture's name, above the canvas. */}
-            {architecture.data && (
-              <h2 className="flex min-w-0 items-center text-sm font-semibold">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span tabIndex={0} aria-label={canvasTitle} className="truncate rounded-sm">
-                      {canvasTitle}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>{canvasTitle}</TooltipContent>
-                </Tooltip>
-              </h2>
-            )}
-            {/* 023 (FR-001a): the agent panel under the canvas, when the agent is on. */}
-            <AgentColumn
+            {/* 023 (FR-001a): the Canvas and Agent tabs; the open architecture's name (021 US5,
+                FR-005, FR-036) is in their upper tab bar. */}
+            <WorkspaceCenter
+              title={architecture.data ? canvasTitle : null}
               architectureId={architectureId ?? null}
               canvas={
                 <ArchitectureDiagramPanel
+                  fillHeight
                   architectureId={architectureId!}
                   provider={pricingProvider}
                   collections={collections}

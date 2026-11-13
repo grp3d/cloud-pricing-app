@@ -24,13 +24,15 @@ decimal places, so they match the Pricing tab. Any amount the model types on its
 them. Every answer with a figure ends with a line the app adds, such as "Prices for 1 month (31
 days), snapshot 2026-11-02 r2".
 
-## The panel
+## The Agent tab
 
-- Shown only to logged-in users, never to guests, and only while the agent is switched on. With it
-  off, the workspace looks exactly as it does without the agent.
-- It starts collapsed to a thin **Agent** bar under the canvas. Open, a bar between the canvas and
-  the panel moves (drag it, or use the arrow keys), and the panel's bottom-right corner sets its
-  height. Whether it's open, the bar's position and the height are saved to your account.
+- The agent is the **Agent** tab beside **Canvas** in the centre column. The two tabs merge,
+  split and swap like the inspector's Pricing and Service tabs (see
+  [workspace and preferences](workspace-and-preferences.md)); the arrangement is saved to your
+  account. Canvas is in front by default; to keep the agent in view, move Agent to the lower
+  half.
+- Usable only by logged-in users while the agent is switched on. For a guest, or with the agent
+  off, the Agent tab is shown but inactive, and its tooltip says why.
 - **Conversation** and **Activity** switch the panel's view. Answers appear as they're written,
   with a status while the agent is thinking or looking something up.
 - When you can't use the agent, the panel says why: your free preview is used up, you've reached

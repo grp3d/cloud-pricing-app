@@ -951,9 +951,9 @@ export interface components {
         };
         /**
          * AgentPanelPreferences
-         * @description 023 (data-model §7, clarification 1): the agent panel under the canvas — whether it's
-         *     open, the canvas's share of the centre column, and the panel's own size after a corner
-         *     resize.
+         * @description 023 (data-model §7, clarification 1): the first agent panel's layout, under the canvas.
+         *     No longer used (the Canvas and Agent tabs replaced it, `CenterArrangement`); kept so a saved
+         *     value still loads.
          */
         AgentPanelPreferences: {
             /**
@@ -1441,6 +1441,30 @@ export interface components {
             snapshot_revision: number;
             /** Total */
             total: number;
+        };
+        /**
+         * CenterArrangement
+         * @description 023: the centre column's Canvas and Agent tabs, arranged like the inspector's (merged
+         *     with one in front, or split with a divider).
+         */
+        CenterArrangement: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "merged" | "split";
+            /**
+             * Upper
+             * @enum {string}
+             */
+            upper: "canvas" | "agent";
+            /**
+             * Front
+             * @enum {string}
+             */
+            front: "canvas" | "agent";
+            /** Split */
+            split: number;
         };
         /** ChartProviderSelection */
         ChartProviderSelection: {
@@ -2353,6 +2377,7 @@ export interface components {
             last_architecture_id?: string | null;
             inspector?: components["schemas"]["InspectorArrangement"] | null;
             agent_panel?: components["schemas"]["AgentPanelPreferences"] | null;
+            center?: components["schemas"]["CenterArrangement"] | null;
         };
     };
     responses: never;

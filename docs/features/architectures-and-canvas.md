@@ -46,11 +46,13 @@ collection or to a connector:
 
 - Boxes show their full content: names wrap instead of clipping, and a VPC's region (and an
   Application's, when it isn't inside a VPC) is shown in the box's corner.
-- Boxes can be moved and resized; the canvas can be zoomed and its height resized. **Redraw**
-  lays the diagram out again.
+- Boxes can be moved and resized, and the canvas zoomed. The canvas fills the **Canvas** tab of
+  the centre column (see [workspace and preferences](workspace-and-preferences.md)); split with
+  the Agent tab, the divider sets its height. **Redraw** lays the diagram out again.
 - Opening an architecture (picking it, reloading the page, or **Redraw**) fits the diagram into
-  the canvas. It only zooms out: a diagram that already fits opens at its saved zoom. The zoom
-  controls sit in the canvas's top-left corner.
+  the canvas, and so does a change in the canvas's size (a split, the divider, the window). It
+  only zooms out: a diagram that already fits keeps its zoom. The zoom controls sit in the
+  canvas's top-left corner.
 - The **pop-out** button opens the canvas in an enlarged view.
 - Box positions and sizes, icon arrangement, connector bends and sides, and zoom are kept in the
   browser, per architecture (see [workspace and preferences](workspace-and-preferences.md#settings-saved-to-your-account)).

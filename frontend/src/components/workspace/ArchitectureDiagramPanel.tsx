@@ -384,6 +384,14 @@ const DEFAULT_DIAGRAM_ZOOM = 0.7;
  * that keeps the controls off it. */
 const CONTROLS_CLEARANCE_PX = 52;
 
+/** 023: room around a fitted diagram; the left side clears the controls column. */
+const FIT_PADDING = {
+  top: "16px",
+  right: "16px",
+  bottom: "16px",
+  left: `${CONTROLS_CLEARANCE_PX + 8}px`,
+} as const;
+
 const CONNECTOR_SIDE_POSITION: Record<ConnectorSide, Position> = {
   top: Position.Top,
   right: Position.Right,
@@ -1247,6 +1255,9 @@ export interface ArchitectureDiagramPanelProps {
   /** 020 (FR-006): the architecture's provider, which picks the service icons. Defaults to
    * `"aws"`, so AWS diagrams render exactly as before. */
   provider?: ProviderCode;
+  /** 023: fill the parent's height (the workspace's Canvas tab, whose pane sets the height)
+   * instead of the panel's own resizable height; there is then no height grip. */
+  fillHeight?: boolean;
 }
 
 /**
@@ -1279,8 +1290,10 @@ export function ArchitectureDiagramPanel({
   onOpenPopout,
   instanceId = "main",
   provider = "aws",
+  fillHeight = false,
 }: ArchitectureDiagramPanelProps) {
-  const { getIntersectingNodes, getNodes, screenToFlowPosition } = useReactFlow();
+  const { getIntersectingNodes, getNodes, screenToFlowPosition, fitView, getViewport } =
+    useReactFlow();
 
   // 009-ui-fixes-next-iteration follow-up: bumped by the new refresh button to force
   // `<ReactFlow>` below to fully remount (its `key` includes this) even though
@@ -1373,6 +1386,31 @@ export function ArchitectureDiagramPanel({
   // like a manual move, so it survives a reload. Runs in the render body, like the reseed
   // above, so the very first `initialNodes` for the new box already uses it.
   const canvasRef = useRef<HTMLDivElement>(null);
+  // 023: when the canvas changes size (the Canvas and Agent tabs split or merge, their divider
+  // moves, the window resizes), the diagram is fitted again, so a shorter canvas doesn't cut
+  // it off. Like the fit on opening, this only zooms out, never past the current zoom; a
+  // hidden canvas (no size) is left alone.
+  useEffect(() => {
+    const element = canvasRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    let last = { width: element.clientWidth, height: element.clientHeight };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const observer = new ResizeObserver(() => {
+      const size = { width: element.clientWidth, height: element.clientHeight };
+      if (size.width === 0 || size.height === 0) return;
+      if (size.width === last.width && size.height === last.height) return;
+      last = size;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void fitView({ maxZoom: getViewport().zoom, padding: FIT_PADDING });
+      }, 150);
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      clearTimeout(timer);
+    };
+  }, [fitView, getViewport]);
   const seenTopLevelRef = useRef<{ architectureId: string; ids: Set<string> } | null>(null);
   const topLevelCollections = collections.filter((c) => !c.parent_collection_id);
   if (seenTopLevelRef.current?.architectureId !== architectureId) {
@@ -2003,8 +2041,10 @@ export function ArchitectureDiagramPanel({
       // `resize-y` this replaced (see that component's own comment for why), with no
       // artificial max-height capping how much further the user can drag it.
       ref={canvasRef}
-      className="relative h-full overflow-auto rounded border border-border bg-muted/20"
-      style={{ height: diagramHeight }}
+      className={`relative h-full overflow-auto bg-muted/20 ${
+        fillHeight ? "" : "rounded border border-border"
+      }`}
+      style={fillHeight ? undefined : { height: diagramHeight }}
     >
       <ReactFlow
         // 021 (FR-028): arrowheads take the theme's line colour (React Flow's default is grey).
@@ -2029,15 +2069,7 @@ export function ArchitectureDiagramPanel({
         // only ever zooms out: a diagram that already fits stays at the saved (or default)
         // zoom. The left padding keeps it clear of the top-left controls column.
         fitView
-        fitViewOptions={{
-          maxZoom: defaultViewport.zoom,
-          padding: {
-            top: "16px",
-            right: "16px",
-            bottom: "16px",
-            left: `${CONTROLS_CLEARANCE_PX + 8}px`,
-          },
-        }}
+        fitViewOptions={{ maxZoom: defaultViewport.zoom, padding: FIT_PADDING }}
         onMoveEnd={onMoveEnd}
         // 009-ui-fixes-next-iteration follow-up, new arch spec requirement: lets a drag
         // start from (or land on) any of `SideHandles`' four per-side handles regardless of
@@ -2110,11 +2142,11 @@ export function ArchitectureDiagramPanel({
           </Panel>
         )}
       </ReactFlow>
-      <DiagramResizeHandle
-        onDrag={(deltaY) =>
-          setDiagramHeight((h) => Math.max(DIAGRAM_MIN_HEIGHT, h + deltaY))
-        }
-      />
+      {!fillHeight && (
+        <DiagramResizeHandle
+          onDrag={(deltaY) => setDiagramHeight((h) => Math.max(DIAGRAM_MIN_HEIGHT, h + deltaY))}
+        />
+      )}
     </div>
   );
 }

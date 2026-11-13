@@ -6,7 +6,7 @@ messages:
 expect:
   refused: true
   no_operations: true
-  contains: ["import"]
-  not_contains: ["Route 53", "Route53", "collection"]
+  contains: ["I can't help", "import"]
+  not_contains: ["You can't help", "Route 53", "Route53", "collection"]
 script:
-  - text: ["I can't tell you the time here. I can describe the open architecture, give its cost, name what drives the cost, or list architectures you can import."]
+  - text: ["I can't help with that here. I can describe the open architecture, give its cost, name what drives the cost, or list architectures you can import."]

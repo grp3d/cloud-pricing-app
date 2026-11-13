@@ -218,3 +218,15 @@ async def test_last_architecture_is_saved_and_must_be_an_id(client):
     bad = await client.patch(URL, json={"workspace": {"last_architecture_id": "not-an-id"}},
                              headers=headers)
     assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_center_tabs_arrangement_is_saved_and_checked(client):
+    headers = _headers()
+    center = {"mode": "split", "upper": "canvas", "front": "agent", "split": 0.6}
+    saved = await client.patch(URL, json={"workspace": {"center": center}}, headers=headers)
+    assert saved.status_code == 200
+    assert saved.json()["data"]["workspace"] == {"center": center}
+    for bad in ({**center, "upper": "pricing"}, {**center, "split": 0.95}):
+        refused = await client.patch(URL, json={"workspace": {"center": bad}}, headers=headers)
+        assert refused.status_code == 422

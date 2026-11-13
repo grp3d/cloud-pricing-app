@@ -1,9 +1,10 @@
 /**
  * 023-agent-foundation in the browser (research R15): with the scripted model, a named user
- * opens the agent panel, starts a session and gets a streamed answer whose figure equals the
- * pricing engine's, sees the operation in the activity log, resizes the panel (kept after a
- * reload), and the panel disappears when the Admin switches the agent off. Runs in its own
- * Playwright project, after the others, because the agent setting is app-wide.
+ * opens the Agent tab, starts a session and gets a streamed answer whose figure equals the
+ * pricing engine's, sees the operation in the activity log, moves Agent to the lower half and
+ * resizes the panes (kept after a reload), and the Agent tab turns inactive when the Admin
+ * switches the agent off. Runs in its own Playwright project, after the others, because the
+ * agent setting is app-wide.
  */
 import { randomUUID } from "node:crypto";
 
@@ -52,7 +53,7 @@ test("ask the agent about the open architecture", async ({ page }) => {
   );
 
   await openArchitecture(page, user, architectureId);
-  await page.getByRole("button", { name: "Open the agent panel" }).click();
+  await page.getByRole("tab", { name: "Agent" }).click();
   await panel(page).getByRole("button", { name: "New agent session" }).click();
   await expect(panel(page).getByText(/^Closes /)).toBeVisible();
 
@@ -66,30 +67,37 @@ test("ask the agent about the open architecture", async ({ page }) => {
   await expect(panel(page).getByText("price_open_architecture")).toBeVisible();
   await expect(panel(page).getByText(/Pricing snapshot: AWS/)).toBeVisible();
 
-  // Clarification 1: the bar between canvas and panel moves, and the layout is kept.
-  const divider = page.getByRole("separator", { name: "Resize the canvas and the agent panel" });
+  // The Agent tab moves to the lower half (from its options menu), the divider between the
+  // panes moves, and the arrangement is kept after a reload.
+  await page.getByRole("button", { name: "Agent tab options" }).click();
+  await page.getByRole("menuitem", { name: "Move to lower half" }).click();
+  await expect(page.getByRole("tablist", { name: "Lower workspace pane" })).toContainText("Agent");
+  const divider = page.getByRole("separator", { name: "Resize workspace panes" });
+  // Wait for the new position to reach the account before reloading.
+  const splitSent = page.waitForRequest(
+    (r) =>
+      r.url().endsWith("/me/preferences") &&
+      r.method() === "PATCH" &&
+      JSON.stringify(r.postDataJSON()).includes('"split":0.7'),
+  );
   await divider.focus();
   await divider.press("ArrowDown");
   await divider.press("ArrowDown");
   await expect(divider).toHaveAttribute("aria-valuenow", "70");
-  const corner = page.getByRole("separator", { name: "Resize the agent panel height" });
-  const box = (await corner.boundingBox())!;
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2, box.y - 40, { steps: 4 });
-  await page.mouse.up();
-  const panelBox = (await panel(page).boundingBox())!;
+  expect((await (await splitSent).response())?.ok()).toBe(true);
+  await expect(page.locator(".react-flow").first()).toBeVisible();
 
   await page.reload();
   await expect(divider).toHaveAttribute("aria-valuenow", "70");
-  const reloaded = (await panel(page).boundingBox())!;
-  expect(Math.abs(reloaded.height - panelBox.height)).toBeLessThan(3);
   await expect(panel(page).getByText(/This architecture costs/)).toBeVisible();
 
-  // Clarification 4: switched off for everyone, there is no panel at all.
+  // Switched off for everyone: the Agent tab is shown but inactive, and the Canvas fills the
+  // pane.
   await admin.call("PUT", "/admin/agent/settings", { ...SETTINGS, agent_enabled: false });
   await page.reload();
   await expect(page.getByRole("button", { name: "Calculate", includeHidden: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Agent" })).toHaveAttribute("aria-disabled", "true");
   await expect(panel(page)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Open the agent panel" })).toHaveCount(0);
+  await expect(divider).toHaveCount(0);
+  await expect(page.locator(".react-flow").first()).toBeVisible();
 });

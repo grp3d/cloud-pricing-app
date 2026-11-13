@@ -357,7 +357,8 @@ describe("WorkspacePage inspector (021)", () => {
     vi.spyOn(api, "calculate").mockResolvedValue(result("3.00"));
     renderWorkspace();
     expect(await screen.findByRole("button", { name: "Pricing — new result" })).toBeInTheDocument();
-    expect(screen.queryByRole("tablist")).toBeNull();
+    // 023: the centre column has its own (Canvas and Agent) tabs; the inspector's are gone.
+    expect(screen.queryByRole("tablist", { name: "Inspector tabs" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Expand inspector" }));
     expect(screen.getByRole("tab", { name: "Pricing" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByText(/Total: .*3\.00/)).toBeInTheDocument();

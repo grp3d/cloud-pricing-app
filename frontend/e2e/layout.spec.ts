@@ -180,18 +180,19 @@ test("B: selecting brings Service forward, a save keeps it, a calculation brings
 
   // B6: collapsed, a calculation (the automatic one on opening another architecture) leaves
   // it collapsed and marks the rail.
-  // Wait for the collapsed state to reach the account before reloading the page.
-  const collapsedSaved = page.waitForResponse(
+  // Wait for the collapsed state to reach the account before reloading the page. Only a save
+  // sent after this click counts: an earlier one still in flight can carry "collapsed" too.
+  const collapsedSent = page.waitForRequest(
     (r) =>
       r.url().endsWith("/me/preferences") &&
-      r.request().method() === "PATCH" &&
-      JSON.stringify(r.request().postDataJSON()).includes('"col4":true'),
+      r.method() === "PATCH" &&
+      JSON.stringify(r.postDataJSON()).includes('"col4":true'),
   );
   await inspector(page).getByRole("button", { name: "Collapse inspector" }).click();
-  await collapsedSaved;
+  expect((await (await collapsedSent).response())?.ok()).toBe(true);
   await page.goto(`/architectures/${second.architectureId}`);
   await expect(inspector(page).getByRole("button", { name: "Pricing — new result" })).toBeVisible();
-  await expect(page.getByRole("tablist")).toHaveCount(0);
+  await expect(inspector(page).getByRole("tablist")).toHaveCount(0);
   await inspector(page).getByRole("button", { name: "Pricing — new result" }).click();
   await expect(tab(page, "Pricing")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("region", { name: "Calculation result" })).toBeVisible();

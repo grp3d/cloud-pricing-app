@@ -6,11 +6,11 @@ the full design (spec, plan, tasks). Versions stay below 1.0.0 until a deliberat
 ## Unreleased
 
 - 022 GCP and Azure standard architectures: the four standard designs on GCP and Azure, created once in every environment ([spec](specs/022-gcp-azure-standard-architectures/))
-- 023 Agent foundation: an agent panel under the canvas that answers questions about the open architecture's contents and cost, and what can be imported, with figures from the pricing engine; sessions, an activity log, Admin agent settings, per-user preview and limits, and a global monthly cap; the agent is off by default. The Admin page now has three tabs: Agent Settings, User Management and System Information ([spec](specs/023-agent-foundation/))
+- 023 Agent foundation: an Agent tab beside the Canvas tab (they merge, split and swap like the inspector's tabs) that answers questions about the open architecture's contents and cost, and what can be imported, with figures from the pricing engine; sessions, an activity log, Admin agent settings, per-user preview and limits, and a global monthly cap; the agent is off by default. The Admin page now has three tabs: Agent Settings, User Management and System Information ([spec](specs/023-agent-foundation/))
 - The backend refuses to start against a database that isn't at the code's latest migration, and names the command to run
 - Cloud Pricing reopens the last architecture you opened, instead of an empty workspace
 - The canvas's zoom controls are in its top-left corner, so resizing the canvas no longer hides them
-- Opening an architecture fits its diagram into the canvas, zooming out only
+- Opening an architecture, or resizing the canvas, fits its diagram into the canvas, zooming out only
 
 ## v0.1.1 — 2026-11-10
 

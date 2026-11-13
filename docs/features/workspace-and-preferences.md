@@ -27,9 +27,14 @@ architecture from Trends or Admin goes to the workspace with it open.
 The workspace has three zones under the header:
 
 - **Left sidebar, the Architecture Editor**: collections, connectors and the service search.
-- **Center canvas**: the architecture diagram. It takes all the space the other two don't.
-  When the agent is switched on, the [agent panel](agent.md) sits under it, collapsed to a thin
-  bar until opened.
+- **Centre column**: two tabs, **Canvas** (the architecture diagram) and **Agent** (the
+  [agent](agent.md)). It takes all the space the other two don't. The tabs merge, split and swap
+  exactly like the inspector's (below); by default they're merged with Canvas in front, and
+  nothing brings Agent forward by itself. To keep the agent in view, move it to the lower half.
+  When the agent is switched off, or for a guest, the Agent tab is shown but inactive, and its
+  tooltip says why.
+  The open architecture's name sits in the tab bar beside the tabs (the upper one when split);
+  a long name gets smaller to fit, then is cut off, with the full name on hover.
 - **Right inspector**: two tabs, **Pricing** and **Service**.
 
 The sidebar and the inspector can each be resized by dragging their inner edge, and collapsed to
@@ -69,7 +74,8 @@ These follow you to any browser or device, for guests and logged-in users alike:
 
 - the sidebar and inspector widths, and whether each is collapsed;
 - the inspector arrangement (merged or split, which tab is on top, the divider, the front tab);
-- the agent panel: whether it's open, the bar between it and the canvas, and its height;
+- the centre column's arrangement (merged or split, which tab is on top, the divider, the front
+  tab);
 - the last provider you used;
 - the last architecture you opened: **Cloud Pricing** opens it again when no architecture is
   named (clicking the tab, or a return visit), unless it's been deleted or you can no longer open

@@ -1,63 +1,56 @@
 /**
- * 023-agent-foundation (FR-001, FR-001a, clarifications 1 and 4, research R12): the agent panel
- * in the centre column, under the canvas.
+ * 023-agent-foundation (FR-001, FR-001a, clarification 4, research R12): the centre column's
+ * Canvas and Agent tabs, arranged like the inspector's Pricing and Service tabs: merged with
+ * one in front (Canvas by default), or split into an upper and a lower pane with a divider.
+ * Tabs move by dragging or from each tab's options menu; the arrangement is saved to the
+ * account. Nothing brings Agent forward by itself.
  *
- * - Agent off for everyone, or a guest: no panel at all; the column is exactly as before.
- * - Collapsed (the default): a thin bar under the canvas that opens it.
- * - Open: a movable horizontal bar splits the column between the canvas and the panel (like the
- *   bar between the inspector's Service and Pricing tabs), and the panel's bottom-right corner
- *   sets its own height (like the canvas's corner). The layout is saved to the account.
- * - When the agent is on but this user can't use it, the panel says why (and, for a monthly
- *   limit, when it resets); it doesn't say what to do.
+ * - Agent off for everyone, or a guest: the Agent tab is shown but inactive, with the reason
+ *   as its tooltip, and the Canvas fills the pane.
+ * - When the agent is on but this user can't use it, the Agent tab says why (and, for a
+ *   monthly limit, when it resets); it doesn't say what to do.
  */
 import { useQuery } from "@tanstack/react-query";
-import { Bot, ChevronDown, ChevronUp, History, MessagesSquare } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { History, MessagesSquare } from "lucide-react";
+import { type ReactNode, useState } from "react";
 
 import { api, type AgentStatus } from "../../api/client";
 import {
-  type AgentPanelLayout,
-  clampPanelHeight,
-  clampSplit,
-  readAgentPanel,
-  splitAfterDrag,
-  withAgentPanel,
-} from "../../lib/agentPanelLayout";
-import { preferencesStore, usePreferences } from "../../lib/preferences";
+  CANVAS_ONLY,
+  CENTER_TABS,
+  type CenterAction,
+  type CenterTab,
+  nextCenter,
+  readCenter,
+  writeCenter,
+} from "../../lib/centerLayout";
+import { usePreferences } from "../../lib/preferences";
+import { FitTitle } from "../layout/FitTitle";
+import { SplitTabPane } from "../layout/SplitTabPane";
 import { Button } from "../ui/button";
 import { AgentActivityLog } from "./AgentActivityLog";
 import { AgentConversation } from "./AgentConversation";
 import { AgentSessionHeader } from "./AgentSessionHeader";
 import { refusalText } from "./agentText";
 
-function saveLayout(layout: AgentPanelLayout) {
-  void preferencesStore.patchSection(
-    "workspace",
-    withAgentPanel(preferencesStore.current.workspace, layout),
-  );
+const LABELS: Record<CenterTab, string> = { canvas: "Canvas", agent: "Agent" };
+
+function inactiveReason(status: AgentStatus | undefined): string | null {
+  if (status?.enabled) return null;
+  if (status?.reason === "guest") return "Log in to use the agent.";
+  if (status?.reason === "agent_off") return "The agent is switched off.";
+  return "The agent isn't available right now.";
 }
 
-function dragY(e: React.PointerEvent<HTMLElement>, onMove: (dy: number) => void, onUp: () => void) {
-  e.preventDefault();
-  const target = e.currentTarget;
-  target.setPointerCapture?.(e.pointerId);
-  const startY = e.clientY;
-  const move = (ev: PointerEvent) => onMove(ev.clientY - startY);
-  const up = () => {
-    target.removeEventListener("pointermove", move);
-    target.removeEventListener("pointerup", up);
-    onUp();
-  };
-  target.addEventListener("pointermove", move);
-  target.addEventListener("pointerup", up);
-}
-
-export function AgentColumn({
+export function WorkspaceCenter({
   canvas,
   architectureId,
+  title,
 }: {
   canvas: ReactNode;
   architectureId: string | null;
+  /** The open architecture's name, shown in the upper tab bar (only the upper one when split). */
+  title: string | null;
 }) {
   const status = useQuery({
     queryKey: ["agentStatus"],
@@ -66,133 +59,36 @@ export function AgentColumn({
     retry: false,
   });
   const [prefs] = usePreferences();
-  const layout = readAgentPanel(prefs.workspace);
-  const columnRef = useRef<HTMLDivElement>(null);
-  const areaRef = useRef<HTMLDivElement>(null);
-  const [liveSplit, setLiveSplit] = useState<number | null>(null);
-  const [liveHeight, setLiveHeight] = useState<number | null>(null);
+  const saved = readCenter(prefs.workspace);
+  const reason = inactiveReason(status.data);
+  // While the Agent tab is inactive, the saved arrangement is kept but not shown.
+  const arrangement = reason ? CANVAS_ONLY : saved;
 
-  if (!status.data?.enabled) return <>{canvas}</>;
-
-  if (!layout.open) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-        <div className="min-h-0 flex-1 overflow-auto">{canvas}</div>
-        <button
-          type="button"
-          className="focus-ring flex shrink-0 items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs hover:bg-muted"
-          onClick={() => saveLayout({ ...layout, open: true })}
-          aria-label="Open the agent panel"
-        >
-          <Bot className="size-3.5" /> Agent
-          <ChevronUp className="ml-auto size-3.5" />
-        </button>
-      </div>
-    );
-  }
-
-  const split = liveSplit ?? layout.split;
-  const height = liveHeight ?? layout.height;
+  const onAction = (action: CenterAction) => {
+    if (reason) return;
+    const next = nextCenter(saved, action);
+    if (next !== saved) writeCenter(next);
+  };
 
   return (
-    <div ref={columnRef} className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 overflow-auto" style={{ flexGrow: split, flexBasis: 0 }}>
-        {canvas}
-      </div>
-      <div
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize the canvas and the agent panel"
-        aria-valuemin={20}
-        aria-valuemax={80}
-        aria-valuenow={Math.round(split * 100)}
-        tabIndex={0}
-        className="focus-ring my-1 h-1 shrink-0 cursor-row-resize bg-border transition-colors hover:bg-primary/50 active:bg-primary"
-        onPointerDown={(e) => {
-          const columnHeight = columnRef.current?.getBoundingClientRect().height ?? 0;
-          let latest = layout.split;
-          dragY(
-            e,
-            (dy) => {
-              latest = splitAfterDrag(layout.split, dy, columnHeight);
-              setLiveSplit(latest);
-            },
-            () => {
-              setLiveSplit(null);
-              saveLayout({ ...layout, split: latest });
-            },
-          );
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-background">
+      <SplitTabPane
+        tabs={CENTER_TABS}
+        labels={LABELS}
+        bodies={{
+          canvas: <div className="flex min-h-0 flex-1 flex-col">{canvas}</div>,
+          agent:
+            status.data && !reason ? (
+              <AgentPanel status={status.data} architectureId={architectureId} />
+            ) : null,
         }}
-        onKeyDown={(e) => {
-          const step = e.key === "ArrowUp" ? -0.05 : e.key === "ArrowDown" ? 0.05 : 0;
-          if (step === 0) return;
-          e.preventDefault();
-          saveLayout({
-            ...layout,
-            split: clampSplit(Math.round((layout.split + step) * 100) / 100),
-          });
-        }}
+        arrangement={arrangement}
+        onAction={onAction}
+        name="workspace"
+        inactive={reason ? { agent: reason } : undefined}
+        barCenter={title ? <FitTitle text={title} /> : undefined}
+        keepHiddenSized
       />
-      <div
-        ref={areaRef}
-        className="min-h-0 overflow-auto"
-        style={{ flexGrow: 1 - split, flexBasis: 0 }}
-      >
-        <div
-          className="relative flex min-h-0 flex-col rounded-md border border-border bg-card"
-          style={{ height: height ?? "100%" }}
-        >
-          <AgentPanel
-            status={status.data}
-            architectureId={architectureId}
-            onCollapse={() => saveLayout({ ...layout, open: false })}
-          />
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="Resize the agent panel height"
-            tabIndex={0}
-            className="focus-ring absolute right-0 bottom-0 z-10 size-4 cursor-ns-resize touch-none rounded-br hover:bg-primary/20 active:bg-primary/30"
-            onPointerDown={(e) => {
-              const areaHeight = areaRef.current?.getBoundingClientRect().height ?? 0;
-              const start =
-                layout.height ?? e.currentTarget.parentElement?.getBoundingClientRect().height ?? 0;
-              let latest = start;
-              dragY(
-                e,
-                (dy) => {
-                  latest = clampPanelHeight(start + dy, Math.max(areaHeight, start + dy));
-                  setLiveHeight(latest);
-                },
-                () => {
-                  setLiveHeight(null);
-                  saveLayout({ ...layout, height: Math.round(latest) });
-                },
-              );
-            }}
-            onKeyDown={(e) => {
-              const step = e.key === "ArrowUp" ? -20 : e.key === "ArrowDown" ? 20 : 0;
-              if (step === 0) return;
-              e.preventDefault();
-              const current =
-                layout.height ?? e.currentTarget.parentElement?.getBoundingClientRect().height ?? 0;
-              saveLayout({
-                ...layout,
-                height: Math.round(clampPanelHeight(current + step, current + step)),
-              });
-            }}
-          >
-            <svg viewBox="0 0 16 16" className="size-full text-muted-foreground" aria-hidden="true">
-              <path
-                d="M14 3 L3 14 M14 8 L8 14 M14 13 L13 14"
-                stroke="currentColor"
-                strokeWidth="1.25"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -200,19 +96,15 @@ export function AgentColumn({
 function AgentPanel({
   status,
   architectureId,
-  onCollapse,
 }: {
   status: AgentStatus;
   architectureId: string | null;
-  onCollapse: () => void;
 }) {
   const [view, setView] = useState<"conversation" | "activity">("conversation");
   return (
     <section aria-label="Agent" className="flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 items-start gap-2 border-b border-border px-2 py-1.5">
-        <h2 className="flex items-center gap-1.5 pt-1 text-xs font-semibold">
-          <Bot className="size-3.5" /> Agent
-        </h2>
+        <h2 className="sr-only">Agent</h2>
         <div role="tablist" aria-label="Agent views" className="flex gap-1 pt-0.5">
           <Button
             type="button"
@@ -237,15 +129,6 @@ function AgentPanel({
         </div>
         <div className="ml-auto flex items-start gap-1">
           <AgentSessionHeader session={status.session} />
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            aria-label="Collapse the agent panel"
-            onClick={onCollapse}
-          >
-            <ChevronDown />
-          </Button>
         </div>
       </header>
       {!status.available && status.reason && (

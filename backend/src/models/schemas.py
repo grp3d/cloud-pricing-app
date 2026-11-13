@@ -803,10 +803,20 @@ class InspectorArrangement(_Strict):
     split: float = Field(ge=0.2, le=0.8)
 
 
+class CenterArrangement(_Strict):
+    """023: the centre column's Canvas and Agent tabs, arranged like the inspector's (merged
+    with one in front, or split with a divider)."""
+
+    mode: Literal["merged", "split"]
+    upper: Literal["canvas", "agent"]
+    front: Literal["canvas", "agent"]
+    split: float = Field(ge=0.2, le=0.8)
+
+
 class AgentPanelPreferences(_Strict):
-    """023 (data-model §7, clarification 1): the agent panel under the canvas — whether it's
-    open, the canvas's share of the centre column, and the panel's own size after a corner
-    resize."""
+    """023 (data-model §7, clarification 1): the first agent panel's layout, under the canvas.
+    No longer used (the Canvas and Agent tabs replaced it, `CenterArrangement`); kept so a saved
+    value still loads."""
 
     open: bool = False
     split: float = Field(default=0.6, ge=0.2, le=0.8)
@@ -822,6 +832,8 @@ class WorkspacePreferences(_Strict):
     last_architecture_id: uuid.UUID | None = None
     inspector: InspectorArrangement | None = None
     agent_panel: AgentPanelPreferences | None = None
+    # 023: the centre column's Canvas and Agent tabs.
+    center: CenterArrangement | None = None
 
     @field_validator("column_widths")
     @classmethod
