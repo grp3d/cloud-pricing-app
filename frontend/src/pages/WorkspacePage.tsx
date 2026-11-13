@@ -1,7 +1,7 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import {
   type ArchitectureDetail,
@@ -294,18 +294,63 @@ function WorkspacePageInner() {
   // 021 (research R3): opening (or creating) an architecture saves its provider as the last
   // one used, as picking it in Column 1 did. Only an active provider is saved: the clean-up
   // above clears an inactive one, and the two would otherwise undo each other forever.
+  // 023: it also saves the architecture itself, which Cloud Pricing reopens (below). Both go
+  // in one change, so neither overwrites the other.
   const openedProvider = architecture.data?.provider;
   const openedActive = Boolean(
     openedProvider && providers.data?.some((p) => p.code === openedProvider && p.active),
   );
+  const openedId = architecture.data?.id === architectureId ? architectureId : undefined;
+  const storedArchitectureId = prefs.workspace?.last_architecture_id ?? null;
   useEffect(() => {
-    if (prefsLoaded && openedActive && openedProvider && openedProvider !== storedProvider) {
-      patchSection("workspace", {
-        ...prefs.workspace,
-        last_provider: asProviderCode(openedProvider),
+    if (!prefsLoaded) return;
+    const saveProvider = openedActive && openedProvider && openedProvider !== storedProvider;
+    const saveArchitecture = openedId !== undefined && openedId !== storedArchitectureId;
+    if (!saveProvider && !saveArchitecture) return;
+    patchSection("workspace", {
+      ...prefs.workspace,
+      ...(saveProvider ? { last_provider: asProviderCode(openedProvider) } : {}),
+      ...(saveArchitecture ? { last_architecture_id: openedId } : {}),
+    });
+  }, [
+    prefsLoaded,
+    openedActive,
+    openedProvider,
+    storedProvider,
+    openedId,
+    storedArchitectureId,
+    prefs.workspace,
+    patchSection,
+  ]);
+
+  // 023: Cloud Pricing with no architecture named reopens the last one opened (this session
+  // or an earlier one), once it's confirmed the current user can still open it. One that's
+  // gone (deleted, or no longer theirs) leaves the usual empty workspace.
+  const navigate = useNavigate();
+  const [reopening, setReopening] = useState(false);
+  const unopenableRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (architectureId || !prefsLoaded || !storedArchitectureId) return;
+    if (unopenableRef.current.has(storedArchitectureId)) return;
+    let current = true;
+    setReopening(true);
+    queryClient
+      .fetchQuery({
+        queryKey: ["architecture", storedArchitectureId],
+        queryFn: () => api.getArchitecture(storedArchitectureId),
+      })
+      .then(() => {
+        if (current) navigate(`/architectures/${storedArchitectureId}`, { replace: true });
+      })
+      .catch(() => unopenableRef.current.add(storedArchitectureId))
+      .finally(() => {
+        if (current) setReopening(false);
       });
-    }
-  }, [prefsLoaded, openedActive, openedProvider, storedProvider, prefs.workspace, patchSection]);
+    return () => {
+      current = false;
+      setReopening(false);
+    };
+  }, [architectureId, prefsLoaded, storedArchitectureId, queryClient, navigate]);
   // 010-multi-region-support, FR-017: the region-selection prompt only ever offers regions the
   // pricing dataset currently has data for — 019: the provider's own regions.
   const regions = useQuery({
@@ -935,11 +980,13 @@ function WorkspacePageInner() {
       {!architecture.data && (
         <EmptyWorkspacePanels
           message={
-            !architectureId
-              ? "Open or create an architecture from the Cloud Pricing menu (the arrow beside Cloud Pricing above) to get started."
-              : architecture.isLoading
-                ? "Loading…"
-                : "Architecture not found."
+            !architectureId && reopening
+              ? "Loading…"
+              : !architectureId
+                ? "Open or create an architecture from the Cloud Pricing menu (the arrow beside Cloud Pricing above) to get started."
+                : architecture.isLoading
+                  ? "Loading…"
+                  : "Architecture not found."
           }
         />
       )}

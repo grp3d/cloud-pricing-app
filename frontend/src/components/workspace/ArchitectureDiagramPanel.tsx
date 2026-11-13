@@ -2024,6 +2024,20 @@ export function ArchitectureDiagramPanel({
         edgeTypes={edgeTypes}
         attributionPosition="bottom-left"
         defaultViewport={defaultViewport}
+        // 023: every open (a reload, picking an architecture, the redraw button: each one
+        // mounts this instance afresh, see `key` above) fits the diagram into the canvas. It
+        // only ever zooms out: a diagram that already fits stays at the saved (or default)
+        // zoom. The left padding keeps it clear of the top-left controls column.
+        fitView
+        fitViewOptions={{
+          maxZoom: defaultViewport.zoom,
+          padding: {
+            top: "16px",
+            right: "16px",
+            bottom: "16px",
+            left: `${CONTROLS_CLEARANCE_PX + 8}px`,
+          },
+        }}
         onMoveEnd={onMoveEnd}
         // 009-ui-fixes-next-iteration follow-up, new arch spec requirement: lets a drag
         // start from (or land on) any of `SideHandles`' four per-side handles regardless of

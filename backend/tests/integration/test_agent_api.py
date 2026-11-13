@@ -293,3 +293,102 @@ async def test_activity_log_lists_operations_in_order(client, named, agent_on, s
     await _start(client, other)
     assert (await client.get("/api/v1/agent/session/operations", headers=other)).json() == []
 
+
+
+# --- the browser closing the stream (found in use: the session stayed busy) --------------------
+
+
+async def _read_then_close(db_session, monkeypatch, turns, *, stop_after: str):
+    """Stream one answer the way the browser does, and stop reading (the browser closing the
+    connection) once an event of kind `stop_after` arrives; then let the answer finish."""
+    from src.agent import limits
+    from src.agent.settings_service import effective_settings
+    from src.api import agent as agent_api
+    from tests.conftest import TestSessionLocal
+
+    client = ScriptedModelClient(list(turns))
+    monkeypatch.setattr("src.api.agent.build_client", lambda effective: client)
+    user = User(id=uuid.uuid4(), username=f"u-{uuid.uuid4().hex[:6]}",
+                agent_enabled_for_user=True)
+    db_session.add(user)
+    await db_session.flush()
+    now = datetime.now(UTC)
+    session = AgentSession(user_id=user.id, started_at=now, closes_at=now + timedelta(days=3))
+    db_session.add(session)
+    await db_session.commit()
+    message = await limits.accept_message(db_session, user, session, "hi", None,
+                                          await effective_settings(db_session), now,
+                                          usable=True)
+    await db_session.commit()
+
+    response = agent_api._stream(TestSessionLocal, user.id, session.id, message.id,
+                                 charge_input=True)
+    body = response.body_iterator
+    async for chunk in body:
+        if f'"event":"{stop_after}"' in chunk:
+            break
+    await body.aclose()  # the stream is gone; nothing more is read from it
+    await asyncio.wait_for(asyncio.gather(*agent_api._answers), 10)
+    await db_session.refresh(session)
+    await db_session.refresh(message)
+    return session, message
+
+
+async def test_session_is_released_when_the_browser_disconnects_after_done(
+    client, named, agent_on, script, db_session
+):
+    """Through the whole app, as uvicorn runs it: the browser disconnects as soon as it has
+    "done", and the request-logging middleware then cancels the app's work."""
+    from src.api import agent as agent_api
+    from src.main import app
+
+    headers = await named(enabled_for_user=True)
+    script(Turn(text=["Fine."]))
+    session_id = (await _start(client, headers))["id"]
+    body = json.dumps({"content": "hi", "architecture_id": None}).encode()
+    got_done = asyncio.Event()
+    request_sent = False
+
+    async def receive():
+        nonlocal request_sent
+        if not request_sent:
+            request_sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        await got_done.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        if message["type"] == "http.response.body" and b'"event":"done"' in message.get(
+            "body", b""
+        ):
+            got_done.set()
+
+    scope = {
+        "type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"}, "http_version": "1.1",
+        "method": "POST", "scheme": "http", "path": "/api/v1/agent/session/messages",
+        "raw_path": b"/api/v1/agent/session/messages", "root_path": "", "query_string": b"",
+        "headers": [(b"content-type", b"application/json"),
+                    (b"authorization", headers["Authorization"].encode())],
+        "client": ("127.0.0.1", 1), "server": ("test", 80),
+    }
+    await asyncio.wait_for(app(scope, receive, send), 10)
+    await asyncio.wait_for(asyncio.gather(*agent_api._answers), 10)
+    stored = await db_session.get(AgentSession, uuid.UUID(session_id), populate_existing=True)
+    assert stored.busy_message_id is None
+    follow_up = await _send(client, headers, content="and then?")
+    assert follow_up.status_code != 409
+
+
+async def test_an_answer_the_browser_left_still_finishes_and_is_saved(
+    db_session, agent_on, monkeypatch
+):
+    session, message = await _read_then_close(
+        db_session, monkeypatch, [Turn(text=["Saved anyway."], delay_seconds=0.5)],
+        stop_after="accepted")
+    assert session.busy_message_id is None
+    assert message.status == "answered"
+    replies = (await db_session.execute(
+        select(AgentMessage).where(AgentMessage.session_id == session.id,
+                                   AgentMessage.role == "agent")
+    )).scalars().all()
+    assert [r.content for r in replies] == ["Saved anyway."]

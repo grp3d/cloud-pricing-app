@@ -1,0 +1,11 @@
+id: GC-9
+title: Asked what it can do, the agent lists its abilities without running anything
+architecture: {provider: aws, name: Active-Standby Multi-Region Web Application}
+messages:
+  - What can I ask you?
+expect:
+  no_operations: true
+  contains: ["import"]
+  not_contains: ["Route 53", "Route53"]
+script:
+  - text: ["You can ask me:\n- what's in the open architecture (\"What services does it use?\");\n- what it costs for a day, month or year (\"What does it cost per month?\");\n- what drives the cost (\"Which services cost the most?\");\n- which architectures you can import (\"What can I import?\")."]

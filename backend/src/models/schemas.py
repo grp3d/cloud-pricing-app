@@ -818,6 +818,8 @@ class WorkspacePreferences(_Strict):
     column_widths: dict[ColumnKey, int] | None = None
     collapsed: dict[ColumnKey, bool] | None = None
     last_provider: ProviderCode | None = None
+    # 023: the architecture last opened, which Cloud Pricing opens again when none is named.
+    last_architecture_id: uuid.UUID | None = None
     inspector: InspectorArrangement | None = None
     agent_panel: AgentPanelPreferences | None = None
 

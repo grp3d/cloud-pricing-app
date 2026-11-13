@@ -33,7 +33,7 @@ from src.agent.model import (
     ToolCall,
     Usage,
 )
-from src.agent.prompt import SYSTEM_PROMPT, user_turn
+from src.agent.prompt import SYSTEM_PROMPT, architecture_labels, user_turn
 from src.agent.settings_service import EffectiveAgentSettings
 from src.logging_config import get_logger
 from src.models.orm import AgentMessage, AgentOperation, AgentSession, AgentUsage, User
@@ -95,6 +95,7 @@ def _cost(effective: EffectiveAgentSettings, provider: str, usage: Usage) -> Dec
 
 
 async def _history(ctx: LoopContext) -> list[ModelMessage]:
+    """The conversation so far, then the new message."""
     rows = (await ctx.session.execute(
         select(AgentMessage)
         .where(AgentMessage.session_id == ctx.agent_session.id,
@@ -103,14 +104,20 @@ async def _history(ctx: LoopContext) -> list[ModelMessage]:
         .order_by(AgentMessage.seq.desc())
         .limit(HISTORY_MESSAGES)
     )).scalars().all()
+    rows = list(reversed(rows))
+    labels = architecture_labels(
+        [r.architecture_id for r in rows if r.role == "user"] + [ctx.user_message.architecture_id]
+    )
     history = []
-    for row in reversed(rows):
+    for row in rows:
         if row.role == "user":
-            arch = str(row.architecture_id) if row.architecture_id else None
-            history.append(ModelMessage(role="user", text=user_turn(row.content, arch)))
+            label = labels.get(row.architecture_id)
+            history.append(ModelMessage(role="user", text=user_turn(row.content, label)))
         else:
             history.append(ModelMessage(role="assistant", text=row.content))
-    return history
+    current = ModelMessage(role="user", text=user_turn(
+        ctx.user_message.content, labels.get(ctx.user_message.architecture_id)))
+    return [*history, current]
 
 
 async def _next_seq(ctx: LoopContext) -> int:
@@ -140,9 +147,7 @@ async def answer(ctx: LoopContext) -> AsyncIterator:
         session=ctx.session, user=ctx.user,
         open_architecture_id=ctx.user_message.architecture_id, figures=figures,
     )
-    arch = str(ctx.user_message.architecture_id) if ctx.user_message.architecture_id else None
-    conversation = [*await _history(ctx),
-                    ModelMessage(role="user", text=user_turn(ctx.user_message.content, arch))]
+    conversation = await _history(ctx)
     tools = ctx.registry.tool_specs()
 
     try:

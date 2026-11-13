@@ -205,3 +205,16 @@ async def test_agent_panel_rejects_invalid_values(client, auth_headers, panel):
     response = await client.patch(URL, json={"workspace": {"agent_panel": panel}},
                                   headers=auth_headers)
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_last_architecture_is_saved_and_must_be_an_id(client):
+    headers = _headers()
+    arch = str(uuid.uuid4())
+    saved = await client.patch(URL, json={"workspace": {"last_architecture_id": arch}},
+                               headers=headers)
+    assert saved.status_code == 200
+    assert saved.json()["data"]["workspace"] == {"last_architecture_id": arch}
+    bad = await client.patch(URL, json={"workspace": {"last_architecture_id": "not-an-id"}},
+                             headers=headers)
+    assert bad.status_code == 422

@@ -12,7 +12,9 @@ version the agent only answers questions; it doesn't change anything.
   architecture menu's Import does.
 
 Asked to change, create or import something, it says it can't yet and points to where you can do
-it. It sees only what you can see in the app, and treats names and other text inside
+it. Asked something outside the app (the time, general knowledge), it says it can't help with
+that here and what it can help with, rather than answering something else. Asked what it can do,
+it lists the above with an example question for each. It sees only what you can see in the app, and treats names and other text inside
 architectures as data, never as instructions.
 
 **Figures always come from the pricing engine.** The model never writes an amount itself: it
@@ -46,6 +48,8 @@ days), snapshot 2026-11-02 r2".
 - If the model is slow, unreachable or gives an answer the app can't use, the message is marked
   failed with the reason and **Retry** re-sends it. A retry doesn't use another message from your
   allowance. A model call that runs past the timeout setting stops.
+- If you leave or reload the page while the agent is answering, the answer still finishes and
+  is in the conversation when you come back.
 
 ## Activity log
 

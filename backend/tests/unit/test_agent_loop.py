@@ -179,8 +179,31 @@ async def test_the_model_sees_the_system_prompt_recent_history_and_the_new_messa
     assert len(sent) == 21
     assert sent[0].text.endswith("q20") and sent[19].text == "a29"
     assert sent[-1].role == "user"
-    assert str(arch) in sent[-1].text and sent[-1].text.endswith("What does it cost?")
+    assert "architecture A is open" in sent[-1].text
+    assert str(arch) not in sent[-1].text  # the model never sees, or repeats, the id
+    assert sent[-1].text.endswith("What does it cost?")
     assert "Never write an amount" in client.calls[0].system
+
+
+async def test_each_architecture_gets_a_label_in_the_order_it_was_opened(setup):
+    db, user, agent_session, message, arch = setup
+    other = uuid.uuid4()
+    message.seq = 10
+    db.add(AgentMessage(session_id=agent_session.id, seq=1, role="user", content="before",
+                        status="answered", architecture_id=other))
+    db.add(AgentMessage(session_id=agent_session.id, seq=2, role="agent", content="ok",
+                        status="complete"))
+    db.add(AgentMessage(session_id=agent_session.id, seq=3, role="user", content="none open",
+                        status="answered"))
+    db.add(AgentMessage(session_id=agent_session.id, seq=4, role="agent", content="ok",
+                        status="complete"))
+    await db.commit()
+    client = ScriptedModelClient([Turn(text=["ok"])])
+    await _run(_ctx(setup, client, _registry([])))
+    sent = [m.text for m in client.calls[0].messages if m.role == "user"]
+    assert sent[0].startswith("[App context: architecture A is open.")
+    assert sent[1].startswith("[App context: no architecture is open.]")
+    assert sent[2].startswith("[App context: architecture B is open.")
 
 
 async def test_stops_after_the_maximum_rounds(setup):

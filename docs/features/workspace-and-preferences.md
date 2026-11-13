@@ -71,6 +71,9 @@ These follow you to any browser or device, for guests and logged-in users alike:
 - the inspector arrangement (merged or split, which tab is on top, the divider, the front tab);
 - the agent panel: whether it's open, the bar between it and the canvas, and its height;
 - the last provider you used;
+- the last architecture you opened: **Cloud Pricing** opens it again when no architecture is
+  named (clicking the tab, or a return visit), unless it's been deleted or you can no longer open
+  it;
 - the Trends selections (see [trends](trends.md)).
 
 Settings saved by older versions in the browser are moved to the account once, on first load. A

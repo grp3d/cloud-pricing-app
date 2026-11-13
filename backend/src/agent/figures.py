@@ -24,7 +24,9 @@ DURATION_LABELS = {
 REMOVED = "[figure removed]"
 UNAVAILABLE = "[figure unavailable]"
 
-_REF = re.compile(r"\[\[(F\d+)\]\]")
+# A reference, with any currency the model put around it ("$[[F1]]", "[[F1]] USD"): the rendered
+# amount carries its own "$", so the extra one is dropped rather than doubled.
+_REF = re.compile(r"(?:\$\s?|USD\s?)?\[\[(F\d+)\]\](?:\s?USD)?")
 # Amounts the model may type itself: currency amounts, percentages, comma-grouped numbers and
 # two-decimal numbers. Plain counts ("3 services", "31 days") don't match.
 _NUM = r"\d[\d,]*(?:\.\d+)?"

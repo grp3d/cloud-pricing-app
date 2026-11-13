@@ -1,0 +1,12 @@
+id: GC-8
+title: Asked something outside the app, the agent says it can't help and what it can do
+architecture: {provider: aws, name: Active-Standby Multi-Region Web Application}
+messages:
+  - What time is it?
+expect:
+  refused: true
+  no_operations: true
+  contains: ["import"]
+  not_contains: ["Route 53", "Route53", "collection"]
+script:
+  - text: ["I can't tell you the time here. I can describe the open architecture, give its cost, name what drives the cost, or list architectures you can import."]

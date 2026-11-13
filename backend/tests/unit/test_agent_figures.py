@@ -37,6 +37,14 @@ def test_references_are_numbered_and_rendered():
     assert out.used == ["F1", "F2"]
 
 
+@pytest.mark.parametrize("written", ["$[[F1]]", "$ [[F1]]", "[[F1]] USD", "USD [[F1]]"])
+def test_currency_around_a_reference_is_not_doubled(written):
+    book = FigureBook()
+    book.add(Decimal("398.85"), "total", duration="1_month", snapshot=SNAP)
+    out = FigureStreamFilter(book)
+    assert out.feed(f"It costs {written}.") + out.flush() == "It costs $398.85."
+
+
 @pytest.mark.parametrize(
     "written",
     ["$12.50", "$ 12", "12.50 USD", "USD 12.50", "1,780.96", "40%", "12.5 %", "3.75"],

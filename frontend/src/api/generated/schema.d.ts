@@ -2349,6 +2349,8 @@ export interface components {
             } | null;
             /** Last Provider */
             last_provider?: ("aws" | "gcp" | "azure") | null;
+            /** Last Architecture Id */
+            last_architecture_id?: string | null;
             inspector?: components["schemas"]["InspectorArrangement"] | null;
             agent_panel?: components["schemas"]["AgentPanelPreferences"] | null;
         };

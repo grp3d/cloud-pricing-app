@@ -8,6 +8,7 @@ R3), from its own database session, since it outlives the request's.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -21,9 +22,11 @@ from src.agent.loop import LoopContext, answer
 from src.agent.model import AgentUnavailable, build_client
 from src.agent.settings_service import EffectiveAgentSettings, effective_settings
 from src.api.deps import CurrentUser, DbSession, SessionFactory
+from src.logging_config import get_logger
 from src.models.orm import AgentMessage, AgentSession, User
 from src.models.schemas import (
     AgentAcceptedEvent,
+    AgentErrorEvent,
     AgentMessageCreate,
     AgentMessageOut,
     AgentOperationOut,
@@ -36,6 +39,7 @@ from src.models.schemas import (
 )
 
 router = APIRouter(prefix="/agent", tags=["agent"])
+logger = get_logger("cloud_pricing.agent")
 
 _STREAM_RESPONSES = {
     200: {
@@ -138,19 +142,30 @@ def _sse(event: BaseModel) -> str:
     return f"data: {event.model_dump_json()}\n\n"
 
 
+# Answers in progress. Each runs as its own task, apart from the HTTP stream that relays its
+# events: the request-logging middleware cancels the app's work when the browser closes the
+# stream (which it does as soon as it has "done"), and that must never cut an answer, or the
+# cleanup that clears the session's busy flag, short. Held here so a task can't be
+# garbage-collected mid-run.
+_answers: set[asyncio.Task] = set()
+_END = object()
+
+
 def _stream(factory, user_id: uuid.UUID, session_id: uuid.UUID, message_id: uuid.UUID,
             *, charge_input: bool) -> StreamingResponse:
-    async def events() -> AsyncIterator[str]:
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def run() -> None:
         async with factory() as db:
             try:
                 user = await db.get(User, user_id)
                 agent_session = await db.get(AgentSession, session_id)
                 message = await db.get(AgentMessage, message_id)
                 effective = await effective_settings(db)
-                yield _sse(AgentAcceptedEvent(
+                queue.put_nowait(_sse(AgentAcceptedEvent(
                     message_id=message.id, is_preview=message.is_preview,
                     preview_inputs_left=user.agent_preview_input_counter,
-                ))
+                )))
 
                 async def cap_reached() -> bool:
                     return await limits.global_cap_reached(db, effective, _now())
@@ -158,24 +173,39 @@ def _stream(factory, user_id: uuid.UUID, session_id: uuid.UUID, message_id: uuid
                 try:
                     client = build_client(effective)
                 except AgentUnavailable:
-                    from src.models.schemas import AgentErrorEvent
-
                     message.status, message.error_kind = "failed", "failed"
                     await db.commit()
-                    yield _sse(AgentErrorEvent(kind="failed",
-                                               message="The agent is unavailable."))
+                    queue.put_nowait(_sse(AgentErrorEvent(
+                        kind="failed", message="The agent is unavailable.")))
                     return
                 context = LoopContext(session=db, user=user, agent_session=agent_session,
                                       user_message=message, client=client, effective=effective,
                                       charge_input=charge_input, cap_reached=cap_reached)
                 async for event in answer(context):
-                    yield _sse(event)
+                    queue.put_nowait(_sse(event))
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("agent answer task failed", error=str(exc))
             finally:
-                await db.rollback()
-                busy = await db.get(AgentSession, session_id, populate_existing=True)
-                if busy is not None and busy.busy_message_id == message_id:
-                    busy.busy_message_id = None
+                try:
+                    await db.rollback()
+                    message = await db.get(AgentMessage, message_id, populate_existing=True)
+                    if message is not None and message.status == "accepted":
+                        message.status, message.error_kind = "failed", "failed"
+                    busy = await db.get(AgentSession, session_id, populate_existing=True)
+                    if busy is not None and busy.busy_message_id == message_id:
+                        busy.busy_message_id = None
                     await db.commit()
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("agent busy flag not cleared", error=str(exc))
+                queue.put_nowait(_END)
+
+    task = asyncio.create_task(run())
+    _answers.add(task)
+    task.add_done_callback(_answers.discard)
+
+    async def events() -> AsyncIterator[str]:
+        while (item := await queue.get()) is not _END:
+            yield item
 
     return StreamingResponse(
         events(), media_type="text/event-stream",

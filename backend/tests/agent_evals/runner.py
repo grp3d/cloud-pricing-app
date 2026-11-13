@@ -1,9 +1,9 @@
 """The evaluation runner (023, research R8, FR-025, FR-025a, clarification 3).
 
 Each case (`cases/*.yaml`) sets up an architecture, sends its messages through the real agent
-loop with a given model client, and applies fixed checks: the operations that must run, the
-figures that must equal the pricing engine's to the cent, phrases that must or must not appear,
-and whether the request must be declined. No model grades the answers.
+loop with a given model client, and applies fixed checks: the operations that must run (or
+that none may), the figures that must equal the pricing engine's to the cent, phrases that must
+or must not appear, and whether the request must be declined. No model grades the answers.
 """
 
 from __future__ import annotations
@@ -168,6 +168,9 @@ async def run_case(db, case: dict, client) -> CaseResult:
     lower = out.text.lower()
     for name in expect.get("operations") or []:
         out.checks.append(Check(f"operation {name}", name in out.operations,
+                                f"ran {out.operations}"))
+    if expect.get("no_operations"):
+        out.checks.append(Check("runs no operation", not out.operations,
                                 f"ran {out.operations}"))
     for check in await _figure_checks(db, architecture, expect.get("figures")):
         check.passed = check.detail in out.text
