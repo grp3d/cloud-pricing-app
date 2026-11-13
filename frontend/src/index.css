@@ -263,3 +263,14 @@
   --xy-controls-button-color-hover: var(--accent-foreground);
   --xy-controls-button-border-color: var(--border);
 }
+
+/* 023: smaller zoom controls (20px; React Flow's own are 26px). */
+.react-flow .react-flow__controls-button {
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+}
+.react-flow .react-flow__controls-button svg {
+  max-width: 10px;
+  max-height: 10px;
+}

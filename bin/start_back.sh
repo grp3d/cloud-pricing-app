@@ -3,4 +3,6 @@
 
 cd backend
 source .venv/bin/activate
-DATABASE_URL="postgresql+psycopg://localhost/cloud_pricing_dev" uvicorn src.main:app --reload --port 8000 > "../backend_$$.log" 2>&1 
+pid=$$
+echo "$pid" > .backend_pid
+DATABASE_URL="postgresql+psycopg://localhost/cloud_pricing_dev" uvicorn src.main:app --reload --port 8000 > "../backend_${pid}.log" 2>&1 

@@ -49,6 +49,19 @@ export type Movers = components["schemas"]["MoversOut"];
 export type Mover = components["schemas"]["MoverOut"];
 export type SkusChangedPoint = components["schemas"]["SkusChangedPointOut"];
 export type TrendsCategory = TrendSeriesResult["category"];
+// 023-agent-foundation (contracts/agent-api.md).
+export type AgentStatus = components["schemas"]["AgentStatusOut"];
+export type AgentSession = components["schemas"]["AgentSessionOut"];
+export type AgentSessionDetail = components["schemas"]["AgentSessionDetailOut"];
+export type AgentMessage = components["schemas"]["AgentMessageOut"];
+export type AgentOperation = components["schemas"]["AgentOperationOut"];
+export type AgentRefusal = components["schemas"]["AgentRefusalOut"];
+export type AgentRefusalReason = AgentRefusal["reason"];
+export type AgentStreamEvent = components["schemas"]["AgentStreamEnvelope"]["data"];
+export type AgentSettings = components["schemas"]["AgentSettingsOut"];
+export type AgentSettingsUpdate = components["schemas"]["AgentSettingsUpdate"];
+/** Every field is optional on the server (defaults are generated as required). */
+export type AdminUserAgentUpdate = Partial<components["schemas"]["AdminUserAgentUpdate"]>;
 
 const BASE = "/api/v1";
 
@@ -86,6 +99,30 @@ function getCurrentIdentityId(): string {
 function setCurrentIdentityId(id: string): void {
   localStorage.setItem("cloud-pricing-current-identity-id", id);
 }
+
+/** A failed request with its HTTP status and the server's `detail` (023: the agent routes
+ * answer `409 session_exists`/`busy` and `423 {reason, resets_on}`). Still an `Error`, so
+ * existing callers that only read `message` are unaffected. */
+export class ApiStatusError extends Error {
+  status: number;
+  detail: unknown;
+
+  constructor(status: number, detail: unknown, message: string) {
+    super(message);
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+/** The headers every API request carries (023: also used by the agent's streaming fetch). */
+export function apiHeaders(): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${getCurrentIdentityId()}`,
+  };
+}
+
+export const API_BASE = BASE;
 
 /** Raised when the pricing data source itself is unavailable (HTTP 503) — kept structurally
  * distinct from an empty/"no results" response so the UI never conflates the two. */
@@ -141,7 +178,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
           `${body.detail.vpc_region} — they must match to nest.`,
       );
     }
-    throw new Error(body.detail ?? body.message ?? `Request failed: ${res.status}`);
+    const message =
+      typeof body.detail === "string"
+        ? body.detail
+        : (body.message ?? `Request failed: ${res.status}`);
+    throw new ApiStatusError(res.status, body.detail, message);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -149,6 +190,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listProviders: () => request<Provider[]>("/providers"),
+
+  // --- Agent (023-agent-foundation, contracts/agent-api.md) ---
+  getAgentStatus: () => request<AgentStatus>("/agent/status"),
+  /** `replace: true` deletes the current session first (after the user confirmed). A `409
+   * session_exists` (an `ApiStatusError`) means there is one and `replace` was false. */
+  startAgentSession: (replace: boolean) =>
+    request<AgentSession>("/agent/session", {
+      method: "POST",
+      body: JSON.stringify({ replace }),
+    }),
+  getAgentSession: () => request<AgentSessionDetail>("/agent/session"),
+  getAgentOperations: () => request<AgentOperation[]>("/agent/session/operations"),
+  getAgentSettings: () => request<AgentSettings>("/admin/agent/settings"),
+  updateAgentSettings: (update: AgentSettingsUpdate) =>
+    request<AgentSettings>("/admin/agent/settings", {
+      method: "PUT",
+      body: JSON.stringify(update),
+    }),
+  updateAdminUserAgent: (id: string, update: AdminUserAgentUpdate) =>
+    request<AdminUser>(`/admin/users/${id}/agent`, {
+      method: "PATCH",
+      body: JSON.stringify(update),
+    }),
   /** 019 (contracts §8): SKUs Changed per provider. Each selection is `provider:region,…`
    * (no regions means all). */
   getTrendSeries: (select: string[], category: TrendsCategory, weeks = 52) => {

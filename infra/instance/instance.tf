@@ -19,6 +19,9 @@ locals {
     "BACKUP_URI=s3://${local.base.backup_bucket}/${local.env}/db/",
     "ALERT_TOPIC_ARN=${local.base.alert_topic_arn}",
     "OWNER_PASSWORD_PARAMETER=/${local.prefix}/${local.env}/owner-password",
+    # 023-agent-foundation (FR-017): the hosted model's key, read once at startup if the
+    # parameter exists. Never in the database or this file.
+    "AGENT_ANTHROPIC_API_KEY_PARAMETER=/${local.prefix}/${local.env}/agent-anthropic-api-key",
     "LOG_GROUP=${local.base.log_group}",
     "AWS_REGION=${var.aws_region}",
     "AWS_DEFAULT_REGION=${var.aws_region}",

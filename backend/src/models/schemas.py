@@ -107,6 +107,13 @@ class AdminUserOut(BaseModel):
     # Non-deleted architectures owned (014-architecture-templates-import-export, FR-012) —
     # the Admin tab disables Export at 0.
     architecture_count: int
+    # 023-agent-foundation (FR-019, FR-022a): agent access, the preview inputs left, the user's
+    # own monthly limit (null = the default), the limit in force, and inputs used this month.
+    agent_enabled_for_user: bool
+    agent_preview_input_counter: int
+    agent_monthly_input_limit: int | None
+    agent_effective_monthly_limit: int
+    agent_inputs_this_month: int
 
 
 # --- Enums (mirror the DB check constraints in models/orm.py) ------------------------------
@@ -796,11 +803,23 @@ class InspectorArrangement(_Strict):
     split: float = Field(ge=0.2, le=0.8)
 
 
+class AgentPanelPreferences(_Strict):
+    """023 (data-model §7, clarification 1): the agent panel under the canvas — whether it's
+    open, the canvas's share of the centre column, and the panel's own size after a corner
+    resize."""
+
+    open: bool = False
+    split: float = Field(default=0.6, ge=0.2, le=0.8)
+    height: int | None = Field(default=None, ge=120)
+    width: int | None = Field(default=None, ge=320)
+
+
 class WorkspacePreferences(_Strict):
     column_widths: dict[ColumnKey, int] | None = None
     collapsed: dict[ColumnKey, bool] | None = None
     last_provider: ProviderCode | None = None
     inspector: InspectorArrangement | None = None
+    agent_panel: AgentPanelPreferences | None = None
 
     @field_validator("column_widths")
     @classmethod
@@ -930,3 +949,174 @@ class HistoryOut(BaseModel):
     backfill: Literal["pending", "running", "done", "failed"]
     last_error: str | None
     last_built_at: str | None
+
+
+# --- Agent (023-agent-foundation, contracts/agent-api.md) --------------------------------------
+
+AgentProvider = Literal["anthropic", "ollama", "scripted"]
+# Why the agent can't be used right now (clarification 4: the panel says why only).
+AgentRefusalReason = Literal[
+    "guest", "agent_off", "unavailable", "preview_used", "user_limit", "global_cap"
+]
+AgentErrorKind = Literal[
+    "timeout", "unreachable", "bad_output", "failed", "session_closed", "global_cap"
+]
+
+
+class AgentSessionOut(ORMBase):
+    id: uuid.UUID
+    started_at: datetime
+    closes_at: datetime
+
+
+class AgentStatusOut(BaseModel):
+    """What the panel needs: whether to render at all (`enabled`), and whether this user can
+    send a message now (`available`, else `reason`)."""
+
+    enabled: bool
+    available: bool
+    reason: AgentRefusalReason | None = None
+    # For `user_limit` and `global_cap` only: the 1st of next month (UTC).
+    resets_on: str | None = None
+    on_preview: bool = False
+    preview_inputs_left: int = 0
+    session: AgentSessionOut | None = None
+
+
+class AgentSessionCreate(BaseModel):
+    replace: bool = False
+
+
+class AgentMessageOut(ORMBase):
+    id: uuid.UUID
+    role: Literal["user", "agent"]
+    content: str
+    status: str
+    error_kind: str | None
+    is_preview: bool
+    architecture_id: uuid.UUID | None
+    created_at: datetime
+
+
+class AgentSessionDetailOut(AgentSessionOut):
+    messages: list[AgentMessageOut]
+
+
+class AgentMessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+    architecture_id: uuid.UUID | None = None
+
+
+class AgentRefusalOut(BaseModel):
+    """`423` body: the message wasn't accepted, and no model call was made."""
+
+    reason: AgentRefusalReason
+    resets_on: str | None = None
+
+
+class AgentOperationOut(ORMBase):
+    message_id: uuid.UUID
+    name: str
+    inputs: dict
+    outcome: Literal["ok", "error"]
+    summary: dict
+    snapshot: dict | None
+    figures_removed: int
+    started_at: datetime
+    duration_ms: int
+
+
+# Stream events (contracts/agent-api.md): one JSON object per `data:` line, told apart by
+# `event`. Declared on the message route's OpenAPI responses so the frontend's generated types
+# include them (Principle IV).
+
+
+class AgentAcceptedEvent(BaseModel):
+    event: Literal["accepted"] = "accepted"
+    message_id: uuid.UUID
+    is_preview: bool
+    preview_inputs_left: int
+
+
+class AgentStatusEvent(BaseModel):
+    event: Literal["status"] = "status"
+    state: Literal["thinking", "running_operation", "writing"]
+
+
+class AgentTextEvent(BaseModel):
+    event: Literal["text"] = "text"
+    delta: str
+
+
+class AgentOperationEvent(BaseModel):
+    event: Literal["operation"] = "operation"
+    name: str
+    inputs: dict
+    outcome: Literal["ok", "error"]
+    summary: dict
+    snapshot: dict | None = None
+
+
+class AgentDoneEvent(BaseModel):
+    event: Literal["done"] = "done"
+    agent_message_id: uuid.UUID
+
+
+class AgentErrorEvent(BaseModel):
+    event: Literal["error"] = "error"
+    kind: AgentErrorKind
+    message: str
+
+
+AgentStreamEvent = Annotated[
+    AgentAcceptedEvent
+    | AgentStatusEvent
+    | AgentTextEvent
+    | AgentOperationEvent
+    | AgentDoneEvent
+    | AgentErrorEvent,
+    Field(discriminator="event"),
+]
+
+
+class AgentStreamEnvelope(BaseModel):
+    """Documents the event stream's item shape in the OpenAPI schema (one per `data:` line)."""
+
+    data: AgentStreamEvent
+
+
+class AgentSettingsOut(BaseModel):
+    """Effective values (database, else environment, else built-in) — never the API key."""
+
+    agent_enabled: bool
+    agent_provider: AgentProvider
+    agent_model: str | None
+    agent_base_url: str
+    agent_timeout_seconds: int
+    agent_global_monthly_cap_usd: Decimal
+    agent_default_user_monthly_inputs: int
+    agent_price_per_input_token_usd: Decimal | None
+    agent_price_per_output_token_usd: Decimal | None
+    api_key_set: bool
+    spend_this_month_usd: Decimal
+    resets_on: str
+
+
+class AgentSettingsUpdate(BaseModel):
+    agent_enabled: bool
+    agent_provider: AgentProvider
+    agent_model: str | None = Field(default=None, max_length=200)
+    agent_base_url: str = Field(max_length=500)
+    agent_timeout_seconds: int = Field(ge=5, le=600)
+    agent_global_monthly_cap_usd: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    agent_default_user_monthly_inputs: int = Field(ge=0)
+    agent_price_per_input_token_usd: Decimal | None = Field(default=None, ge=0)
+    agent_price_per_output_token_usd: Decimal | None = Field(default=None, ge=0)
+
+
+class AdminUserAgentUpdate(BaseModel):
+    agent_enabled_for_user: bool | None = None
+    agent_preview_input_counter: int | None = Field(default=None, ge=0)
+    agent_monthly_input_limit: int | None = Field(default=None, ge=0)
+    # Distinguishes "set the limit to blank (the default)" from "leave it alone".
+    clear_monthly_input_limit: bool = False

@@ -112,11 +112,8 @@ export interface paths {
         };
         /**
          * List Importable Architectures
-         * @description Every other user's public architectures, grouped by owner and pre-sorted
-         *     (012-user-accounts-sharing, spec FR-023-026): the Admin group always first, other groups
-         *     alphabetical, architecture names alphabetical within a group; an owner with zero public
-         *     architectures never appears. With `provider`, only that provider's architectures are
-         *     listed (021, research R12); without it, every provider's, as before.
+         * @description Every other user's public architectures, grouped by owner and pre-sorted (012, spec
+         *     FR-023-026; the query lives in `src.services.importable`, shared with the agent).
          */
         get: operations["list_importable_architectures_api_v1_architectures_importable_get"];
         put?: never;
@@ -600,6 +597,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Agent Status */
+        get: operations["agent_status_api_v1_agent_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Session */
+        get: operations["get_agent_session_api_v1_agent_session_get"];
+        put?: never;
+        /** Start Agent Session */
+        post: operations["start_agent_session_api_v1_agent_session_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/session/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Operations */
+        get: operations["get_agent_operations_api_v1_agent_session_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/session/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send Agent Message */
+        post: operations["send_agent_message_api_v1_agent_session_messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/session/messages/{message_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Agent Message
+         * @description Re-run a failed message. No new input is charged (research R6); the agent must still be
+         *     on and usable, and the global cap is checked before each model call.
+         */
+        post: operations["retry_agent_message_api_v1_agent_session_messages__message_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/agent/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Settings */
+        get: operations["get_agent_settings_api_v1_admin_agent_settings_get"];
+        /** Put Agent Settings */
+        put: operations["put_agent_settings_api_v1_admin_agent_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{user_id}/agent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update User Agent */
+        patch: operations["update_user_agent_api_v1_admin_users__user_id__agent_patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -633,6 +755,20 @@ export interface components {
             /** Is Active */
             is_active: boolean;
         };
+        /** AdminUserAgentUpdate */
+        AdminUserAgentUpdate: {
+            /** Agent Enabled For User */
+            agent_enabled_for_user?: boolean | null;
+            /** Agent Preview Input Counter */
+            agent_preview_input_counter?: number | null;
+            /** Agent Monthly Input Limit */
+            agent_monthly_input_limit?: number | null;
+            /**
+             * Clear Monthly Input Limit
+             * @default false
+             */
+            clear_monthly_input_limit: boolean;
+        };
         /** AdminUserCreate */
         AdminUserCreate: {
             /** Username */
@@ -659,6 +795,354 @@ export interface components {
             is_default_admin: boolean;
             /** Architecture Count */
             architecture_count: number;
+            /** Agent Enabled For User */
+            agent_enabled_for_user: boolean;
+            /** Agent Preview Input Counter */
+            agent_preview_input_counter: number;
+            /** Agent Monthly Input Limit */
+            agent_monthly_input_limit: number | null;
+            /** Agent Effective Monthly Limit */
+            agent_effective_monthly_limit: number;
+            /** Agent Inputs This Month */
+            agent_inputs_this_month: number;
+        };
+        /** AgentAcceptedEvent */
+        AgentAcceptedEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "accepted";
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+            /** Is Preview */
+            is_preview: boolean;
+            /** Preview Inputs Left */
+            preview_inputs_left: number;
+        };
+        /** AgentDoneEvent */
+        AgentDoneEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "done";
+            /**
+             * Agent Message Id
+             * Format: uuid
+             */
+            agent_message_id: string;
+        };
+        /** AgentErrorEvent */
+        AgentErrorEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "error";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "timeout" | "unreachable" | "bad_output" | "failed" | "session_closed" | "global_cap";
+            /** Message */
+            message: string;
+        };
+        /** AgentMessageCreate */
+        AgentMessageCreate: {
+            /** Content */
+            content: string;
+            /** Architecture Id */
+            architecture_id?: string | null;
+        };
+        /** AgentMessageOut */
+        AgentMessageOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "agent";
+            /** Content */
+            content: string;
+            /** Status */
+            status: string;
+            /** Error Kind */
+            error_kind: string | null;
+            /** Is Preview */
+            is_preview: boolean;
+            /** Architecture Id */
+            architecture_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** AgentOperationEvent */
+        AgentOperationEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "operation";
+            /** Name */
+            name: string;
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "ok" | "error";
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** AgentOperationOut */
+        AgentOperationOut: {
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+            /** Name */
+            name: string;
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "ok" | "error";
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            } | null;
+            /** Figures Removed */
+            figures_removed: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Duration Ms */
+            duration_ms: number;
+        };
+        /**
+         * AgentPanelPreferences
+         * @description 023 (data-model §7, clarification 1): the agent panel under the canvas — whether it's
+         *     open, the canvas's share of the centre column, and the panel's own size after a corner
+         *     resize.
+         */
+        AgentPanelPreferences: {
+            /**
+             * Open
+             * @default false
+             */
+            open: boolean;
+            /**
+             * Split
+             * @default 0.6
+             */
+            split: number;
+            /** Height */
+            height?: number | null;
+            /** Width */
+            width?: number | null;
+        };
+        /**
+         * AgentRefusalOut
+         * @description `423` body: the message wasn't accepted, and no model call was made.
+         */
+        AgentRefusalOut: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "guest" | "agent_off" | "unavailable" | "preview_used" | "user_limit" | "global_cap";
+            /** Resets On */
+            resets_on?: string | null;
+        };
+        /** AgentSessionCreate */
+        AgentSessionCreate: {
+            /**
+             * Replace
+             * @default false
+             */
+            replace: boolean;
+        };
+        /** AgentSessionDetailOut */
+        AgentSessionDetailOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Closes At
+             * Format: date-time
+             */
+            closes_at: string;
+            /** Messages */
+            messages: components["schemas"]["AgentMessageOut"][];
+        };
+        /** AgentSessionOut */
+        AgentSessionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Closes At
+             * Format: date-time
+             */
+            closes_at: string;
+        };
+        /**
+         * AgentSettingsOut
+         * @description Effective values (database, else environment, else built-in) — never the API key.
+         */
+        AgentSettingsOut: {
+            /** Agent Enabled */
+            agent_enabled: boolean;
+            /**
+             * Agent Provider
+             * @enum {string}
+             */
+            agent_provider: "anthropic" | "ollama" | "scripted";
+            /** Agent Model */
+            agent_model: string | null;
+            /** Agent Base Url */
+            agent_base_url: string;
+            /** Agent Timeout Seconds */
+            agent_timeout_seconds: number;
+            /** Agent Global Monthly Cap Usd */
+            agent_global_monthly_cap_usd: string;
+            /** Agent Default User Monthly Inputs */
+            agent_default_user_monthly_inputs: number;
+            /** Agent Price Per Input Token Usd */
+            agent_price_per_input_token_usd: string | null;
+            /** Agent Price Per Output Token Usd */
+            agent_price_per_output_token_usd: string | null;
+            /** Api Key Set */
+            api_key_set: boolean;
+            /** Spend This Month Usd */
+            spend_this_month_usd: string;
+            /** Resets On */
+            resets_on: string;
+        };
+        /** AgentSettingsUpdate */
+        AgentSettingsUpdate: {
+            /** Agent Enabled */
+            agent_enabled: boolean;
+            /**
+             * Agent Provider
+             * @enum {string}
+             */
+            agent_provider: "anthropic" | "ollama" | "scripted";
+            /** Agent Model */
+            agent_model?: string | null;
+            /** Agent Base Url */
+            agent_base_url: string;
+            /** Agent Timeout Seconds */
+            agent_timeout_seconds: number;
+            /** Agent Global Monthly Cap Usd */
+            agent_global_monthly_cap_usd: number | string;
+            /** Agent Default User Monthly Inputs */
+            agent_default_user_monthly_inputs: number;
+            /** Agent Price Per Input Token Usd */
+            agent_price_per_input_token_usd?: number | string | null;
+            /** Agent Price Per Output Token Usd */
+            agent_price_per_output_token_usd?: number | string | null;
+        };
+        /** AgentStatusEvent */
+        AgentStatusEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "status";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "thinking" | "running_operation" | "writing";
+        };
+        /**
+         * AgentStatusOut
+         * @description What the panel needs: whether to render at all (`enabled`), and whether this user can
+         *     send a message now (`available`, else `reason`).
+         */
+        AgentStatusOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Available */
+            available: boolean;
+            /** Reason */
+            reason?: ("guest" | "agent_off" | "unavailable" | "preview_used" | "user_limit" | "global_cap") | null;
+            /** Resets On */
+            resets_on?: string | null;
+            /**
+             * On Preview
+             * @default false
+             */
+            on_preview: boolean;
+            /**
+             * Preview Inputs Left
+             * @default 0
+             */
+            preview_inputs_left: number;
+            session?: components["schemas"]["AgentSessionOut"] | null;
+        };
+        /**
+         * AgentStreamEnvelope
+         * @description Documents the event stream's item shape in the OpenAPI schema (one per `data:` line).
+         */
+        AgentStreamEnvelope: {
+            /** Data */
+            data: components["schemas"]["AgentAcceptedEvent"] | components["schemas"]["AgentStatusEvent"] | components["schemas"]["AgentTextEvent"] | components["schemas"]["AgentOperationEvent"] | components["schemas"]["AgentDoneEvent"] | components["schemas"]["AgentErrorEvent"];
+        };
+        /** AgentTextEvent */
+        AgentTextEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "text";
+            /** Delta */
+            delta: string;
         };
         /** ArchitectureCreate */
         ArchitectureCreate: {
@@ -1866,6 +2350,7 @@ export interface components {
             /** Last Provider */
             last_provider?: ("aws" | "gcp" | "azure") | null;
             inspector?: components["schemas"]["InspectorArrangement"] | null;
+            agent_panel?: components["schemas"]["AgentPanelPreferences"] | null;
         };
     };
     responses: never;
@@ -3193,6 +3678,339 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MoversOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_status_api_v1_agent_status_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_session_api_v1_agent_session_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_agent_session_api_v1_agent_session_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_operations_api_v1_agent_session_operations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOperationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_agent_message_api_v1_agent_session_messages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentMessageCreate"];
+            };
+        };
+        responses: {
+            /** @description Server-sent events: one `AgentStreamEnvelope.data` object per line. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["AgentStreamEnvelope"];
+                    "application/json": components["schemas"]["AgentStreamEnvelope"];
+                };
+            };
+            /** @description `busy` (or, for retry, the message isn't failed) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Not accepted; no model call was made. */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRefusalOut"];
+                };
+            };
+        };
+    };
+    retry_agent_message_api_v1_agent_session_messages__message_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-sent events: one `AgentStreamEnvelope.data` object per line. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["AgentStreamEnvelope"];
+                    "application/json": components["schemas"]["AgentStreamEnvelope"];
+                };
+            };
+            /** @description `busy` (or, for retry, the message isn't failed) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Not accepted; no model call was made. */
+            423: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRefusalOut"];
+                };
+            };
+        };
+    };
+    get_agent_settings_api_v1_admin_agent_settings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_agent_settings_api_v1_admin_agent_settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_user_agent_api_v1_admin_users__user_id__agent_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserAgentUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserOut"];
                 };
             };
             /** @description Validation Error */

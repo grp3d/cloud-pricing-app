@@ -32,9 +32,13 @@ import tempfile  # noqa: E402
 
 os.environ.setdefault("PRICING_HISTORY_DIR", tempfile.mkdtemp(prefix="cloud-pricing-history-"))
 
+from src.api.deps import get_session_factory  # noqa: E402
 from src.db.session import get_session  # noqa: E402
 from src.main import app  # noqa: E402
 from src.models.orm import (  # noqa: E402
+    AgentSession,
+    AgentSettings,
+    AgentUsage,
     Architecture,
     Collection,
     DataConnector,
@@ -57,9 +61,18 @@ async def _clean_db():
     invariant rather than working around it.
     """
     async with test_engine.begin() as conn:
-        for table in (SKUSelection, DataConnector, Collection, Architecture):
+        # 023: sessions cascade to their messages and operations.
+        for table in (AgentUsage, AgentSession, AgentSettings, SKUSelection, DataConnector,
+                      Collection, Architecture):
             await conn.execute(table.__table__.delete())
         await conn.execute(User.__table__.delete().where(User.is_default_admin.is_(False)))
+        await conn.execute(
+            User.__table__.update().values(
+                agent_enabled_for_user=False,
+                agent_preview_input_counter=3,
+                agent_monthly_input_limit=None,
+            )
+        )
     yield
 
 
@@ -76,6 +89,7 @@ async def client():
             yield session
 
     app.dependency_overrides[get_session] = _override_get_session
+    app.dependency_overrides[get_session_factory] = lambda: TestSessionLocal
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

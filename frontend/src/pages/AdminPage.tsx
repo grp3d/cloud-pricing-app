@@ -1,8 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
-import { api, InvalidImportFileError, type AdminUser, type ImportResult } from "../api/client";
+import {
+  api,
+  InvalidImportFileError,
+  type AdminUser,
+  type AdminUserAgentUpdate,
+  type ImportResult,
+} from "../api/client";
 import { ImportResultsDialog } from "../components/ImportResultsDialog";
+import { AdminTabs } from "../components/admin/AdminTabs";
+import { AgentSettingsSection } from "../components/admin/AgentSettingsSection";
 import { SystemInformationSection } from "../components/admin/SystemInformationSection";
 import { Button } from "../components/ui/button";
 import {
@@ -50,6 +58,13 @@ export function AdminPage() {
       setNewUsername("");
       return invalidate();
     },
+  });
+
+  // 023 (Story 6): agent access, preview inputs and the monthly limit, per user.
+  const updateAgent = useMutation({
+    mutationFn: ({ id, update }: { id: string; update: AdminUserAgentUpdate }) =>
+      api.updateAdminUserAgent(id, update),
+    onSuccess: invalidate,
   });
 
   const setActive = useMutation({
@@ -131,14 +146,12 @@ export function AdminPage() {
     },
   });
 
-  return (
-    <div className="flex flex-col gap-4 p-4">
-      <h1 className="text-sm font-semibold">Admin</h1>
-      {/* 016-canvas-icon-layout, FR-020: today's content is the User Management section,
-          followed by System Information. */}
-      <h2 className="text-xs font-semibold">User Management</h2>
-
-      <table className="w-full max-w-2xl border-collapse text-2xs">
+  const userManagement = (
+    <section aria-labelledby="user-management-heading" className="flex flex-col gap-4">
+      <h2 id="user-management-heading" className="sr-only">
+        User Management
+      </h2>
+      <table className="w-full max-w-5xl border-collapse text-2xs">
         <thead>
           <tr className="border-b border-border text-left text-muted-foreground">
             <th className="py-1.5">Users</th>
@@ -151,6 +164,11 @@ export function AdminPage() {
               Export Architectures to Disk
             </th>
             <th className="py-1.5">Purge</th>
+            {/* 023 (Story 6, FR-019, FR-022a): per-user agent access, preview and limits. */}
+            <th className="py-1.5 pl-2">Agent on</th>
+            <th className="py-1.5">Preview left</th>
+            <th className="py-1.5">Monthly limit</th>
+            <th className="py-1.5">This month</th>
           </tr>
         </thead>
         <tbody>
@@ -162,9 +180,7 @@ export function AdminPage() {
                   type="checkbox"
                   checked={user.is_active}
                   disabled={user.is_default_admin || setActive.isPending}
-                  onChange={(e) =>
-                    setActive.mutate({ id: user.id, isActive: e.target.checked })
-                  }
+                  onChange={(e) => setActive.mutate({ id: user.id, isActive: e.target.checked })}
                   aria-label={`${user.username} active`}
                 />
               </td>
@@ -217,6 +233,49 @@ export function AdminPage() {
                   Remove user
                 </Button>
               </td>
+              <td className="py-1.5 pl-2">
+                <input
+                  type="checkbox"
+                  checked={user.agent_enabled_for_user}
+                  disabled={updateAgent.isPending}
+                  onChange={(e) =>
+                    updateAgent.mutate({
+                      id: user.id,
+                      update: { agent_enabled_for_user: e.target.checked },
+                    })
+                  }
+                  aria-label={`${user.username} agent on`}
+                />
+              </td>
+              <td className="py-1.5">
+                <NumberCell
+                  label={`${user.username} preview inputs left`}
+                  value={user.agent_preview_input_counter}
+                  onSave={(n) =>
+                    n !== null &&
+                    updateAgent.mutate({ id: user.id, update: { agent_preview_input_counter: n } })
+                  }
+                />
+              </td>
+              <td className="py-1.5">
+                <NumberCell
+                  label={`${user.username} monthly limit`}
+                  value={user.agent_monthly_input_limit}
+                  placeholder={`${user.agent_effective_monthly_limit} (default)`}
+                  onSave={(n) =>
+                    updateAgent.mutate({
+                      id: user.id,
+                      update:
+                        n === null
+                          ? { clear_monthly_input_limit: true }
+                          : { agent_monthly_input_limit: n },
+                    })
+                  }
+                />
+              </td>
+              <td className="py-1.5 whitespace-nowrap">
+                {user.agent_inputs_this_month} of {user.agent_effective_monthly_limit}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -264,10 +323,24 @@ export function AdminPage() {
         </p>
       )}
       {createUser.isError && (
-        <p className="text-2xs text-destructive">Could not create user — username may already exist.</p>
+        <p className="text-2xs text-destructive">
+          Could not create user — username may already exist.
+        </p>
       )}
+    </section>
+  );
 
-      <SystemInformationSection />
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      <h1 className="text-sm font-semibold">Admin</h1>
+      {/* 023: three tabs, so later Admin features each get a place of their own. */}
+      <AdminTabs
+        tabs={[
+          { id: "agent", label: "Agent Settings", content: <AgentSettingsSection /> },
+          { id: "users", label: "User Management", content: userManagement },
+          { id: "system", label: "System Information", content: <SystemInformationSection /> },
+        ]}
+      />
 
       <Dialog
         open={passwordDialogUserId !== null}
@@ -305,7 +378,10 @@ export function AdminPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={purgeCandidate !== null} onOpenChange={(open) => !open && setPurgeCandidate(null)}>
+      <Dialog
+        open={purgeCandidate !== null}
+        onOpenChange={(open) => !open && setPurgeCandidate(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Remove {purgeCandidate?.username}?</DialogTitle>
@@ -326,5 +402,46 @@ export function AdminPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/** 023: a small whole-number field saved on Enter or when it loses focus; blank is null. */
+function NumberCell({
+  label,
+  value,
+  placeholder,
+  onSave,
+}: {
+  label: string;
+  value: number | null;
+  placeholder?: string;
+  onSave: (value: number | null) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? (value === null ? "" : String(value));
+  const commit = () => {
+    if (draft === null) return;
+    const trimmed = draft.trim();
+    const next = trimmed === "" ? null : Number(trimmed);
+    setDraft(null);
+    if (next !== null && (!Number.isInteger(next) || next < 0)) return;
+    if (next !== value) onSave(next);
+  };
+  return (
+    <Input
+      type="number"
+      min={0}
+      step={1}
+      aria-label={label}
+      className="h-6 w-24 text-2xs"
+      value={shown}
+      placeholder={placeholder}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") setDraft(null);
+      }}
+    />
   );
 }

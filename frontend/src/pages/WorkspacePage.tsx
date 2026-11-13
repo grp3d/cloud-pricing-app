@@ -14,6 +14,7 @@ import {
 } from "../api/client";
 import { PROVIDER_LABELS, asProviderCode } from "../lib/providerPricing";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { AgentColumn } from "../components/agent/AgentPanel";
 import { ArchitectureDiagramPanel } from "../components/workspace/ArchitectureDiagramPanel";
 import {
   CollectionsPanel,
@@ -994,33 +995,39 @@ function WorkspacePageInner() {
                 </Tooltip>
               </h2>
             )}
-            <ArchitectureDiagramPanel
-              architectureId={architectureId!}
-              provider={pricingProvider}
-              collections={collections}
-              connectors={connectors}
-              ownHeights={ownHeights}
-              reportHeight={reportHeight}
-              diagramSelection={diagramSelection}
-              onSelectedNodeIdsChange={setSelectedNodeIds}
-              onSelectCollection={selectCollection}
-              onSelectConnector={selectConnector}
-              onSelectService={selectService}
-              onDeselectAll={deselectAll}
-              onCreateConnector={(from, to) => createConnector.mutate({ from, to })}
-              onUpdateCollectionParent={(id, parentId) =>
-                updateCollectionParent.mutate({ id, parentId })
+            {/* 023 (FR-001a): the agent panel under the canvas, when the agent is on. */}
+            <AgentColumn
+              architectureId={architectureId ?? null}
+              canvas={
+                <ArchitectureDiagramPanel
+                  architectureId={architectureId!}
+                  provider={pricingProvider}
+                  collections={collections}
+                  connectors={connectors}
+                  ownHeights={ownHeights}
+                  reportHeight={reportHeight}
+                  diagramSelection={diagramSelection}
+                  onSelectedNodeIdsChange={setSelectedNodeIds}
+                  onSelectCollection={selectCollection}
+                  onSelectConnector={selectConnector}
+                  onSelectService={selectService}
+                  onDeselectAll={deselectAll}
+                  onCreateConnector={(from, to) => createConnector.mutate({ from, to })}
+                  onUpdateCollectionParent={(id, parentId) =>
+                    updateCollectionParent.mutate({ id, parentId })
+                  }
+                  onRejectedNesting={(applicationName, vpcName) =>
+                    setCollectionActionError(
+                      `"${applicationName}" is in a different region than "${vpcName}" — an ` +
+                        "Application can only nest inside a VPC in the same region.",
+                    )
+                  }
+                  onRefresh={invalidateArchitecture}
+                  onOpenPopout={() => setPopoutOpen(true)}
+                  onMoveService={onMoveService}
+                  onMoveRejected={setCollectionActionError}
+                />
               }
-              onRejectedNesting={(applicationName, vpcName) =>
-                setCollectionActionError(
-                  `"${applicationName}" is in a different region than "${vpcName}" — an ` +
-                    "Application can only nest inside a VPC in the same region.",
-                )
-              }
-              onRefresh={invalidateArchitecture}
-              onOpenPopout={() => setPopoutOpen(true)}
-              onMoveService={onMoveService}
-              onMoveRejected={setCollectionActionError}
             />
           </div>
 

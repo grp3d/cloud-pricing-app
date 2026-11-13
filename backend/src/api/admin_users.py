@@ -15,6 +15,8 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from src.agent.limits import effective_limit, inputs_this_month
+from src.agent.settings_service import EffectiveAgentSettings, effective_settings
 from src.api.deps import AdminUser, DbSession
 from src.models.orm import Architecture, Collection, DataConnector, User
 from src.models.schemas import (
@@ -56,8 +58,20 @@ async def _architecture_count(session: DbSession, user_id: uuid.UUID) -> int:
     ).scalar_one()
 
 
-def _to_admin_user_out(user: User, architecture_count: int) -> AdminUserOut:
+async def _to_admin_user_out(
+    session: DbSession, user: User, architecture_count: int,
+    effective: EffectiveAgentSettings | None = None,
+) -> AdminUserOut:
+    """023 (FR-019, FR-022a): also the user's agent access, preview inputs left, monthly limit
+    (their own or the default) and inputs used this month."""
+    effective = effective or await effective_settings(session)
+    now = datetime.now(UTC)
     return AdminUserOut(
+        agent_enabled_for_user=user.agent_enabled_for_user,
+        agent_preview_input_counter=user.agent_preview_input_counter,
+        agent_monthly_input_limit=user.agent_monthly_input_limit,
+        agent_effective_monthly_limit=effective_limit(user, effective),
+        agent_inputs_this_month=await inputs_this_month(session, user.id, now),
         id=user.id,
         username=user.username,
         is_active=user.is_active,
@@ -83,7 +97,9 @@ async def list_users(session: DbSession, _admin: AdminUser) -> list[AdminUserOut
         .where(User.username.is_not(None))
         .order_by(User.username)
     )
-    return [_to_admin_user_out(user, count) for user, count in result.all()]
+    effective = await effective_settings(session)
+    return [await _to_admin_user_out(session, user, count, effective)
+            for user, count in result.all()]
 
 
 @router.post("/users", response_model=AdminUserOut, status_code=201)
@@ -99,7 +115,7 @@ async def create_user(
     session.add(user)
     await session.commit()
     await session.refresh(user)
-    return _to_admin_user_out(user, 0)
+    return await _to_admin_user_out(session, user, 0)
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserOut)
@@ -115,7 +131,7 @@ async def set_user_active(
     user.is_active = body.is_active
     await session.commit()
     await session.refresh(user)
-    return _to_admin_user_out(user, await _architecture_count(session, user.id))
+    return await _to_admin_user_out(session, user, await _architecture_count(session, user.id))
 
 
 @router.put("/users/{user_id}/password", response_model=AdminUserOut)
@@ -126,7 +142,7 @@ async def set_user_password(
     user.password_hash = hash_password(body.password)
     await session.commit()
     await session.refresh(user)
-    return _to_admin_user_out(user, await _architecture_count(session, user.id))
+    return await _to_admin_user_out(session, user, await _architecture_count(session, user.id))
 
 
 @router.delete("/users/{user_id}", status_code=204)

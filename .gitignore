@@ -8,6 +8,7 @@ __pycache__/
 *.env
 .env.*
 !.env.example
+.backend_pid
 
 # Node / TypeScript (frontend/)
 node_modules/
@@ -34,3 +35,6 @@ infra/**/.terraform/
 
 # Local copy of the prod TLS root certificate
 prod-root.crt
+
+# 023-agent-foundation: live-model evaluation report (pytest -m live_model)
+backend/agent-eval-report.md

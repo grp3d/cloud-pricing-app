@@ -379,6 +379,11 @@ const DIAGRAM_MIN_HEIGHT = 600;
  * they always did; only what number gets shown for it, and where a fresh view starts, moves. */
 const DEFAULT_DIAGRAM_ZOOM = 0.7;
 
+/** 023: the right edge of the top-left controls column (React Flow's 15px panel margin plus
+ * the zoom readout, its widest item, at about 37px). The diagram starts here, the least shift
+ * that keeps the controls off it. */
+const CONTROLS_CLEARANCE_PX = 52;
+
 const CONNECTOR_SIDE_POSITION: Record<ConnectorSide, Position> = {
   top: Position.Top,
   right: Position.Right,
@@ -1291,9 +1296,14 @@ export function ArchitectureDiagramPanel({
   // inheriting whatever the previously-open Architecture's zoom happened to be. Pan position
   // is deliberately not persisted (not asked for, and restoring an old pan offset without
   // also restoring exactly which Collections existed then would be more disorienting than
-  // useful) — every restore re-centers at x:0, y:0.
+  // useful) — every restore re-centers at x:0, y:0. 023: x starts at
+  // `CONTROLS_CLEARANCE_PX` instead, so the top-left controls column doesn't cover the diagram.
   const defaultViewport = useMemo<Viewport>(
-    () => ({ x: 0, y: 0, zoom: readDiagramZoom(architectureId) ?? DEFAULT_DIAGRAM_ZOOM }),
+    () => ({
+      x: CONTROLS_CLEARANCE_PX,
+      y: 0,
+      zoom: readDiagramZoom(architectureId) ?? DEFAULT_DIAGRAM_ZOOM,
+    }),
     [architectureId],
   );
   const onMoveEnd = useCallback(
@@ -2032,44 +2042,17 @@ export function ArchitectureDiagramPanel({
         onPaneClick={safeOnPaneClick}
       >
         <Background />
-        <Controls />
-        {/* Zoom percentage readout, directly above the +/-/fit-view/lock controls — also
-            doubles as the easiest way to visually confirm 1b's persistence (reload and
-            check it reads the same %).
-            Found live (user report): `position="bottom-right"` put this in the exact corner
-            the outer panel's own native `resize-y` handle (research.md/008's FR-004) lives
-            in, and being a normal DOM element with `pointer-events: auto` sitting on top of
-            that corner's pixels was enough to swallow the drag gesture the resize grip
-            needs — a real, not just cosmetic, regression. `bottom-left` shares `<Controls>`'s
-            own corner (so it stays clear of the resize handle entirely), stacked directly
-            above its four buttons via an inline `marginBottom` — a `className` alone loses
-            here: React Flow's own `.react-flow__panel.bottom` stylesheet rule (two classes)
-            outranks a single Tailwind utility class by CSS specificity regardless of source
-            order, confirmed live by the computed margin staying React Flow's own ~15px no
-            matter what Tailwind spacing class was tried. `104` is `<Controls>`'s own
-            measured height (four 26px buttons) — inline because it has to win outright, not
-            because it's expected to ever change. */}
-        <Panel
-          position="bottom-left"
-          className="rounded border border-border bg-background px-1.5 py-0.5 text-4xs text-muted-foreground"
-          style={{ marginBottom: 104 + 24 }}
-        >
-          {/* Divided by `DEFAULT_DIAGRAM_ZOOM` (see its own comment) — reads "100%" at the new
-              baseline zoom rather than at React Flow's native 1:1, matching the +/-/fit-view
-              controls and persisted zoom below, which still operate on the real, undivided
-              value. */}
-          {Math.round((currentZoom / DEFAULT_DIAGRAM_ZOOM) * 100)}%
-        </Panel>
-        {/* 009-ui-fixes-next-iteration follow-up: manual "redraw the diagram" button, above
-            the zoom % per the ask — a temporary workaround for the still-not-fully-root-caused
-            "diagram goes blank" issue (US3/research.md §3; this session's own
-            `diagramSelection` memoization fix found *a* real contributing mechanism, evidently
-            not the only one per continued live reports) until that's properly fixed. Refetches
-            the Architecture (`onRefresh`, `WorkspacePage.tsx`'s `invalidateArchitecture`) *and*
-            forces this whole React Flow instance to remount (`remountNonce`, in `key` above) —
-            the same "start over from nothing" a full page reload gives it, matching what the
-            user already found actually resolves it, without an actual page reload. */}
-        <Panel position="bottom-left" style={{ marginBottom: 104 + 24 + 24 }}>
+        {/* 023: the redraw button, the zoom readout and the +/-/fit-view/lock controls sit in
+            one column in the top-left corner, top to bottom. At the bottom left, shrinking the
+            canvas hid them; the bottom right is the canvas's resize grip (research.md/008's
+            FR-004), which a control there would block. `<Controls>` is itself a React Flow
+            panel, so it's made static here to flow inside this one; inline styles, because
+            React Flow's own `.react-flow__panel` rule outranks a single utility class. */}
+        <Panel position="top-left" className="flex flex-col items-start gap-1">
+          {/* 009-ui-fixes-next-iteration follow-up: "redraw the diagram", a workaround for the
+              not-fully-root-caused "diagram goes blank" issue (US3/research.md §3). Refetches
+              the Architecture (`onRefresh`) and remounts this React Flow instance
+              (`remountNonce`, in `key` above): what a page reload does, without one. */}
           <button
             type="button"
             aria-label="Redraw the architecture diagram"
@@ -2082,6 +2065,13 @@ export function ArchitectureDiagramPanel({
           >
             <RefreshCw className="size-2.5" />
           </button>
+          {/* Divided by `DEFAULT_DIAGRAM_ZOOM` (see its own comment): reads "100%" at the
+              baseline zoom rather than at React Flow's native 1:1; the controls and the
+              persisted zoom still use the real, undivided value. */}
+          <span className="rounded border border-border bg-background px-1.5 py-0.5 text-4xs text-muted-foreground">
+            {Math.round((currentZoom / DEFAULT_DIAGRAM_ZOOM) * 100)}%
+          </span>
+          <Controls style={{ position: "static", margin: 0 }} />
         </Panel>
         {/* 011-canvas-connector-popout, spec FR-002: the canvas's own "Add Connector" control
             (formerly here) was removed — connector creation is now consolidated at column 2's

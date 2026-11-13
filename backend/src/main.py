@@ -52,8 +52,57 @@ async def _snapshot_monitor() -> None:
             logger.exception("pricing snapshot check failed", error=str(exc))
 
 
+AGENT_SWEEP_INTERVAL_SECONDS = 15 * 60
+
+
+async def _agent_session_sweep() -> None:
+    """023-agent-foundation (research R4, FR-011): delete agent sessions past their close time,
+    so a conversation never outlives its 3 days even if its user never returns."""
+    from datetime import UTC, datetime
+
+    from src.agent.sessions import sweep_expired
+    from src.db.session import async_session_factory
+
+    while True:
+        try:
+            async with async_session_factory() as session:
+                await sweep_expired(session, datetime.now(UTC))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("agent session sweep failed", error=str(exc))
+        await asyncio.sleep(AGENT_SWEEP_INTERVAL_SECONDS)
+
+
+async def _agent_startup() -> None:
+    """023: read the hosted model's key from SSM once (when configured), and clear any session
+    left busy by an answer that didn't survive a restart."""
+    from src.agent.sessions import clear_busy
+    from src.agent.settings_service import load_api_key_parameter
+    from src.db.session import async_session_factory
+
+    try:
+        await asyncio.to_thread(load_api_key_parameter)
+    except Exception as exc:  # noqa: BLE001
+        # No key (the parameter isn't set, or can't be read): a hosted model is then
+        # unavailable; the rest of the app, and a local model, are unaffected.
+        logger.warning("agent API key parameter not read", error=type(exc).__name__)
+    try:
+        async with async_session_factory() as session:
+            await clear_busy(session)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("agent startup cleanup failed", error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # 023: refuse to start against a database that isn't migrated to this code's revision.
+    from src.db.schema_version import SchemaVersionMismatchError, check_schema_version
+    from src.db.session import engine
+
+    try:
+        await check_schema_version(engine)
+    except SchemaVersionMismatchError as exc:
+        logger.error("database schema out of date", error=str(exc))
+        raise
     # FR-017: settle the active snapshot before serving any pricing request. 018: an unset
     # PRICING_DATA_URI, an old-layout directory or an unusable ACTIVE_SNAPSHOT_DATE raises
     # here, so the server refuses to start; partial S3 copies from a restart are removed first.
@@ -66,14 +115,17 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         active_snapshot.set_switch_hook(lambda code: update_all_in_background([code]))
         update_all_in_background()
     monitor = asyncio.create_task(_snapshot_monitor())
+    await _agent_startup()
+    agent_sweep = asyncio.create_task(_agent_session_sweep())
     try:
         yield
     finally:
-        monitor.cancel()
-        try:
-            await monitor
-        except asyncio.CancelledError:
-            pass
+        for task in (monitor, agent_sweep):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(
@@ -182,8 +234,10 @@ async def health() -> HealthOut:
 
 
 # Routers are registered here as each user story's endpoints are implemented.
+from src.api.admin_agent import router as admin_agent_router  # noqa: E402
 from src.api.admin_system import router as admin_system_router  # noqa: E402
 from src.api.admin_users import router as admin_users_router  # noqa: E402
+from src.api.agent import router as agent_router  # noqa: E402
 from src.api.architectures import router as architectures_router  # noqa: E402
 from src.api.auth import router as auth_router  # noqa: E402
 from src.api.calculate import router as calculate_router  # noqa: E402
@@ -209,3 +263,5 @@ app.include_router(admin_system_router, prefix="/api/v1")
 app.include_router(connectors_router, prefix="/api/v1")
 app.include_router(preferences_router, prefix="/api/v1")
 app.include_router(trends_router, prefix="/api/v1")
+app.include_router(agent_router, prefix="/api/v1")
+app.include_router(admin_agent_router, prefix="/api/v1")

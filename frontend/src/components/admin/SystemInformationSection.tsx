@@ -98,7 +98,7 @@ export function SystemInformationSection({ pollMs = 2_000 }: { pollMs?: number }
 
   return (
     <section aria-labelledby="system-information" className="flex max-w-2xl flex-col gap-3">
-      <h2 id="system-information" className="text-xs font-semibold">
+      <h2 id="system-information" className="sr-only">
         System Information
       </h2>
 

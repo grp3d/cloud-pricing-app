@@ -14,15 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from src.api.deps import CurrentUser, DbSession
-from src.models.orm import Architecture, Collection, DataConnector, User
+from src.models.orm import Architecture, Collection, DataConnector
 from src.models.schemas import (
     ArchitectureCreate,
     ArchitectureDetailOut,
     ArchitectureImportRequest,
     ArchitectureSummaryOut,
     ArchitectureUpdate,
-    ImportableArchitectureGroupOut,
-    ImportableArchitectureOut,
     ImportableArchitecturesOut,
     ProviderCode,
 )
@@ -32,6 +30,7 @@ from src.services.architecture_service import (
     attach_units_to_architecture,
     get_owned_architecture,
 )
+from src.services.importable import importable_architectures
 
 router = APIRouter(tags=["architectures"])
 
@@ -70,43 +69,9 @@ async def list_architectures(
 async def list_importable_architectures(
     session: DbSession, user: CurrentUser, provider: ProviderCode | None = None
 ) -> ImportableArchitecturesOut:
-    """Every other user's public architectures, grouped by owner and pre-sorted
-    (012-user-accounts-sharing, spec FR-023-026): the Admin group always first, other groups
-    alphabetical, architecture names alphabetical within a group; an owner with zero public
-    architectures never appears. With `provider`, only that provider's architectures are
-    listed (021, research R12); without it, every provider's, as before."""
-    query = (
-        select(Architecture, User.username)
-        .join(User, Architecture.user_id == User.id)
-        .where(
-            Architecture.is_public.is_(True),
-            Architecture.deleted_at.is_(None),
-            Architecture.user_id != user.id,
-            User.username.is_not(None),
-        )
-    )
-    if provider is not None:
-        query = query.where(Architecture.provider == provider)
-    result = await session.execute(query)
-    by_owner: dict[str, list[Architecture]] = {}
-    for architecture, owner_username in result.all():
-        by_owner.setdefault(owner_username, []).append(architecture)
-
-    other_owners = sorted((o for o in by_owner if o != "Admin"), key=str.lower)
-    ordered_owners = (["Admin"] if "Admin" in by_owner else []) + other_owners
-
-    return ImportableArchitecturesOut(
-        groups=[
-            ImportableArchitectureGroupOut(
-                owner_username=owner,
-                architectures=[
-                    ImportableArchitectureOut(id=a.id, name=a.name)
-                    for a in sorted(by_owner[owner], key=lambda a: a.name)
-                ],
-            )
-            for owner in ordered_owners
-        ]
-    )
+    """Every other user's public architectures, grouped by owner and pre-sorted (012, spec
+    FR-023-026; the query lives in `src.services.importable`, shared with the agent)."""
+    return await importable_architectures(session, user, provider)
 
 
 @router.post(

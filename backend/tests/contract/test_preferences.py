@@ -181,3 +181,27 @@ async def test_a_row_stored_before_021_still_reads_back(client, auth_headers):
     assert resp.status_code == 200
     assert resp.json()["data"]["workspace"] == WORKSPACE
     assert "inspector" not in resp.json()["data"]["workspace"]
+
+
+# --- 023-agent-foundation (data-model §7, clarification 1) -------------------------------------
+
+
+async def test_agent_panel_layout_is_saved(client, auth_headers):
+    panel = {"open": True, "split": 0.6, "height": 300, "width": 640}
+    saved = await client.patch(URL, json={"workspace": {"agent_panel": panel}},
+                               headers=auth_headers)
+    assert saved.status_code == 200, saved.text
+    again = await client.get(URL, headers=auth_headers)
+    assert again.json()["data"]["workspace"]["agent_panel"] == panel
+
+
+@pytest.mark.parametrize(
+    "panel",
+    [{"open": True, "split": 0.9}, {"open": True, "split": 0.1},
+     {"open": True, "split": 0.5, "height": 50}, {"open": True, "split": 0.5, "width": 100},
+     {"open": True, "split": 0.5, "colour": "red"}],
+)
+async def test_agent_panel_rejects_invalid_values(client, auth_headers, panel):
+    response = await client.patch(URL, json={"workspace": {"agent_panel": panel}},
+                                  headers=auth_headers)
+    assert response.status_code == 422

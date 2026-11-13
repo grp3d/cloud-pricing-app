@@ -1,0 +1,14 @@
+id: GC-7
+title: Asked to import, the agent says it can't yet and points to Import
+architecture: null
+others:
+  - owner: Admin
+    architectures:
+      - {provider: aws, name: Serverless Microservices Back-End, public: true}
+messages:
+  - Import the Serverless architecture for me.
+expect:
+  refused: true
+  contains: ["Import"]
+script:
+  - text: ["I can't import architectures for you yet. Use Import in the Cloud Pricing menu."]

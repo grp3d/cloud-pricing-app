@@ -1,0 +1,14 @@
+id: GC-1
+title: Monthly total matches the Pricing tab, with duration and snapshot date
+architecture: {provider: aws, name: Active-Standby Multi-Region Web Application}
+messages:
+  - What does this architecture cost per month?
+expect:
+  operations: [price_open_architecture]
+  figures:
+    - {of: total, duration: 1_month}
+  contains: ["1 month (31 days)", "snapshot"]
+  not_contains: ["[figure removed]", "[figure unavailable]"]
+script:
+  - tool_calls: [{name: price_open_architecture, arguments: {duration: 1_month}}]
+  - text: ["For 1 month (31 days) this architecture costs [[F1]]."]

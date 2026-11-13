@@ -15,15 +15,20 @@ dependencies = [
     "greenlet>=3.1",
     "structlog>=26.1",
     "boto3>=1.40",
+    # 023-agent-foundation (research R2, R14): the hosted model client, and HTTP for the local
+    # (Ollama) model client.
+    "anthropic>=0.70",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
-    "httpx>=0.27",
     "ruff>=0.7",
     "jsonschema>=4.23",
+    # 023 (research R8): evaluation cases are YAML.
+    "pyyaml>=6.0",
 ]
 
 [build-system]
@@ -36,6 +41,9 @@ packages = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# 023 (research R8): live-model evaluations are opt-in (`pytest -m live_model`).
+addopts = "-m 'not live_model'"
+markers = ["live_model: runs agent evaluations against real models (opt-in)"]
 
 [tool.ruff]
 line-length = 88

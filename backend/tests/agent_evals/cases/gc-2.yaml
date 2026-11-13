@@ -1,0 +1,14 @@
+id: GC-2
+title: Cost drivers are the largest services, with engine figures
+architecture: {provider: gcp, name: Active-Standby Multi-Region Web Application}
+messages:
+  - What's driving the cost of this architecture?
+expect:
+  operations: [cost_drivers]
+  figures:
+    - {of: top_service, duration: 1_month}
+    - {of: total, duration: 1_month}
+  not_contains: ["[figure removed]", "[figure unavailable]"]
+script:
+  - tool_calls: [{name: cost_drivers, arguments: {duration: 1_month, top: 3}}]
+  - text: ["The biggest cost is [[F1]], then [[F2]] and [[F3]], out of [[F5]] a month."]

@@ -13,12 +13,21 @@ import uuid
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.db.session import get_session
+from src.db.session import async_session_factory, get_session
 from src.models.orm import User
 
 DbSession = Annotated[AsyncSession, Depends(get_session)]
+
+
+def get_session_factory() -> async_sessionmaker:
+    """For work that outlives the request's own session, such as an agent answer streamed after
+    the route returns (023-agent-foundation, research R3). Overridden in tests."""
+    return async_session_factory
+
+
+SessionFactory = Annotated[async_sessionmaker, Depends(get_session_factory)]
 
 
 async def get_current_user(

@@ -26,6 +26,8 @@ export PRICING_DATA_URI="file://$backend/tests/fixtures/pricing_parquet"
 export PRICE_HISTORY_ENABLED=false
 export PRICING_HISTORY_DIR="${TMPDIR:-/tmp}/cloud-pricing-e2e-history"
 export LOG_FORMAT=console
+# 023 (research R15): lets the agent spec use the scripted model; refused everywhere else.
+export AGENT_ALLOW_SCRIPTED_PROVIDER=1
 export LOG_LEVEL=WARNING
 
 uv run alembic upgrade head

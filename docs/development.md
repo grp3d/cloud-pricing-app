@@ -11,6 +11,7 @@ How to run, test and change the app on a laptop. For settings see
 - [Tests](#tests)
 - [The production stack on a laptop](#the-production-stack-on-a-laptop)
 - [Standard architectures](#standard-architectures)
+- [The agent](#the-agent)
 - [Making a change](#making-a-change)
 
 ## Tools
@@ -41,6 +42,10 @@ uv sync --extra dev
 source .venv/bin/activate
 alembic upgrade head
 ```
+
+Run `alembic upgrade head` again whenever you pull or switch to a branch with a new migration:
+the backend won't start against a database that isn't at the code's latest migration, and says
+so in one line.
 
 Set `PRICING_DATA_URI` in `backend/.env` (template: `backend/.env.example`). It's the only
 required setting; every setting is listed in [configuration.md](configuration.md).
@@ -175,6 +180,39 @@ uv run python scripts/build_provider_fixtures.py --source-uri file:///path/to/DA
 
 The AWS seed was generated from the 2026-09-24 snapshot; to re-run it unchanged, pin
 `ACTIVE_SNAPSHOT_DATE=2026-09-24`.
+
+## The agent
+
+The [agent](features/agent.md) is off by default. To try it locally with a free local model:
+
+```bash
+brew install ollama && ollama serve        # in another terminal
+ollama pull llama3.1                       # any model that supports tool calling
+```
+
+Then, on the Admin page, open **Agent settings**: tick **Agent on**, keep the provider **Ollama**,
+set the model to `llama3.1`, and save. (Or start the backend with `AGENT_ENABLED=true
+AGENT_MODEL=llama3.1`.) Turn the agent on for a user in the user table, or use their 3 free
+preview messages. For the hosted model, put `AGENT_ANTHROPIC_API_KEY=…` in `backend/.env`, choose
+**Anthropic**, and enter both token prices. Every setting is listed in
+[configuration.md](configuration.md#agent).
+
+- **Tests never call a real model.** Every agent test uses the scripted model
+  (`src/agent/clients/scripted.py`). The example conversations from the spec are in
+  `backend/tests/agent_evals/cases/*.yaml`; the normal run plays each one with its script.
+- **Checking real models** is a separate run, against the same cases and fixed checks (figures
+  equal to the engine's to the cent, operations run, phrases present or absent, refusals):
+
+  ```bash
+  cd backend
+  AGENT_EVAL_MODELS="ollama:llama3.1,anthropic:claude-haiku-5-5" uv run pytest -m live_model
+  ```
+
+  It writes `backend/agent-eval-report.md` (not committed), with pass or fail per case and
+  per check, for each model. A hosted model needs `AGENT_ANTHROPIC_API_KEY` in the environment,
+  and costs a little per run.
+- **End-to-end:** `e2e/agent.spec.ts` runs last, in its own Playwright project, because it
+  switches the app-wide agent setting on (with the scripted model) and off again.
 
 ## Making a change
 

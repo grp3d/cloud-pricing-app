@@ -27,6 +27,15 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      testIgnore: /agent\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1600, height: 1000 } },
+    },
+    // 023: the agent spec switches the (app-wide) agent on, which would add the agent panel to
+    // every other spec's workspace; it runs on its own, after them.
+    {
+      name: "agent",
+      testMatch: /agent\.spec\.ts/,
+      dependencies: ["chromium"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1600, height: 1000 } },
     },
   ],

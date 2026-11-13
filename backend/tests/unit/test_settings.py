@@ -141,3 +141,41 @@ def test_pricing_history_dir_expands_home(monkeypatch):
 
     monkeypatch.setenv("PRICING_HISTORY_DIR", "~/hist")
     assert _settings().pricing_history_dir == str(Path.home() / "hist")
+
+
+# --- 023-agent-foundation (research R5) -------------------------------------------------------
+
+
+def test_agent_defaults():
+    s = _settings()
+    assert s.agent_enabled is False
+    assert s.agent_provider == "ollama"
+    assert s.agent_model is None
+    assert s.agent_base_url == "http://localhost:11434"
+    assert s.agent_timeout_seconds == 60
+    assert str(s.agent_global_monthly_cap_usd) == "10"
+    assert s.agent_default_user_monthly_inputs == 100
+    assert s.agent_price_per_input_token_usd is None
+    assert s.agent_price_per_output_token_usd is None
+    assert s.agent_anthropic_api_key is None
+    assert s.agent_anthropic_api_key_parameter is None
+    assert s.agent_allow_scripted_provider is False
+
+
+def test_agent_api_key_is_never_dumped(monkeypatch):
+    monkeypatch.setenv("AGENT_ANTHROPIC_API_KEY", "sk-test-secret-value")
+    s = _settings()
+    assert s.agent_anthropic_api_key.get_secret_value() == "sk-test-secret-value"
+    assert "sk-test-secret-value" not in str(s.model_dump())
+    assert "sk-test-secret-value" not in repr(s)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("AGENT_PROVIDER", "openai"), ("AGENT_TIMEOUT_SECONDS", "0"),
+     ("AGENT_GLOBAL_MONTHLY_CAP_USD", "-1")],
+)
+def test_agent_settings_reject_invalid(monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValidationError, match=name.lower()):
+        _settings()

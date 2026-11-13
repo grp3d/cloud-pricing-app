@@ -45,6 +45,25 @@ displays them. In the cloud, cloud-init sets them; see [setup.md](setup.md).
 | `APP_ENVIRONMENT` / `APP_RELEASE` | `local` / `dev` | Shown in the Admin tab and recorded in backups. |
 | `TLS_ROOT_DIR` | unset | Local packaged stack only: read the TLS root from this directory instead of SSM. |
 
+### Agent
+
+Starting values for the [agent](features/agent.md). The Admin page's Agent settings override each
+one at run time, so these apply only where the Admin hasn't set a value.
+
+| Environment variable | Default | What it controls |
+|---|---|---|
+| `AGENT_ENABLED` | `false` | Whether the agent is on. |
+| `AGENT_PROVIDER` | `ollama` | `ollama` (local) or `anthropic` (hosted). |
+| `AGENT_MODEL` | unset | The model name. The agent can't be switched on without one. |
+| `AGENT_BASE_URL` | `http://localhost:11434` | Ollama's address. |
+| `AGENT_TIMEOUT_SECONDS` | `60` | The longest a model call may take (5–600). |
+| `AGENT_GLOBAL_MONTHLY_CAP_USD` | `10` | Spending cap for all users, per calendar month (UTC). |
+| `AGENT_DEFAULT_USER_MONTHLY_INPUTS` | `100` | Monthly message limit for a user with none of their own. |
+| `AGENT_PRICE_PER_INPUT_TOKEN_USD` / `AGENT_PRICE_PER_OUTPUT_TOKEN_USD` | unset | The hosted model's token prices; it can't be used until both are set. |
+| `AGENT_ANTHROPIC_API_KEY` | unset | The hosted model's key. Never stored in the database or shown. |
+| `AGENT_ANTHROPIC_API_KEY_PARAMETER` | unset (in the cloud: `/<prefix>/<env>/agent-anthropic-api-key`) | SSM parameter holding the key, read once at startup. If it doesn't exist, only the hosted model is unavailable. |
+| `AGENT_ALLOW_SCRIPTED_PROVIDER` | `false` | End-to-end tests only: allows the scripted test model. |
+
 Removed: `AWS_PRICING_PARQUET_DIR`. If it is still set (in the environment or `backend/.env`), the
 server refuses to start and names `PRICING_DATA_URI` as its replacement.
 

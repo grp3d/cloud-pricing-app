@@ -63,3 +63,37 @@ def test_ops_commands_log_no_secrets(tmp_path, monkeypatch, log_output):
                    key_pem.splitlines()[1]):
         assert secret not in rendered
     assert DB_PASSWORD not in (tmp_path / "db-init.json").read_text()
+
+
+# --- 023-agent-foundation (FR-017, constitution Principle VIII) --------------------------------
+
+AGENT_KEY = "sk-ant-agent-key-should-never-leak"
+
+
+async def test_agent_api_key_never_reaches_logs_or_responses(client, admin_headers,
+                                                            monkeypatch, log_output):
+    from pydantic import SecretStr
+
+    from src.agent import settings_service
+    from src.config import settings
+
+    monkeypatch.setattr(settings_service, "_ssm_api_key", None)
+    monkeypatch.setattr(settings, "agent_anthropic_api_key_parameter", "/app/agent-key")
+    monkeypatch.setattr(settings_service, "parameter_value", lambda name: AGENT_KEY)
+    settings_service.load_api_key_parameter()
+    monkeypatch.setattr(settings, "agent_anthropic_api_key", SecretStr(AGENT_KEY))
+
+    bodies = []
+    bodies.append((await client.get("/api/v1/admin/agent/settings", headers=admin_headers)).text)
+    bodies.append((await client.put("/api/v1/admin/agent/settings", headers=admin_headers, json={
+        "agent_enabled": True, "agent_provider": "anthropic", "agent_model": "claude-haiku-5-5",
+        "agent_base_url": "http://localhost:11434", "agent_timeout_seconds": 60,
+        "agent_global_monthly_cap_usd": "10.00", "agent_default_user_monthly_inputs": 100,
+        "agent_price_per_input_token_usd": "0.0000001",
+        "agent_price_per_output_token_usd": "0.0000005"})).text)
+    bodies.append((await client.get("/api/v1/agent/status", headers=admin_headers)).text)
+    bodies.append(json.dumps((await client.get("/openapi.json")).json()))
+
+    assert all(AGENT_KEY not in body for body in bodies)
+    assert AGENT_KEY not in json.dumps(log_output())
+    assert AGENT_KEY not in repr(settings)

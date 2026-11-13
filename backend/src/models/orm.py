@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Numeric,
     String,
@@ -51,6 +53,12 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(default=False)
     is_default_admin: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # 023-agent-foundation (data-model §2, FR-019–FR-021): Admin-controlled agent access. A new
+    # named user starts with the agent off and 3 free preview inputs; a null monthly limit
+    # means the app-wide default. Guests keep the columns but never use the agent.
+    agent_enabled_for_user: Mapped[bool] = mapped_column(default=False, server_default="false")
+    agent_preview_input_counter: Mapped[int] = mapped_column(default=3, server_default="3")
+    agent_monthly_input_limit: Mapped[int | None] = mapped_column(default=None)
 
     architectures: Mapped[list[Architecture]] = relationship(back_populates="user")
 
@@ -303,3 +311,124 @@ class ServiceCategoryRule(Base):
     match_value: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(20), nullable=False)
     priority: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+
+
+# --- 023-agent-foundation (data-model.md §1–§6) ------------------------------------------------
+
+
+class AgentSettings(Base):
+    """The single row of Admin-edited agent settings. A null column means "use the environment
+    default" (research R5). The model API key is deliberately not stored here (FR-017)."""
+
+    __tablename__ = "agent_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    agent_enabled: Mapped[bool | None] = mapped_column(default=None)
+    agent_provider: Mapped[str | None] = mapped_column(String(20), default=None)
+    agent_model: Mapped[str | None] = mapped_column(String(200), default=None)
+    agent_base_url: Mapped[str | None] = mapped_column(String(500), default=None)
+    agent_timeout_seconds: Mapped[int | None] = mapped_column(default=None)
+    agent_global_monthly_cap_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 2), default=None
+    )
+    agent_default_user_monthly_inputs: Mapped[int | None] = mapped_column(default=None)
+    agent_price_per_input_token_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 10), default=None
+    )
+    agent_price_per_output_token_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 10), default=None
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AgentSession(Base):
+    """A user's one agent session (FR-010, FR-011): closed and deleted 3 days after it starts.
+    `busy_message_id` is set while a message is being answered, so a second send is refused."""
+
+    __tablename__ = "agent_sessions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closes_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    busy_message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+
+
+class AgentMessage(Base):
+    """One turn of a session's conversation. An agent message's `content` is the text as shown,
+    figure references already replaced by the pricing engine's values (research R1)."""
+
+    __tablename__ = "agent_messages"
+    __table_args__ = (
+        UniqueConstraint("session_id", "seq", name="uq_agent_message_seq"),
+        CheckConstraint("role IN ('user', 'agent')", name="ck_agent_message_role"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    seq: Mapped[int] = mapped_column(nullable=False)
+    role: Mapped[str] = mapped_column(String(10), nullable=False)
+    content: Mapped[str] = mapped_column(nullable=False)
+    # No FK: the architecture may later be deleted; the message keeps what was open (FR-012).
+    architecture_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    error_kind: Mapped[str | None] = mapped_column(String(20), default=None)
+    is_preview: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AgentOperation(Base):
+    """One operation the agent ran: the activity log (FR-024, Principle VII)."""
+
+    __tablename__ = "agent_operations"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_messages.id", ondelete="CASCADE"), nullable=False
+    )
+    seq: Mapped[int] = mapped_column(nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    inputs: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    outcome: Mapped[str] = mapped_column(String(10), nullable=False)
+    summary: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    snapshot: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    figures_removed: Mapped[int] = mapped_column(default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    duration_ms: Mapped[int] = mapped_column(default=0)
+
+
+class AgentUsage(Base):
+    """One model call (research R7). Kept after its session is deleted (FR-013): monthly limits
+    and the global spending cap are counted from these rows."""
+
+    __tablename__ = "agent_usage"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_sessions.id", ondelete="SET NULL"), default=None
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(default=0)
+    output_tokens: Mapped[int] = mapped_column(default=0)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=Decimal(0))
+    counts_as_input: Mapped[bool] = mapped_column(default=False)
+    is_preview: Mapped[bool] = mapped_column(default=False)

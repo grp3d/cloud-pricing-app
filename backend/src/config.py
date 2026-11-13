@@ -10,11 +10,12 @@ from __future__ import annotations
 import re
 import tempfile
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal, NamedTuple
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _OLD_DATA_SETTING_MESSAGE = (
@@ -135,6 +136,26 @@ class Settings(BaseSettings):
 
     # PBKDF2 iterations for newly hashed passwords (existing hashes keep their own count).
     password_hash_iterations: int = Field(default=260_000, ge=100_000)
+
+    # 023-agent-foundation (research R5): the agent's *starting* values. The Admin page's Agent
+    # settings (the `agent_settings` row) override each one at run time; these apply only where
+    # that row leaves a value unset. `scripted` is a test double, refused unless
+    # `agent_allow_scripted_provider` is set (the e2e backend only, research R15).
+    agent_enabled: bool = False
+    agent_provider: Literal["anthropic", "ollama", "scripted"] = "ollama"
+    agent_model: str | None = None
+    agent_base_url: str = "http://localhost:11434"
+    agent_timeout_seconds: int = Field(default=60, ge=5, le=600)
+    agent_global_monthly_cap_usd: Decimal = Field(default=Decimal("10"), ge=0)
+    agent_default_user_monthly_inputs: int = Field(default=100, ge=0)
+    agent_price_per_input_token_usd: Decimal | None = Field(default=None, ge=0)
+    agent_price_per_output_token_usd: Decimal | None = Field(default=None, ge=0)
+    # The hosted model's key: from the environment, or (in the cloud) from the SSM parameter
+    # named below, read once at startup. Never stored in the database or sent to the browser
+    # (FR-017); `exclude=True` keeps it out of every dump.
+    agent_anthropic_api_key: SecretStr | None = Field(default=None, exclude=True)
+    agent_anthropic_api_key_parameter: str | None = None
+    agent_allow_scripted_provider: bool = False
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     # 017-structured-json-logging, FR-001a: one JSON object per line, or readable local-dev lines.

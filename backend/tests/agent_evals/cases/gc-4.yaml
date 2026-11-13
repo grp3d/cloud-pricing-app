@@ -1,0 +1,19 @@
+id: GC-4
+title: The importable list, grouped by owner with Admin first
+architecture: null
+others:
+  - owner: Admin
+    architectures:
+      - {provider: aws, name: Serverless Microservices Back-End, public: true}
+  - owner: zoe
+    architectures:
+      - {provider: aws, name: Active-Standby Multi-Region Web Application, rename: Zoe Web App, public: true}
+messages:
+  - What architectures can I import?
+expect:
+  operations: [list_importable_architectures]
+  contains: ["Serverless Microservices Back-End", "Zoe Web App", "Admin", "zoe"]
+  order: ["Admin", "zoe"]
+script:
+  - tool_calls: [{name: list_importable_architectures, arguments: {}}]
+  - text: ["From Admin: Serverless Microservices Back-End. From zoe: Zoe Web App. Importing makes your own private copy."]

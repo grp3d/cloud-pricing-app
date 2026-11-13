@@ -99,6 +99,10 @@ def test_run_check_cleans_the_cache_one_check_after_a_switch(tmp_path, monkeypat
     monkeypatch.setattr(active_snapshot.settings, "active_snapshot_date", None)
     monkeypatch.setattr(active_snapshot, "open_store", lambda _s: S3Store("bucket", client=client))
     monkeypatch.setattr(active_snapshot, "STATE", active_snapshot.MonitorState())
+    # run_check checks every provider: keep GCP's and Azure's state from this fake source out
+    # of later tests too (the original dict is restored afterwards).
+    monkeypatch.setattr(active_snapshot, "_OTHER_STATES",
+                        {p: active_snapshot.MonitorState() for p in active_snapshot._OTHER_STATES})
     active_snapshot.set_analysis_hook(lambda *a: None)
     try:
         publish("2026-10-05")

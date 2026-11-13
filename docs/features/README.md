@@ -11,7 +11,8 @@ where a later spec changed an earlier one, the page describes the result.
 | [Providers and pricing data](providers-and-pricing-data.md) | AWS, GCP and Azure; snapshots, how they're chosen and updated; provider status; categories |
 | [Trends](trends.md) | The SKUs Changed chart and the biggest movers |
 | [Accounts and sharing](accounts-and-sharing.md) | Guests, logins, public architectures, importing a copy, standard architectures |
-| [Admin](admin.md) | Users, Admin import and export, System Information |
+| [Admin](admin.md) | Agent settings, users, Admin import and export, System Information |
+| [Agent](agent.md) | The agent panel, sessions, what the agent can answer, the activity log, access and limits |
 
 Deployment and operation are in [setup.md](../setup.md) and [operations.md](../operations.md);
 settings are in [configuration.md](../configuration.md).

@@ -341,8 +341,13 @@ test("D: widths at 1280 and 1600, no sideways scroll, light and dark", async ({
   }, admin.userId);
   await page.goto("/admin");
   await expect(page.getByRole("link", { name: "Admin" })).toBeVisible();
-  await noSidewaysScroll(page);
-  await attachScreenshots(page, testInfo, "Admin at 1280");
+  // 023: the Admin page has three tabs; none of them scrolls sideways.
+  for (const name of ["Agent Settings", "User Management", "System Information"]) {
+    await page.getByRole("tab", { name }).click();
+    await expect(page.getByRole("tabpanel", { name })).toBeVisible();
+    await noSidewaysScroll(page);
+    await attachScreenshots(page, testInfo, `Admin ${name} at 1280`);
+  }
 });
 
 test("E: one-click add, Save and Calculate colours, and rename (US5, US6)", async ({ page }) => {
