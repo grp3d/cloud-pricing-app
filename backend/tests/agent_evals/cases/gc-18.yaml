@@ -1,0 +1,19 @@
+id: GC-18
+title: "024: the open architecture on the other two clouds, in one result"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+messages:
+  - What would this cost on the other two clouds?
+expect:
+  operations: [find_matches, price_matches]
+  result_rows: true
+  providers: [aws, azure, gcp]
+  partial_total: true
+  not_contains: ["[figure unavailable]", "[figure removed]", "I recommend"]
+script:
+  - tool_calls: [{name: find_matches, arguments: {target_providers: [azure, gcp]}}]
+  - tool_calls: [{name: price_matches, arguments: {}}]
+  - text: ["Against [[F1]] on AWS, the matched services come to [[F2]] on Azure and [[F5]] on
+      GCP. The totals are partial; the table beside me shows each match."]

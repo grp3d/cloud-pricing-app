@@ -83,6 +83,22 @@ class ModelUnreachable(ModelError):
     kind = "unreachable"
 
 
+class ModelNoCredit(ModelError):
+    """The hosted model's account has no credit left."""
+
+    kind = "no_credit"
+
+
+class ModelKeyRejected(ModelError):
+    """The hosted model refused the API key."""
+
+    kind = "key_rejected"
+
+
+class ModelRateLimited(ModelError):
+    kind = "rate_limited"
+
+
 class ModelTimeout(ModelError):
     kind = "timeout"
 

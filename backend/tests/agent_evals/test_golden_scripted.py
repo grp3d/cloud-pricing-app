@@ -8,7 +8,7 @@ import pytest
 from src.agent.clients.scripted import ScriptedModelClient, Turn
 from src.agent.model import ToolCall
 from tests.agent_evals.runner import load_cases, run_case
-from tests.helpers.agent import STANDARD_PRICING_ROOT
+from tests.helpers.agent import STANDARD_PRICING_ROOT, combined_pricing_root
 
 CASES = load_cases()
 
@@ -26,7 +26,10 @@ def _client(script: list[dict]) -> ScriptedModelClient:
 async def test_golden_conversation(db_session, case, use_pricing_root):
     providers = {(case.get("architecture") or {}).get("provider")} | {
         a["provider"] for o in case.get("others") or [] for a in o["architectures"]}
-    if providers & {"gcp", "azure"}:
+    if case.get("pricing") == "combined":
+        # 024: comparisons need every provider at once.
+        use_pricing_root(combined_pricing_root())
+    elif providers & {"gcp", "azure"}:
         use_pricing_root(STANDARD_PRICING_ROOT)
     result = await run_case(db_session, case, _client(case["script"]))
     failed = [f"{c.name} ({c.detail})" for c in result.checks if not c.passed]

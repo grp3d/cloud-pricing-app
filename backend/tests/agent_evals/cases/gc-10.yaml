@@ -1,0 +1,14 @@
+id: GC-10
+title: "024 GC-1: a storage comparison missing details gets at most three short questions"
+pricing: combined
+messages:
+  - How much cheaper is storage on Azure than GCP?
+expect:
+  no_operations: true
+  max_questions: 3
+  contains: ["object", "region"]
+  not_contains: ["[figure unavailable]", "[figure removed]"]
+script:
+  - text: ["Which storage: object, block or file? Which access tier and redundancy? Which regions,
+      and how much data? Or I can use defaults: object storage, hot tier, locally redundant,
+      1 TB for a month."]

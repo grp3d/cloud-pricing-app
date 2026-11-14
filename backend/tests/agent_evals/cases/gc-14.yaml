@@ -1,0 +1,23 @@
+id: GC-14
+title: "024 GC-5: a follow-up keeps the basis and changes only the amount"
+pricing: combined
+messages:
+  - Compare hot object storage on Azure eastus and GCP us-east1 for 1 TB a month.
+  - and for 10 TB?
+expect:
+  operations: [search_products, price_products]
+  result_rows: true
+  contains: ["10 TB", "same"]
+  not_contains: ["[figure unavailable]", "[figure removed]"]
+script:
+  - tool_calls: [{name: search_products, arguments: {providers: [azure, gcp], category: storage,
+      function: object_storage, regions: {azure: eastus, gcp: us-east1}}}]
+  - tool_calls: [{name: price_products, arguments: {picks: [C1, C3],
+      usage: {quantity: 1, unit: tb}}}]
+  - text: ["For 1 TB stored, Azure is [[F1]] and GCP [[F2]]."]
+  - tool_calls: [{name: search_products, arguments: {providers: [azure, gcp], category: storage,
+      function: object_storage, regions: {azure: eastus, gcp: us-east1}}}]
+  - tool_calls: [{name: price_products, arguments: {picks: [C1, C3],
+      usage: {quantity: 10, unit: tb}}}]
+  - text: ["With the same products, regions and term, only the amount changed to 10 TB: Azure is
+      [[F1]] and GCP [[F2]]."]

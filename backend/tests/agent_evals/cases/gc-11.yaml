@@ -1,0 +1,20 @@
+id: GC-11
+title: "024 GC-2: 'use defaults' states every default and the region guess, then compares"
+pricing: combined
+messages:
+  - How much cheaper is storage on Azure than GCP?
+  - whatever, use defaults
+expect:
+  operations: [search_products, price_products]
+  result_rows: true
+  providers: [azure, gcp]
+  contains: ["1 TB", "guess", "on demand"]
+  not_contains: ["[figure unavailable]", "[figure removed]", "I recommend", "didn't come from", "not pulled from", "use the figures above instead"]
+script:
+  - text: ["Which storage, tier, redundancy, regions and amount? Or I can use defaults."]
+  - tool_calls: [{name: search_products, arguments: {providers: [azure, gcp], category: storage,
+      function: object_storage, regions: {azure: eastus}}}]
+  - tool_calls: [{name: price_products, arguments: {picks: [C1, C3], usage: default}}]
+  - text: ["Using defaults: object storage, hot tier, locally redundant, 1 TB stored for the
+      month, on demand, Azure in eastus and GCP in us-east1 (a guess). Azure costs [[F1]] and
+      GCP [[F2]], so GCP is [[F3]] ([[F4]]) more. The table beside me has the basis."]

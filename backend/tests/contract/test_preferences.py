@@ -230,3 +230,17 @@ async def test_center_tabs_arrangement_is_saved_and_checked(client):
     for bad in ({**center, "upper": "pricing"}, {**center, "split": 0.95}):
         refused = await client.patch(URL, json={"workspace": {"center": bad}}, headers=headers)
         assert refused.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_agent_results_split_is_saved_and_checked(client):
+    """024 (FR-018): the Agent tab's conversation / Results split, 0.3–0.75."""
+    headers = _headers()
+    saved = await client.patch(URL, json={"workspace": {"agent_results": {"split": 0.45}}},
+                               headers=headers)
+    assert saved.status_code == 200
+    assert saved.json()["data"]["workspace"] == {"agent_results": {"split": 0.45}}
+    for bad in (0.29, 0.76):
+        refused = await client.patch(
+            URL, json={"workspace": {"agent_results": {"split": bad}}}, headers=headers)
+        assert refused.status_code == 422

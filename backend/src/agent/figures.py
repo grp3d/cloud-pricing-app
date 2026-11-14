@@ -7,6 +7,9 @@ The model writes `[[F1]]`; `FigureStreamFilter` replaces it with the value forma
 Text is held back only as long as needed to tell whether it is a reference or an amount, so
 answers still stream (FR-009). `footer` states the duration and the snapshot behind the
 figures used, written by the app (FR-005a).
+
+024 (research R7): a figure can also be a percentage (`kind="percent"`), rendered with a sign
+and 1 decimal place ("+12.3%"), so differences in percent come from the app too.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal
 
 DURATION_LABELS = {
     "1_day": "1 day",
@@ -26,7 +30,7 @@ UNAVAILABLE = "[figure unavailable]"
 
 # A reference, with any currency the model put around it ("$[[F1]]", "[[F1]] USD"): the rendered
 # amount carries its own "$", so the extra one is dropped rather than doubled.
-_REF = re.compile(r"(?:\$\s?|USD\s?)?\[\[(F\d+)\]\](?:\s?USD)?")
+_REF = re.compile(r"(?:\$\s?|USD\s?)?\[\[(F\d+)\]\](?:\s?USD|%)?")
 # Amounts the model may type itself: currency amounts, percentages, comma-grouped numbers and
 # two-decimal numbers. Plain counts ("3 services", "31 days") don't match.
 _NUM = r"\d[\d,]*(?:\.\d+)?"
@@ -44,10 +48,26 @@ _HOLD = re.compile(r"[\[\]F\d$.,%USD \t]*\Z")
 _STARTS = frozenset("$[0123456789U")
 
 
+def round_cents(amount: Decimal) -> Decimal:
+    """USD to 2 decimal places, half-up: the one rounding the answer text, the Results pane and
+    the CSV all use (024, SC-008)."""
+    return Decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def round_percent(amount: Decimal) -> Decimal:
+    return Decimal(amount).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+
+
 def format_usd(amount: Decimal) -> str:
-    rounded = Decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    rounded = round_cents(amount)
     sign = "-" if rounded < 0 else ""
     return f"{sign}${abs(rounded):,.2f}"
+
+
+def format_percent(amount: Decimal) -> str:
+    rounded = round_percent(amount)
+    sign = "+" if rounded > 0 else ""
+    return f"{sign}{rounded:.1f}%"
 
 
 @dataclass(frozen=True)
@@ -58,6 +78,10 @@ class Figure:
     duration: str | None
     # {provider: {"date": "YYYY-MM-DD", "revision": n}}
     snapshot: dict | None
+    kind: Literal["money", "percent"] = "money"
+
+    def render(self) -> str:
+        return format_percent(self.amount) if self.kind == "percent" else format_usd(self.amount)
 
 
 class FigureBook:
@@ -67,9 +91,9 @@ class FigureBook:
         self._figures: dict[str, Figure] = {}
 
     def add(self, amount: Decimal, label: str, *, duration: str | None = None,
-            snapshot: dict | None = None) -> str:
+            snapshot: dict | None = None, kind: Literal["money", "percent"] = "money") -> str:
         ref = f"F{len(self._figures) + 1}"
-        self._figures[ref] = Figure(ref, Decimal(amount), label, duration, snapshot)
+        self._figures[ref] = Figure(ref, Decimal(amount), label, duration, snapshot, kind)
         return ref
 
     def get(self, ref: str) -> Figure | None:
@@ -115,14 +139,14 @@ class FigureStreamFilter:
                 return UNAVAILABLE
             if figure.ref not in self.used:
                 self.used.append(figure.ref)
-            return format_usd(figure.amount)
+            return figure.render()
 
         return _REF.sub(render, _MONEY.sub(remove, text))
 
 
 def footer(book: FigureBook, used: list[str]) -> str | None:
     """'Prices for 1 month (31 days), snapshot 2026-11-02 r2' for the figures used, or None."""
-    figures = [f for ref in used if (f := book.get(ref)) is not None]
+    figures = [f for ref in used if (f := book.get(ref)) is not None and f.kind == "money"]
     if not figures:
         return None
     durations = []

@@ -1,0 +1,961 @@
+{
+ "_about": "024 research R6: every region code in the three providers' region lists, with the metro area, country, geography and approximate coordinates from each provider's published region pages. Used only to guess a nearest region (stated as a guess). Add new regions here; tests/unit/test_agent_regions.py fails when a listed region is missing.",
+ "aws": {
+  "af-south-1": {
+   "city": "Cape Town",
+   "country": "ZA",
+   "geography": "africa",
+   "lat": -33.9,
+   "lon": 18.4
+  },
+  "ap-east-1": {
+   "city": "Hong Kong",
+   "country": "HK",
+   "geography": "asia_pacific",
+   "lat": 22.3,
+   "lon": 114.2
+  },
+  "ap-east-2": {
+   "city": "Taipei",
+   "country": "TW",
+   "geography": "asia_pacific",
+   "lat": 25.0,
+   "lon": 121.5
+  },
+  "ap-northeast-1": {
+   "city": "Tokyo",
+   "country": "JP",
+   "geography": "asia_pacific",
+   "lat": 35.7,
+   "lon": 139.7
+  },
+  "ap-northeast-2": {
+   "city": "Seoul",
+   "country": "KR",
+   "geography": "asia_pacific",
+   "lat": 37.6,
+   "lon": 127.0
+  },
+  "ap-northeast-3": {
+   "city": "Osaka",
+   "country": "JP",
+   "geography": "asia_pacific",
+   "lat": 34.7,
+   "lon": 135.5
+  },
+  "ap-south-1": {
+   "city": "Mumbai",
+   "country": "IN",
+   "geography": "asia_pacific",
+   "lat": 19.1,
+   "lon": 72.9
+  },
+  "ap-south-2": {
+   "city": "Hyderabad",
+   "country": "IN",
+   "geography": "asia_pacific",
+   "lat": 17.4,
+   "lon": 78.5
+  },
+  "ap-southeast-1": {
+   "city": "Singapore",
+   "country": "SG",
+   "geography": "asia_pacific",
+   "lat": 1.4,
+   "lon": 103.8
+  },
+  "ap-southeast-2": {
+   "city": "Sydney",
+   "country": "AU",
+   "geography": "asia_pacific",
+   "lat": -33.9,
+   "lon": 151.2
+  },
+  "ap-southeast-3": {
+   "city": "Jakarta",
+   "country": "ID",
+   "geography": "asia_pacific",
+   "lat": -6.2,
+   "lon": 106.8
+  },
+  "ap-southeast-4": {
+   "city": "Melbourne",
+   "country": "AU",
+   "geography": "asia_pacific",
+   "lat": -37.8,
+   "lon": 145.0
+  },
+  "ap-southeast-5": {
+   "city": "Kuala Lumpur",
+   "country": "MY",
+   "geography": "asia_pacific",
+   "lat": 3.1,
+   "lon": 101.7
+  },
+  "ap-southeast-6": {
+   "city": "Auckland",
+   "country": "NZ",
+   "geography": "asia_pacific",
+   "lat": -36.8,
+   "lon": 174.8
+  },
+  "ap-southeast-7": {
+   "city": "Bangkok",
+   "country": "TH",
+   "geography": "asia_pacific",
+   "lat": 13.8,
+   "lon": 100.5
+  },
+  "ca-central-1": {
+   "city": "Montreal",
+   "country": "CA",
+   "geography": "north_america",
+   "lat": 45.5,
+   "lon": -73.6
+  },
+  "ca-west-1": {
+   "city": "Calgary",
+   "country": "CA",
+   "geography": "north_america",
+   "lat": 51.0,
+   "lon": -114.1
+  },
+  "eu-central-1": {
+   "city": "Frankfurt",
+   "country": "DE",
+   "geography": "europe",
+   "lat": 50.1,
+   "lon": 8.7
+  },
+  "eu-central-2": {
+   "city": "Zurich",
+   "country": "CH",
+   "geography": "europe",
+   "lat": 47.4,
+   "lon": 8.5
+  },
+  "eu-north-1": {
+   "city": "Stockholm",
+   "country": "SE",
+   "geography": "europe",
+   "lat": 59.3,
+   "lon": 18.1
+  },
+  "eu-south-1": {
+   "city": "Milan",
+   "country": "IT",
+   "geography": "europe",
+   "lat": 45.5,
+   "lon": 9.2
+  },
+  "eu-south-2": {
+   "city": "Aragon",
+   "country": "ES",
+   "geography": "europe",
+   "lat": 41.6,
+   "lon": -0.9
+  },
+  "eu-west-1": {
+   "city": "Dublin",
+   "country": "IE",
+   "geography": "europe",
+   "lat": 53.3,
+   "lon": -6.3
+  },
+  "eu-west-2": {
+   "city": "London",
+   "country": "GB",
+   "geography": "europe",
+   "lat": 51.5,
+   "lon": -0.1
+  },
+  "eu-west-3": {
+   "city": "Paris",
+   "country": "FR",
+   "geography": "europe",
+   "lat": 48.9,
+   "lon": 2.4
+  },
+  "il-central-1": {
+   "city": "Tel Aviv",
+   "country": "IL",
+   "geography": "middle_east",
+   "lat": 32.1,
+   "lon": 34.8
+  },
+  "me-central-1": {
+   "city": "UAE",
+   "country": "AE",
+   "geography": "middle_east",
+   "lat": 24.5,
+   "lon": 54.4
+  },
+  "me-south-1": {
+   "city": "Bahrain",
+   "country": "BH",
+   "geography": "middle_east",
+   "lat": 26.1,
+   "lon": 50.6
+  },
+  "mx-central-1": {
+   "city": "Queretaro",
+   "country": "MX",
+   "geography": "north_america",
+   "lat": 20.6,
+   "lon": -100.4
+  },
+  "sa-east-1": {
+   "city": "Sao Paulo",
+   "country": "BR",
+   "geography": "south_america",
+   "lat": -23.5,
+   "lon": -46.6
+  },
+  "us-east-1": {
+   "city": "Northern Virginia",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 39.0,
+   "lon": -77.5
+  },
+  "us-east-2": {
+   "city": "Ohio",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 40.0,
+   "lon": -83.0
+  },
+  "us-gov-east-1": {
+   "city": "Ohio (GovCloud)",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 40.0,
+   "lon": -83.0
+  },
+  "us-gov-west-1": {
+   "city": "Oregon (GovCloud)",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 45.8,
+   "lon": -119.7
+  },
+  "us-west-1": {
+   "city": "Northern California",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 37.4,
+   "lon": -121.9
+  },
+  "us-west-2": {
+   "city": "Oregon",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 45.8,
+   "lon": -119.7
+  }
+ },
+ "gcp": {
+  "africa-south1": {
+   "city": "Johannesburg",
+   "country": "ZA",
+   "geography": "africa",
+   "lat": -26.2,
+   "lon": 28.0
+  },
+  "asia-east1": {
+   "city": "Changhua",
+   "country": "TW",
+   "geography": "asia_pacific",
+   "lat": 24.1,
+   "lon": 120.5
+  },
+  "asia-east2": {
+   "city": "Hong Kong",
+   "country": "HK",
+   "geography": "asia_pacific",
+   "lat": 22.3,
+   "lon": 114.2
+  },
+  "asia-northeast1": {
+   "city": "Tokyo",
+   "country": "JP",
+   "geography": "asia_pacific",
+   "lat": 35.7,
+   "lon": 139.7
+  },
+  "asia-northeast2": {
+   "city": "Osaka",
+   "country": "JP",
+   "geography": "asia_pacific",
+   "lat": 34.7,
+   "lon": 135.5
+  },
+  "asia-northeast3": {
+   "city": "Seoul",
+   "country": "KR",
+   "geography": "asia_pacific",
+   "lat": 37.6,
+   "lon": 127.0
+  },
+  "asia-south1": {
+   "city": "Mumbai",
+   "country": "IN",
+   "geography": "asia_pacific",
+   "lat": 19.1,
+   "lon": 72.9
+  },
+  "asia-south2": {
+   "city": "Delhi",
+   "country": "IN",
+   "geography": "asia_pacific",
+   "lat": 28.6,
+   "lon": 77.2
+  },
+  "asia-southeast1": {
+   "city": "Singapore",
+   "country": "SG",
+   "geography": "asia_pacific",
+   "lat": 1.4,
+   "lon": 103.8
+  },
+  "asia-southeast2": {
+   "city": "Jakarta",
+   "country": "ID",
+   "geography": "asia_pacific",
+   "lat": -6.2,
+   "lon": 106.8
+  },
+  "asia-southeast3": {
+   "city": "Bangkok",
+   "country": "TH",
+   "geography": "asia_pacific",
+   "lat": 13.8,
+   "lon": 100.5
+  },
+  "australia-southeast1": {
+   "city": "Sydney",
+   "country": "AU",
+   "geography": "asia_pacific",
+   "lat": -33.9,
+   "lon": 151.2
+  },
+  "australia-southeast2": {
+   "city": "Melbourne",
+   "country": "AU",
+   "geography": "asia_pacific",
+   "lat": -37.8,
+   "lon": 145.0
+  },
+  "europe-central2": {
+   "city": "Warsaw",
+   "country": "PL",
+   "geography": "europe",
+   "lat": 52.2,
+   "lon": 21.0
+  },
+  "europe-north1": {
+   "city": "Hamina",
+   "country": "FI",
+   "geography": "europe",
+   "lat": 60.6,
+   "lon": 27.2
+  },
+  "europe-north2": {
+   "city": "Stockholm",
+   "country": "SE",
+   "geography": "europe",
+   "lat": 59.3,
+   "lon": 18.1
+  },
+  "europe-southwest1": {
+   "city": "Madrid",
+   "country": "ES",
+   "geography": "europe",
+   "lat": 40.4,
+   "lon": -3.7
+  },
+  "europe-west1": {
+   "city": "St. Ghislain",
+   "country": "BE",
+   "geography": "europe",
+   "lat": 50.5,
+   "lon": 3.8
+  },
+  "europe-west10": {
+   "city": "Berlin",
+   "country": "DE",
+   "geography": "europe",
+   "lat": 52.5,
+   "lon": 13.4
+  },
+  "europe-west12": {
+   "city": "Turin",
+   "country": "IT",
+   "geography": "europe",
+   "lat": 45.1,
+   "lon": 7.7
+  },
+  "europe-west2": {
+   "city": "London",
+   "country": "GB",
+   "geography": "europe",
+   "lat": 51.5,
+   "lon": -0.1
+  },
+  "europe-west3": {
+   "city": "Frankfurt",
+   "country": "DE",
+   "geography": "europe",
+   "lat": 50.1,
+   "lon": 8.7
+  },
+  "europe-west4": {
+   "city": "Eemshaven",
+   "country": "NL",
+   "geography": "europe",
+   "lat": 53.4,
+   "lon": 6.8
+  },
+  "europe-west6": {
+   "city": "Zurich",
+   "country": "CH",
+   "geography": "europe",
+   "lat": 47.4,
+   "lon": 8.5
+  },
+  "europe-west8": {
+   "city": "Milan",
+   "country": "IT",
+   "geography": "europe",
+   "lat": 45.5,
+   "lon": 9.2
+  },
+  "europe-west9": {
+   "city": "Paris",
+   "country": "FR",
+   "geography": "europe",
+   "lat": 48.9,
+   "lon": 2.4
+  },
+  "me-central1": {
+   "city": "Doha",
+   "country": "QA",
+   "geography": "middle_east",
+   "lat": 25.3,
+   "lon": 51.5
+  },
+  "me-central2": {
+   "city": "Dammam",
+   "country": "SA",
+   "geography": "middle_east",
+   "lat": 26.4,
+   "lon": 50.1
+  },
+  "me-west1": {
+   "city": "Tel Aviv",
+   "country": "IL",
+   "geography": "middle_east",
+   "lat": 32.1,
+   "lon": 34.8
+  },
+  "northamerica-northeast1": {
+   "city": "Montreal",
+   "country": "CA",
+   "geography": "north_america",
+   "lat": 45.5,
+   "lon": -73.6
+  },
+  "northamerica-northeast2": {
+   "city": "Toronto",
+   "country": "CA",
+   "geography": "north_america",
+   "lat": 43.7,
+   "lon": -79.4
+  },
+  "northamerica-south1": {
+   "city": "Queretaro",
+   "country": "MX",
+   "geography": "north_america",
+   "lat": 20.6,
+   "lon": -100.4
+  },
+  "southamerica-east1": {
+   "city": "Sao Paulo",
+   "country": "BR",
+   "geography": "south_america",
+   "lat": -23.5,
+   "lon": -46.6
+  },
+  "southamerica-west1": {
+   "city": "Santiago",
+   "country": "CL",
+   "geography": "south_america",
+   "lat": -33.4,
+   "lon": -70.7
+  },
+  "us-central1": {
+   "city": "Iowa",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 41.3,
+   "lon": -95.9
+  },
+  "us-east1": {
+   "city": "South Carolina",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 33.2,
+   "lon": -80.0
+  },
+  "us-east4": {
+   "city": "Northern Virginia",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 39.0,
+   "lon": -77.5
+  },
+  "us-east5": {
+   "city": "Columbus",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 40.0,
+   "lon": -83.0
+  },
+  "us-south1": {
+   "city": "Dallas",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 32.8,
+   "lon": -96.8
+  },
+  "us-west1": {
+   "city": "Oregon",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 45.6,
+   "lon": -121.2
+  },
+  "us-west2": {
+   "city": "Los Angeles",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 34.1,
+   "lon": -118.2
+  },
+  "us-west3": {
+   "city": "Salt Lake City",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 40.8,
+   "lon": -111.9
+  },
+  "us-west4": {
+   "city": "Las Vegas",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 36.2,
+   "lon": -115.1
+  }
+ },
+ "azure": {
+  "australiacentral": {
+   "city": "Canberra",
+   "country": "AU",
+   "geography": "asia_pacific",
+   "lat": -35.3,
+   "lon": 149.1
+  },
+  "australiacentral2": {
+   "city": "Canberra",
+   "country": "AU",
+   "geography": "asia_pacific",
+   "lat": -35.3,
+   "lon": 149.1
+  },
+  "australiaeast": {
+   "city": "Sydney",
+   "country": "AU",
+   "geography": "asia_pacific",
+   "lat": -33.9,
+   "lon": 151.2
+  },
+  "australiasoutheast": {
+   "city": "Melbourne",
+   "country": "AU",
+   "geography": "asia_pacific",
+   "lat": -37.8,
+   "lon": 145.0
+  },
+  "austriaeast": {
+   "city": "Vienna",
+   "country": "AT",
+   "geography": "europe",
+   "lat": 48.2,
+   "lon": 16.4
+  },
+  "belgiumcentral": {
+   "city": "Brussels",
+   "country": "BE",
+   "geography": "europe",
+   "lat": 50.8,
+   "lon": 4.4
+  },
+  "brazilsouth": {
+   "city": "Sao Paulo",
+   "country": "BR",
+   "geography": "south_america",
+   "lat": -23.5,
+   "lon": -46.6
+  },
+  "brazilsoutheast": {
+   "city": "Rio de Janeiro",
+   "country": "BR",
+   "geography": "south_america",
+   "lat": -22.9,
+   "lon": -43.2
+  },
+  "canadacentral": {
+   "city": "Toronto",
+   "country": "CA",
+   "geography": "north_america",
+   "lat": 43.7,
+   "lon": -79.4
+  },
+  "canadaeast": {
+   "city": "Quebec City",
+   "country": "CA",
+   "geography": "north_america",
+   "lat": 46.8,
+   "lon": -71.2
+  },
+  "centralindia": {
+   "city": "Pune",
+   "country": "IN",
+   "geography": "asia_pacific",
+   "lat": 18.5,
+   "lon": 73.9
+  },
+  "centralus": {
+   "city": "Iowa",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 41.6,
+   "lon": -93.6
+  },
+  "chilecentral": {
+   "city": "Santiago",
+   "country": "CL",
+   "geography": "south_america",
+   "lat": -33.4,
+   "lon": -70.7
+  },
+  "eastasia": {
+   "city": "Hong Kong",
+   "country": "HK",
+   "geography": "asia_pacific",
+   "lat": 22.3,
+   "lon": 114.2
+  },
+  "eastus": {
+   "city": "Virginia",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 36.7,
+   "lon": -78.4
+  },
+  "eastus2": {
+   "city": "Virginia",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 36.7,
+   "lon": -78.4
+  },
+  "francecentral": {
+   "city": "Paris",
+   "country": "FR",
+   "geography": "europe",
+   "lat": 48.9,
+   "lon": 2.4
+  },
+  "francesouth": {
+   "city": "Marseille",
+   "country": "FR",
+   "geography": "europe",
+   "lat": 43.3,
+   "lon": 5.4
+  },
+  "germanynorth": {
+   "city": "Berlin",
+   "country": "DE",
+   "geography": "europe",
+   "lat": 52.5,
+   "lon": 13.4
+  },
+  "germanywestcentral": {
+   "city": "Frankfurt",
+   "country": "DE",
+   "geography": "europe",
+   "lat": 50.1,
+   "lon": 8.7
+  },
+  "indonesiacentral": {
+   "city": "Jakarta",
+   "country": "ID",
+   "geography": "asia_pacific",
+   "lat": -6.2,
+   "lon": 106.8
+  },
+  "israelcentral": {
+   "city": "Tel Aviv",
+   "country": "IL",
+   "geography": "middle_east",
+   "lat": 32.1,
+   "lon": 34.8
+  },
+  "italynorth": {
+   "city": "Milan",
+   "country": "IT",
+   "geography": "europe",
+   "lat": 45.5,
+   "lon": 9.2
+  },
+  "japaneast": {
+   "city": "Tokyo",
+   "country": "JP",
+   "geography": "asia_pacific",
+   "lat": 35.7,
+   "lon": 139.7
+  },
+  "japanwest": {
+   "city": "Osaka",
+   "country": "JP",
+   "geography": "asia_pacific",
+   "lat": 34.7,
+   "lon": 135.5
+  },
+  "jioindiacentral": {
+   "city": "Nagpur",
+   "country": "IN",
+   "geography": "asia_pacific",
+   "lat": 21.1,
+   "lon": 79.1
+  },
+  "jioindiawest": {
+   "city": "Jamnagar",
+   "country": "IN",
+   "geography": "asia_pacific",
+   "lat": 22.5,
+   "lon": 70.1
+  },
+  "koreacentral": {
+   "city": "Seoul",
+   "country": "KR",
+   "geography": "asia_pacific",
+   "lat": 37.6,
+   "lon": 127.0
+  },
+  "koreasouth": {
+   "city": "Busan",
+   "country": "KR",
+   "geography": "asia_pacific",
+   "lat": 35.2,
+   "lon": 129.1
+  },
+  "malaysiawest": {
+   "city": "Kuala Lumpur",
+   "country": "MY",
+   "geography": "asia_pacific",
+   "lat": 3.1,
+   "lon": 101.7
+  },
+  "mexicocentral": {
+   "city": "Queretaro",
+   "country": "MX",
+   "geography": "north_america",
+   "lat": 20.6,
+   "lon": -100.4
+  },
+  "newzealandnorth": {
+   "city": "Auckland",
+   "country": "NZ",
+   "geography": "asia_pacific",
+   "lat": -36.8,
+   "lon": 174.8
+  },
+  "northcentralus": {
+   "city": "Illinois",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 41.9,
+   "lon": -87.6
+  },
+  "northeurope": {
+   "city": "Dublin",
+   "country": "IE",
+   "geography": "europe",
+   "lat": 53.3,
+   "lon": -6.3
+  },
+  "norwayeast": {
+   "city": "Oslo",
+   "country": "NO",
+   "geography": "europe",
+   "lat": 59.9,
+   "lon": 10.8
+  },
+  "norwaywest": {
+   "city": "Stavanger",
+   "country": "NO",
+   "geography": "europe",
+   "lat": 59.0,
+   "lon": 5.7
+  },
+  "polandcentral": {
+   "city": "Warsaw",
+   "country": "PL",
+   "geography": "europe",
+   "lat": 52.2,
+   "lon": 21.0
+  },
+  "qatarcentral": {
+   "city": "Doha",
+   "country": "QA",
+   "geography": "middle_east",
+   "lat": 25.3,
+   "lon": 51.5
+  },
+  "southafricanorth": {
+   "city": "Johannesburg",
+   "country": "ZA",
+   "geography": "africa",
+   "lat": -26.2,
+   "lon": 28.0
+  },
+  "southafricawest": {
+   "city": "Cape Town",
+   "country": "ZA",
+   "geography": "africa",
+   "lat": -33.9,
+   "lon": 18.4
+  },
+  "southcentralus": {
+   "city": "Texas",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 29.4,
+   "lon": -98.5
+  },
+  "southeastasia": {
+   "city": "Singapore",
+   "country": "SG",
+   "geography": "asia_pacific",
+   "lat": 1.4,
+   "lon": 103.8
+  },
+  "southindia": {
+   "city": "Chennai",
+   "country": "IN",
+   "geography": "asia_pacific",
+   "lat": 13.1,
+   "lon": 80.3
+  },
+  "spaincentral": {
+   "city": "Madrid",
+   "country": "ES",
+   "geography": "europe",
+   "lat": 40.4,
+   "lon": -3.7
+  },
+  "swedencentral": {
+   "city": "Gavle",
+   "country": "SE",
+   "geography": "europe",
+   "lat": 60.7,
+   "lon": 17.1
+  },
+  "switzerlandnorth": {
+   "city": "Zurich",
+   "country": "CH",
+   "geography": "europe",
+   "lat": 47.4,
+   "lon": 8.5
+  },
+  "switzerlandwest": {
+   "city": "Geneva",
+   "country": "CH",
+   "geography": "europe",
+   "lat": 46.2,
+   "lon": 6.1
+  },
+  "uaecentral": {
+   "city": "Abu Dhabi",
+   "country": "AE",
+   "geography": "middle_east",
+   "lat": 24.5,
+   "lon": 54.4
+  },
+  "uaenorth": {
+   "city": "Dubai",
+   "country": "AE",
+   "geography": "middle_east",
+   "lat": 25.3,
+   "lon": 55.3
+  },
+  "uksouth": {
+   "city": "London",
+   "country": "GB",
+   "geography": "europe",
+   "lat": 51.5,
+   "lon": -0.1
+  },
+  "ukwest": {
+   "city": "Cardiff",
+   "country": "GB",
+   "geography": "europe",
+   "lat": 51.5,
+   "lon": -3.2
+  },
+  "westcentralus": {
+   "city": "Wyoming",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 41.1,
+   "lon": -104.8
+  },
+  "westeurope": {
+   "city": "Amsterdam",
+   "country": "NL",
+   "geography": "europe",
+   "lat": 52.4,
+   "lon": 4.9
+  },
+  "westindia": {
+   "city": "Mumbai",
+   "country": "IN",
+   "geography": "asia_pacific",
+   "lat": 19.1,
+   "lon": 72.9
+  },
+  "westus": {
+   "city": "California",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 37.8,
+   "lon": -122.4
+  },
+  "westus2": {
+   "city": "Washington",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 47.2,
+   "lon": -119.9
+  },
+  "westus3": {
+   "city": "Arizona",
+   "country": "US",
+   "geography": "north_america",
+   "lat": 33.4,
+   "lon": -112.1
+  }
+ }
+}

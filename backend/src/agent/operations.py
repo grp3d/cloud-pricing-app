@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -24,12 +24,29 @@ class ToolError(Exception):
     """An operation couldn't run; the message goes back to the model as the tool's result."""
 
 
+def _no_progress(done: int, total: int, label: str) -> None:
+    return None
+
+
 @dataclass
 class OperationContext:
     session: Any  # AsyncSession
     user: Any  # src.models.orm.User
     open_architecture_id: uuid.UUID | None
     figures: FigureBook
+    # 024 (research R7, R8, R13): the message's match references, the session and user message
+    # a result belongs to, the results made so far, and a progress callback for long operations.
+    matches: Any = field(default_factory=lambda: _match_book())
+    agent_session: Any = None  # src.models.orm.AgentSession
+    message: Any = None  # the user message being answered (src.models.orm.AgentMessage)
+    results: list = field(default_factory=list)
+    progress: Callable[[int, int, str], None] = _no_progress
+
+
+def _match_book():
+    from src.agent.matching.book import MatchBook
+
+    return MatchBook()
 
 
 @dataclass
@@ -338,3 +355,7 @@ async def list_importable_architectures(ctx: OperationContext,
         summary={"provider": args.provider, "groups": len(groups),
                  "architectures": len(ids)},
     )
+
+
+# 024: the comparison operations register themselves in the same registry.
+from src.agent import operations_compare  # noqa: E402,F401

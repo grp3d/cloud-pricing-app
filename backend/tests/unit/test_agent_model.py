@@ -49,3 +49,19 @@ async def test_a_turn_can_raise_or_wait():
     client = ScriptedModelClient([Turn(raises=ModelUnreachable("down"))])
     with pytest.raises(ModelUnreachable):
         await _collect(client, [ModelMessage(role="user", text="hi")])
+
+
+async def test_the_e2e_demo_compares_when_the_question_names_azure():
+    from src.agent.clients.scripted import ScriptedModelClient
+    from src.agent.model import ModelMessage, ToolCall
+
+    async def first_call(question: str) -> list:
+        client = ScriptedModelClient.demo()
+        return [e async for e in client.stream("s", [ModelMessage(role="user", text=question)],
+                                               [])]
+
+    compare = [e for e in await first_call("What would this cost on Azure?")
+               if isinstance(e, ToolCall)]
+    price = [e for e in await first_call("What does it cost?") if isinstance(e, ToolCall)]
+    assert [c.name for c in compare] == ["find_matches"]
+    assert [c.name for c in price] == ["price_open_architecture"]

@@ -58,6 +58,9 @@ export type AgentOperation = components["schemas"]["AgentOperationOut"];
 export type AgentRefusal = components["schemas"]["AgentRefusalOut"];
 export type AgentRefusalReason = AgentRefusal["reason"];
 export type AgentStreamEvent = components["schemas"]["AgentStreamEnvelope"]["data"];
+// 024: comparison results shown in the Agent tab's Results pane.
+export type AgentResult = components["schemas"]["AgentResultOut"];
+export type AgentResultCell = components["schemas"]["AgentResultCell"];
 export type AgentSettings = components["schemas"]["AgentSettingsOut"];
 export type AgentSettingsUpdate = components["schemas"]["AgentSettingsUpdate"];
 /** Every field is optional on the server (defaults are generated as required). */

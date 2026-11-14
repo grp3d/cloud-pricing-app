@@ -813,6 +813,13 @@ class CenterArrangement(_Strict):
     split: float = Field(ge=0.2, le=0.8)
 
 
+class AgentResultsPreferences(_Strict):
+    """024 (FR-018): the Agent tab's split between the conversation and the Results pane, as
+    the conversation's share of the width."""
+
+    split: float = Field(ge=0.3, le=0.75)
+
+
 class AgentPanelPreferences(_Strict):
     """023 (data-model §7, clarification 1): the first agent panel's layout, under the canvas.
     No longer used (the Canvas and Agent tabs replaced it, `CenterArrangement`); kept so a saved
@@ -834,6 +841,8 @@ class WorkspacePreferences(_Strict):
     agent_panel: AgentPanelPreferences | None = None
     # 023: the centre column's Canvas and Agent tabs.
     center: CenterArrangement | None = None
+    # 024: the Agent tab's conversation / Results split.
+    agent_results: AgentResultsPreferences | None = None
 
     @field_validator("column_widths")
     @classmethod
@@ -973,7 +982,8 @@ AgentRefusalReason = Literal[
     "guest", "agent_off", "unavailable", "preview_used", "user_limit", "global_cap"
 ]
 AgentErrorKind = Literal[
-    "timeout", "unreachable", "bad_output", "failed", "session_closed", "global_cap"
+    "timeout", "unreachable", "no_credit", "key_rejected", "rate_limited", "bad_output",
+    "failed", "session_closed", "global_cap"
 ]
 
 
@@ -1010,10 +1020,94 @@ class AgentMessageOut(ORMBase):
     is_preview: bool
     architecture_id: uuid.UUID | None
     created_at: datetime
+    # 024: the results shown with this message (its cards): on the agent message that answered,
+    # or on the user message when its answer failed.
+    result_ids: list[uuid.UUID] = []
+
+
+# --- 024: comparison results (contracts/agent-api.md, data-model.md §3) -------------------------
+
+MatchQuality = Literal["exact", "close", "partial", "no_equivalent"]
+AgentResultCellStatus = Literal["ok", "unavailable", "unmatched", "unconvertible"]
+
+
+class AgentResultSide(BaseModel):
+    """A column group of a result: one provider in one region (`id` = `<provider>:<region>`)."""
+
+    id: str
+    provider: ProviderCode
+    region: str
+    region_guessed: bool = False
+    term: str
+    purchase_option: str | None = None
+
+
+class AgentResultCell(BaseModel):
+    product: str | None = None
+    quality: MatchQuality | None = None
+    shown_quality: MatchQuality | None = None
+    quality_reason: str | None = None
+    differences: list[str] = []
+    usage: str | None = None
+    amount: Decimal | None = None
+    diff: Decimal | None = None
+    diff_pct: Decimal | None = None
+    status: AgentResultCellStatus = "ok"
+    reason: str | None = None
+    # What the engine priced for this cell (service code, SKU, region, quantity, term,
+    # options), so the figure can be checked (FR-015).
+    priced: dict | None = None
+
+
+class AgentResultRow(BaseModel):
+    label: str
+    where: str | None = None
+    cells: dict[str, AgentResultCell]  # keyed by side id
+
+
+class AgentResultTotal(BaseModel):
+    amount: Decimal | None = None
+    partial: bool = False
+    diff: Decimal | None = None
+    diff_pct: Decimal | None = None
+
+
+class AgentResultBasis(BaseModel):
+    question_kind: Literal["category", "architecture"]
+    architecture: str | None = None
+    category: str | None = None
+    duration: CalculationDuration
+    currency: Literal["USD"] = "USD"
+    reference_side: str
+    usage: str
+    assumptions: list[str] = []
+
+
+class AgentResultSnapshot(BaseModel):
+    date: str
+    revision: int
+
+
+class AgentResultOut(ORMBase):
+    id: uuid.UUID
+    message_id: uuid.UUID
+    seq: int
+    kind: Literal["category_comparison", "architecture_comparison"]
+    title: str
+    summary: str
+    basis: AgentResultBasis
+    sides: list[AgentResultSide]
+    rows: list[AgentResultRow]
+    totals: dict[str, AgentResultTotal]  # keyed by side id
+    snapshots: dict[str, AgentResultSnapshot]  # keyed by provider
+    not_compared: list[str] = []
+    created_at: datetime
 
 
 class AgentSessionDetailOut(AgentSessionOut):
     messages: list[AgentMessageOut]
+    # 024: the session's results in order.
+    results: list[AgentResultOut] = []
 
 
 class AgentMessageCreate(BaseModel):
@@ -1032,7 +1126,7 @@ class AgentOperationOut(ORMBase):
     message_id: uuid.UUID
     name: str
     inputs: dict
-    outcome: Literal["ok", "error"]
+    outcome: Literal["ok", "error", "timeout"]
     summary: dict
     snapshot: dict | None
     figures_removed: int
@@ -1055,6 +1149,10 @@ class AgentAcceptedEvent(BaseModel):
 class AgentStatusEvent(BaseModel):
     event: Literal["status"] = "status"
     state: Literal["thinking", "running_operation", "writing"]
+    # 024 (research R13): progress of a long operation, e.g. "Matching services", 12 of 20.
+    label: str | None = None
+    done: int | None = None
+    total: int | None = None
 
 
 class AgentTextEvent(BaseModel):
@@ -1066,7 +1164,7 @@ class AgentOperationEvent(BaseModel):
     event: Literal["operation"] = "operation"
     name: str
     inputs: dict
-    outcome: Literal["ok", "error"]
+    outcome: Literal["ok", "error", "timeout"]
     summary: dict
     snapshot: dict | None = None
 
@@ -1082,13 +1180,21 @@ class AgentErrorEvent(BaseModel):
     message: str
 
 
+class AgentResultEvent(BaseModel):
+    """024: a comparison result, sent as soon as the operation that made it finishes."""
+
+    event: Literal["result"] = "result"
+    result: AgentResultOut
+
+
 AgentStreamEvent = Annotated[
     AgentAcceptedEvent
     | AgentStatusEvent
     | AgentTextEvent
     | AgentOperationEvent
     | AgentDoneEvent
-    | AgentErrorEvent,
+    | AgentErrorEvent
+    | AgentResultEvent,
     Field(discriminator="event"),
 ]
 

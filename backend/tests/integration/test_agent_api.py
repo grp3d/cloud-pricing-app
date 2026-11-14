@@ -392,3 +392,83 @@ async def test_an_answer_the_browser_left_still_finishes_and_is_saved(
                                    AgentMessage.role == "agent")
     )).scalars().all()
     assert [r.content for r in replies] == ["Saved anyway."]
+
+
+# --- 024: results (contracts/agent-api.md) -------------------------------------------------------
+
+
+@pytest.fixture
+def result_operation(monkeypatch):
+    """A registry whose one operation saves a comparison result, like price_matches does."""
+    from pydantic import BaseModel
+
+    from src.agent import operations as ops
+    from src.models.orm import AgentResult
+
+    class NoArgs(BaseModel):
+        pass
+
+    registry = ops.Registry()
+
+    @registry.operation("makes_result", "Saves a result.", NoArgs)
+    async def makes_result(ctx, args):
+        result = AgentResult(
+            session_id=ctx.agent_session.id, message_id=ctx.message.id, seq=1,
+            kind="category_comparison", title="Object storage: Azure vs GCP", summary="1 row",
+            basis={"question_kind": "category", "category": "storage", "duration": "1_month",
+                   "reference_side": "azure:eastus", "usage": "1 TB stored"},
+            sides=[{"id": "azure:eastus", "provider": "azure", "region": "eastus",
+                    "term": "on_demand"},
+                   {"id": "gcp:us-east1", "provider": "gcp", "region": "us-east1",
+                    "region_guessed": True, "term": "on_demand"}],
+            rows=[{"label": "Object storage", "cells": {
+                "azure:eastus": {"product": "Hot LRS", "amount": "18.4"},
+                "gcp:us-east1": {"product": "Standard", "quality": "close", "amount": "20",
+                                 "diff": "1.6", "diff_pct": "8.6956"}}}],
+            totals={"azure:eastus": {"amount": "18.4"},
+                    "gcp:us-east1": {"amount": "20", "diff": "1.6", "diff_pct": "8.6956"}},
+            snapshots={"azure": {"date": "2026-11-02", "revision": 2}})
+        ctx.session.add(result)
+        await ctx.session.flush()
+        ctx.results.append(result)
+        return ops.OperationResult(data={"result_id": str(result.id)}, summary={})
+
+    monkeypatch.setattr(ops, "registry", registry)
+    return registry
+
+
+async def test_a_result_is_streamed_and_returned_with_the_session(
+        client, named, agent_on, script, result_operation):
+    from src.agent.model import ToolCall
+
+    headers = await named()
+    script(Turn(tool_calls=[ToolCall("c1", "makes_result", {})], usage=Usage(5, 3)),
+           Turn(text=["GCP is a little dearer."], usage=Usage(5, 3)))
+    await _start(client, headers)
+    events = events_of((await _send(client, headers, "storage on Azure vs GCP?")).text)
+    kinds = [e["event"] for e in events]
+    assert kinds[kinds.index("operation") + 1] == "result"
+    streamed = next(e for e in events if e["event"] == "result")["result"]
+    assert streamed["title"] == "Object storage: Azure vs GCP"
+    assert streamed["sides"][1]["region_guessed"] is True
+
+    detail = (await client.get("/api/v1/agent/session", headers=headers)).json()
+    assert [r["id"] for r in detail["results"]] == [streamed["id"]]
+    user, agent = detail["messages"]
+    assert (user["result_ids"], agent["result_ids"]) == ([], [streamed["id"]])
+
+
+async def test_a_result_made_before_a_failure_is_kept_on_the_question(
+        client, named, agent_on, script, result_operation):
+    from src.agent.model import ToolCall
+
+    headers = await named()
+    script(Turn(tool_calls=[ToolCall("c1", "makes_result", {})], usage=Usage(5, 3)),
+           Turn(raises=ModelUnreachable("down")))
+    await _start(client, headers)
+    events = events_of((await _send(client, headers, "storage?")).text)
+    assert events[-1]["event"] == "error"
+    detail = (await client.get("/api/v1/agent/session", headers=headers)).json()
+    assert len(detail["results"]) == 1
+    [user] = detail["messages"]
+    assert (user["status"], user["result_ids"]) == ("failed", [detail["results"][0]["id"]])

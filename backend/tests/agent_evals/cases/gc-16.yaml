@@ -1,0 +1,11 @@
+id: GC-16
+title: "024 GC-7: 'which cloud is best?' gets no recommendation, and a specific comparison offer"
+messages:
+  - Which cloud is best?
+expect:
+  no_operations: true
+  contains: ["compare"]
+  not_contains: ["[figure unavailable]", "I recommend", "you should choose", "best choice", "is the best"]
+script:
+  - text: ["I don't recommend a provider. I can compare prices for you: for example object
+      storage on Azure and GCP, or your open architecture on another provider."]

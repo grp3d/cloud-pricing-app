@@ -632,6 +632,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/session/results/{result_id}/csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Result Csv
+         * @description 024: download one result of the caller's open session; another user's or an expired
+         *     session's result is 404 (FR-021).
+         */
+        get: operations["get_agent_result_csv_api_v1_agent_session_results__result_id__csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/session/operations": {
         parameters: {
             query?: never;
@@ -847,7 +868,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "timeout" | "unreachable" | "bad_output" | "failed" | "session_closed" | "global_cap";
+            kind: "timeout" | "unreachable" | "no_credit" | "key_rejected" | "rate_limited" | "bad_output" | "failed" | "session_closed" | "global_cap";
             /** Message */
             message: string;
         };
@@ -885,6 +906,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Result Ids
+             * @default []
+             */
+            result_ids: string[];
         };
         /** AgentOperationEvent */
         AgentOperationEvent: {
@@ -903,7 +929,7 @@ export interface components {
              * Outcome
              * @enum {string}
              */
-            outcome: "ok" | "error";
+            outcome: "ok" | "error" | "timeout";
             /** Summary */
             summary: {
                 [key: string]: unknown;
@@ -930,7 +956,7 @@ export interface components {
              * Outcome
              * @enum {string}
              */
-            outcome: "ok" | "error";
+            outcome: "ok" | "error" | "timeout";
             /** Summary */
             summary: {
                 [key: string]: unknown;
@@ -984,6 +1010,194 @@ export interface components {
             /** Resets On */
             resets_on?: string | null;
         };
+        /** AgentResultBasis */
+        AgentResultBasis: {
+            /**
+             * Question Kind
+             * @enum {string}
+             */
+            question_kind: "category" | "architecture";
+            /** Architecture */
+            architecture?: string | null;
+            /** Category */
+            category?: string | null;
+            duration: components["schemas"]["CalculationDuration"];
+            /**
+             * Currency
+             * @default USD
+             * @constant
+             */
+            currency: "USD";
+            /** Reference Side */
+            reference_side: string;
+            /** Usage */
+            usage: string;
+            /**
+             * Assumptions
+             * @default []
+             */
+            assumptions: string[];
+        };
+        /** AgentResultCell */
+        AgentResultCell: {
+            /** Product */
+            product?: string | null;
+            /** Quality */
+            quality?: ("exact" | "close" | "partial" | "no_equivalent") | null;
+            /** Shown Quality */
+            shown_quality?: ("exact" | "close" | "partial" | "no_equivalent") | null;
+            /** Quality Reason */
+            quality_reason?: string | null;
+            /**
+             * Differences
+             * @default []
+             */
+            differences: string[];
+            /** Usage */
+            usage?: string | null;
+            /** Amount */
+            amount?: string | null;
+            /** Diff */
+            diff?: string | null;
+            /** Diff Pct */
+            diff_pct?: string | null;
+            /**
+             * Status
+             * @default ok
+             * @enum {string}
+             */
+            status: "ok" | "unavailable" | "unmatched" | "unconvertible";
+            /** Reason */
+            reason?: string | null;
+            /** Priced */
+            priced?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * AgentResultEvent
+         * @description 024: a comparison result, sent as soon as the operation that made it finishes.
+         */
+        AgentResultEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "result";
+            result: components["schemas"]["AgentResultOut"];
+        };
+        /** AgentResultOut */
+        AgentResultOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "category_comparison" | "architecture_comparison";
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            basis: components["schemas"]["AgentResultBasis"];
+            /** Sides */
+            sides: components["schemas"]["AgentResultSide"][];
+            /** Rows */
+            rows: components["schemas"]["AgentResultRow"][];
+            /** Totals */
+            totals: {
+                [key: string]: components["schemas"]["AgentResultTotal"];
+            };
+            /** Snapshots */
+            snapshots: {
+                [key: string]: components["schemas"]["AgentResultSnapshot"];
+            };
+            /**
+             * Not Compared
+             * @default []
+             */
+            not_compared: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** AgentResultRow */
+        AgentResultRow: {
+            /** Label */
+            label: string;
+            /** Where */
+            where?: string | null;
+            /** Cells */
+            cells: {
+                [key: string]: components["schemas"]["AgentResultCell"];
+            };
+        };
+        /**
+         * AgentResultSide
+         * @description A column group of a result: one provider in one region (`id` = `<provider>:<region>`).
+         */
+        AgentResultSide: {
+            /** Id */
+            id: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /** Region */
+            region: string;
+            /**
+             * Region Guessed
+             * @default false
+             */
+            region_guessed: boolean;
+            /** Term */
+            term: string;
+            /** Purchase Option */
+            purchase_option?: string | null;
+        };
+        /** AgentResultSnapshot */
+        AgentResultSnapshot: {
+            /** Date */
+            date: string;
+            /** Revision */
+            revision: number;
+        };
+        /** AgentResultTotal */
+        AgentResultTotal: {
+            /** Amount */
+            amount?: string | null;
+            /**
+             * Partial
+             * @default false
+             */
+            partial: boolean;
+            /** Diff */
+            diff?: string | null;
+            /** Diff Pct */
+            diff_pct?: string | null;
+        };
+        /**
+         * AgentResultsPreferences
+         * @description 024 (FR-018): the Agent tab's split between the conversation and the Results pane, as
+         *     the conversation's share of the width.
+         */
+        AgentResultsPreferences: {
+            /** Split */
+            split: number;
+        };
         /** AgentSessionCreate */
         AgentSessionCreate: {
             /**
@@ -1011,6 +1225,11 @@ export interface components {
             closes_at: string;
             /** Messages */
             messages: components["schemas"]["AgentMessageOut"][];
+            /**
+             * Results
+             * @default []
+             */
+            results: components["schemas"]["AgentResultOut"][];
         };
         /** AgentSessionOut */
         AgentSessionOut: {
@@ -1099,6 +1318,12 @@ export interface components {
              * @enum {string}
              */
             state: "thinking" | "running_operation" | "writing";
+            /** Label */
+            label?: string | null;
+            /** Done */
+            done?: number | null;
+            /** Total */
+            total?: number | null;
         };
         /**
          * AgentStatusOut
@@ -1132,7 +1357,7 @@ export interface components {
          */
         AgentStreamEnvelope: {
             /** Data */
-            data: components["schemas"]["AgentAcceptedEvent"] | components["schemas"]["AgentStatusEvent"] | components["schemas"]["AgentTextEvent"] | components["schemas"]["AgentOperationEvent"] | components["schemas"]["AgentDoneEvent"] | components["schemas"]["AgentErrorEvent"];
+            data: components["schemas"]["AgentAcceptedEvent"] | components["schemas"]["AgentStatusEvent"] | components["schemas"]["AgentTextEvent"] | components["schemas"]["AgentOperationEvent"] | components["schemas"]["AgentDoneEvent"] | components["schemas"]["AgentErrorEvent"] | components["schemas"]["AgentResultEvent"];
         };
         /** AgentTextEvent */
         AgentTextEvent: {
@@ -2378,6 +2603,7 @@ export interface components {
             inspector?: components["schemas"]["InspectorArrangement"] | null;
             agent_panel?: components["schemas"]["AgentPanelPreferences"] | null;
             center?: components["schemas"]["CenterArrangement"] | null;
+            agent_results?: components["schemas"]["AgentResultsPreferences"] | null;
         };
     };
     responses: never;
@@ -3802,6 +4028,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentSessionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_result_csv_api_v1_agent_session_results__result_id__csv_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                result_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The result as CSV (024, FR-020): a basis block, then the rows and totals shown. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             /** @description Validation Error */

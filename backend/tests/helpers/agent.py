@@ -31,3 +31,26 @@ async def build_standard(db, owner: User, provider: str, name: str, *,
     architecture.is_public = public
     await db.commit()
     return architecture
+
+
+# 024: comparisons need every provider at once: AWS from the default fixture (which holds the
+# AWS standard architectures' items) and Azure and GCP from the standard-architecture fixture.
+# The snapshot loader refuses symlinks out of its root, so the three are copied once per run.
+DEFAULT_PRICING_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "pricing_parquet"
+_combined: Path | None = None
+
+
+def combined_pricing_root() -> Path:
+    global _combined
+    if _combined is None:
+        import atexit
+        import shutil
+        import tempfile
+
+        root = Path(tempfile.mkdtemp(prefix="pricing-combined-"))
+        shutil.copytree(DEFAULT_PRICING_ROOT / "aws", root / "aws")
+        for provider in ("azure", "gcp"):
+            shutil.copytree(STANDARD_PRICING_ROOT / provider, root / provider)
+        atexit.register(shutil.rmtree, root, True)
+        _combined = root
+    return _combined

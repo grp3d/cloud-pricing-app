@@ -32,6 +32,9 @@ export function refusalText(reason: AgentRefusalReason, resetsOn: string | null)
 export const ERROR_TEXT: Record<string, string> = {
   timeout: "The agent took too long to answer.",
   unreachable: "The agent's model can't be reached right now.",
+  no_credit: "The agent's model account is out of credit. An Admin needs to add credit.",
+  key_rejected: "The agent's model rejected its API key. An Admin needs to check the key.",
+  rate_limited: "The agent's model is limiting requests. Try again in a minute.",
   bad_output: "The agent's model gave an answer the app couldn't use.",
   failed: "The agent couldn't answer.",
   session_closed: "This session has reached its close time.",
@@ -51,4 +54,9 @@ export function formatSessionTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** 024 (research R13): "Matching services (12 of 20)…" while a long operation runs. */
+export function progressText(progress: { label: string; done: number; total: number }): string {
+  return `${progress.label || "Working"} (${progress.done} of ${progress.total})…`;
 }

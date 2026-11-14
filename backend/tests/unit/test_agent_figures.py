@@ -105,3 +105,53 @@ def test_footer_lists_each_provider_and_duration():
         "Prices for 1 month (31 days) and 1 year (365 days), "
         "snapshots azure 2026-11-01 r1, gcp 2026-11-02 r2"
     )
+
+
+# --- 024: percent figures (research R7) ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("amount", "text"),
+    [
+        (Decimal("12.345"), "+12.3%"),
+        (Decimal("12.35"), "+12.4%"),  # half-up
+        (Decimal("-4"), "-4.0%"),
+        (Decimal("0"), "0.0%"),
+    ],
+)
+def test_percent_figures_render_with_a_sign_and_one_decimal(amount, text):
+    book = FigureBook()
+    ref = book.add(amount, "diff_pct", kind="percent")
+    out = FigureStreamFilter(book)
+    assert out.feed(f"Azure is [[{ref}]] dearer.") + out.flush() == f"Azure is {text} dearer."
+
+
+def test_a_percent_sign_after_a_percent_reference_is_not_doubled():
+    book = FigureBook()
+    ref = book.add(Decimal("5"), "diff_pct", kind="percent")
+    out = FigureStreamFilter(book)
+    assert out.feed(f"[[{ref}]]% more") + out.flush() == "+5.0% more"
+
+
+def test_money_figures_still_render_as_usd_and_typed_percentages_are_removed():
+    book = FigureBook()
+    money = book.add(Decimal("1234.561"), "total")
+    out = FigureStreamFilter(book)
+    text = out.feed(f"Total [[{money}]], about 12% more.") + out.flush()
+    assert text == "Total $1,234.56, about [figure removed] more."
+
+
+def test_footer_ignores_percent_figures():
+    book = FigureBook()
+    pct = book.add(Decimal("3"), "diff_pct", kind="percent")
+    money = book.add(Decimal("1"), "total", duration="1_month", snapshot=SNAP)
+    assert footer(book, [pct]) is None
+    assert footer(book, [pct, money]) == "Prices for 1 month (31 days), snapshot 2026-11-02 r2"
+
+
+def test_round_cents_matches_format_usd():
+    from src.agent.figures import round_cents
+
+    assert str(round_cents(Decimal("1780.955"))) == "1780.96"
+    assert str(round_cents(Decimal("-2061.555"))) == "-2061.56"
+    assert str(round_cents(Decimal("3"))) == "3.00"

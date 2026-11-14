@@ -1,7 +1,8 @@
 # Agent
 
-A logged-in user can ask an agent about their architectures, in a panel under the canvas. In this
-version the agent only answers questions; it doesn't change anything.
+A logged-in user can ask an agent about their architectures and compare prices across providers,
+in the Agent tab beside the canvas. In this version the agent only answers questions; it doesn't
+change anything.
 
 ## What it can do
 
@@ -10,6 +11,11 @@ version the agent only answers questions; it doesn't change anything.
   which services drive the cost.
 - List the public architectures you can import, grouped by owner with Admin first, as the
   architecture menu's Import does.
+- Compare prices across AWS, Azure and GCP (see [Comparisons](#comparisons)):
+  - a kind of service, such as "How much cheaper is object storage on Azure than GCP?";
+  - the open architecture, or one category of it, on one or both other providers: "What would
+    this cost on Azure?", "on the other two clouds?", "my storage on GCP?";
+  - a single price: "What's the on-demand price of an m5.large in eu-west-1 per month?".
 
 Asked to change, create or import something, it says it can't yet and points to where you can do
 it. Asked something outside the app (the time, general knowledge), it says it can't help with
@@ -24,6 +30,83 @@ decimal places, so they match the Pricing tab. Any amount the model types on its
 them. Every answer with a figure ends with a line the app adds, such as "Prices for 1 month (31
 days), snapshot 2026-11-02 r2".
 
+## Comparisons
+
+A comparison states its **basis**: for each provider the product matched and how closely it
+matches, the region, the usage, the duration, the pricing term (on demand unless you choose
+another), USD, and that provider's pricing snapshot date.
+
+- **Questions first.** If the price depends on details you didn't give (storage type, tier,
+  redundancy, region, amount, term), the agent asks at most three short questions, or uses the
+  app's defaults and says which: for example 1 TB stored for a month, or one instance running
+  all month. Say "use defaults" to skip the questions.
+- **Regions.** A region you name is used. Otherwise the app guesses the nearest region on the
+  other provider (the same city where it can, else the nearest in the same part of the world),
+  and the agent says it's a guess. You can change it in a follow-up.
+- **Matching.** For each product, the app finds the closest products in the same category on the
+  other provider; the agent picks among those only. It never names a product itself. For the
+  open architecture, every service is matched in one go.
+- **Match quality** is set by fixed rules in the app, and the agent may lower it (with a reason)
+  but never raise it:
+  - **exact**: same kind of product, billing unit and key specifications (vCPU, memory, tier,
+    redundancy);
+  - **close**: small differences, such as more memory (up to twice), another processor
+    architecture, or another redundancy;
+  - **partial**: another kind of product, another billing model, fewer resources, a
+    different tier, or a different machine type (general purpose vs memory-optimized, GPU,
+    confidential), kind of data transfer (internet vs between regions), DNS zone (public vs
+    private) or load balancer type (application vs network);
+  - **no equivalent**: nothing comparable in the category.
+
+  The differences are listed with each match. Discounts and terms sold as their own product
+  (commitments, reservations, savings plans), spot capacity, licences, and developer, free or
+  replica variants are never offered as matches; the pricing term is chosen separately.
+- **Usage** is carried over only between products billed in the same kind of unit (hours, GB
+  stored, GB transferred, requests); GB and GiB count as the same billed unit, as the standard
+  architectures use them. GCP machines are sized to the original's vCPU and memory (the
+  smallest standard size at least as large). Anything else shows "Can't convert usage", with
+  no figure.
+- **Nothing is estimated.** A provider, region, product or term that can't be priced is shown
+  as unavailable with the reason, and with no figure, difference or percentage. Totals cover
+  only the services priced on every side; when any are left out, both totals are labelled
+  partial and the left-out services are listed under "Not compared".
+- **Follow-ups** ("and for 10 TB?", "what about 1-year reserved?") keep everything else and say
+  what changed.
+- The agent doesn't recommend a provider; asked which cloud is best, it offers a specific
+  comparison instead.
+- A comparison never changes or creates an architecture.
+
+### The Results pane
+
+- A comparison's table appears in the **Results** pane to the right of the conversation, drawn
+  by the app from the comparison's result. Every figure is the pricing engine's, rounded to the
+  cent, and the differences and percentages are computed by the app. The agent's explanation
+  stays in the conversation, and a card under the answer names the result ("AWS vs Azure ·
+  14 rows · total +12.4%"). A single price has no table.
+- The pane opens when a result arrives. **×** closes it; selecting a card shows that result
+  again. **◀ ▶** step through the session's results ("Result 2 of 3").
+- Drag the divider between the conversation and the pane, or focus it and use the arrow keys,
+  to resize them (30–75% for the conversation). The position is saved to your account. When the
+  Agent tab is narrower than 700px, the pane sits under the conversation instead.
+- Results are kept with the session: reopening it shows the cards, with the pane on the latest
+  result. They're deleted with the session, and only you can see them.
+
+### Download CSV
+
+**Download CSV** saves the result shown as a file named like
+`comparison-three-tier-web-app-aws-vs-azure-2026-11-13.csv`. It starts with the basis (one line
+per provider with region, "(guessed)" where it applies, term and snapshot, then duration,
+currency, usage and assumptions), then a blank line, then the table:
+
+- one column group per provider and region: product, match, amount, difference and difference
+  %, then a Status column;
+- amounts are plain numbers (`1234.56`), rounded like the pane;
+- an unavailable or unmatched price is an empty cell with the reason in Status, never 0;
+- the last rows are the totals ("Total (partial)" where it applies) and what wasn't compared.
+
+Text that starts like a spreadsheet formula (`=`, `+`, `-`, `@`) is written with a leading `'`,
+so names from imported architectures can't run as formulas.
+
 ## The Agent tab
 
 - The agent is the **Agent** tab beside **Canvas** in the centre column. The two tabs merge,
@@ -34,10 +117,16 @@ days), snapshot 2026-11-02 r2".
 - Usable only by logged-in users while the agent is switched on. For a guest, or with the agent
   off, the Agent tab is shown but inactive, and its tooltip says why.
 - **Conversation** and **Activity** switch the panel's view. Answers appear as they're written,
-  with a status while the agent is thinking or looking something up.
+  with a status while the agent is thinking or looking something up. While it matches an
+  architecture's services, the status counts them: "Matching services (12 of 20)…".
 - When you can't use the agent, the panel says why: your free preview is used up, you've reached
   your monthly limit, or the agent has reached its monthly limit. For a monthly limit it also says
   the date it resets.
+- When an answer fails, the panel says what went wrong as precisely as it can: the model's
+  account is out of credit, the model rejected its API key (both need an Admin), the model is
+  limiting requests (try again in a minute), it can't be reached, or it took too long. If the
+  model writes out an operation instead of running it, as weaker local models sometimes do, the
+  answer isn't shown: the panel says the model gave an answer the app couldn't use.
 
 ## Sessions
 
@@ -49,15 +138,18 @@ days), snapshot 2026-11-02 r2".
   sent the message.
 - If the model is slow, unreachable or gives an answer the app can't use, the message is marked
   failed with the reason and **Retry** re-sends it. A retry doesn't use another message from your
-  allowance. A model call that runs past the timeout setting stops.
+  allowance. A model call that runs past the timeout setting stops. So does an operation (for
+  example matching a large architecture): the agent then says it couldn't finish and offers
+  something smaller, and the answer still completes.
 - If you leave or reload the page while the agent is answering, the answer still finishes and
   is in the conversation when you come back.
 
 ## Activity log
 
 **Activity** lists every operation the agent ran in this session, in order: its name, the inputs
-it was given, whether it worked, when, how long it took, and the pricing snapshot behind any
-figure.
+it was given, whether it worked (or was stopped for taking too long), when, how long it took,
+and the pricing snapshot behind any figure. For comparisons the summary names the regions, the
+products priced (by SKU) and the result.
 
 ## Access and limits
 
@@ -86,9 +178,12 @@ Every automated test uses a scripted model. Checking real models is a separate r
 
 ## Not built yet
 
-Changing, creating and importing architectures through the agent; price comparisons;
-cross-cloud translation; an agent for users with no architecture open.
+Changing, creating and importing architectures through the agent; building or saving a
+comparison as an architecture on another provider (cross-cloud translation); reviewed
+cross-provider mappings (until then the app's candidates and quality rules decide); download
+formats other than CSV; an agent for users with no architecture open.
 
 ## Specs
 
-[023](../../specs/023-agent-foundation/spec.md)
+[023](../../specs/023-agent-foundation/spec.md),
+[024](../../specs/024-agent-pricing-questions/spec.md)

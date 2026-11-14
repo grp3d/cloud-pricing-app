@@ -250,6 +250,26 @@ async def test_unreachable(setup):
     assert (await _failed(setup)).status == "failed"
 
 
+async def test_an_operation_call_written_as_text_fails_and_is_not_kept(setup):
+    db, *_ = setup
+    written = ('So the function call would be:\n\n{"name": "price_open_architecture", '
+               '"parameters": {"duration": "1_year"}}')
+    client = ScriptedModelClient([Turn(text=["To answer this, ", written])])
+    events = await _run(_ctx(setup, client, _registry([])))
+    assert events[-1].kind == "bad_output"
+    assert (await _failed(setup)).error_kind == "bad_output"
+    assert (await db.execute(select(AgentMessage).where(AgentMessage.role == "agent"))
+            ).scalar_one_or_none() is None
+
+
+def test_ordinary_text_is_not_taken_for_a_written_call():
+    from src.agent.loop import writes_a_call
+
+    assert not writes_a_call('The collection is named "web" and costs [[F1]].')
+    assert not writes_a_call('{"name": "web"} is a name, not a call.')
+    assert writes_a_call('{ "name" : "find_matches", "arguments": {} }')
+
+
 async def test_unknown_tool_is_reported_back_to_the_model(setup):
     db, *_ = setup
     client = ScriptedModelClient([
@@ -300,3 +320,108 @@ async def test_cap_check_before_each_model_call(setup):
     events = await _run(_ctx(setup, client, _registry([]), cap_reached=cap_reached))
     assert len(client.calls) == 1
     assert events[-1].kind == "global_cap"
+
+
+# --- 024: match references, result events, operation time limit, progress -----------------------
+
+
+def _registry_024(seen: dict) -> Registry:
+    import asyncio
+
+    registry = Registry()
+
+    @registry.operation("books", "Sees the per-message books.", NoArgs)
+    async def books(ctx: OperationContext, args: NoArgs) -> OperationResult:
+        seen.setdefault("books", []).append(id(ctx.matches))
+        seen["message"] = ctx.message.id if ctx.message else None
+        seen["agent_session"] = ctx.agent_session.id if ctx.agent_session else None
+        return OperationResult(data={}, summary={})
+
+    @registry.operation("makes_result", "Saves a result.", NoArgs)
+    async def makes_result(ctx: OperationContext, args: NoArgs) -> OperationResult:
+        from src.models.orm import AgentResult
+
+        result = AgentResult(
+            session_id=ctx.agent_session.id, message_id=ctx.message.id, seq=1,
+            kind="category_comparison", title="AWS vs Azure", summary="1 row",
+            basis={"question_kind": "category", "duration": "1_month",
+                   "reference_side": "aws:us-east-1", "usage": "1 TB stored"},
+            sides=[{"id": "aws:us-east-1", "provider": "aws", "region": "us-east-1",
+                    "term": "on_demand"}],
+            rows=[], totals={}, snapshots={})
+        ctx.session.add(result)
+        await ctx.session.flush()
+        ctx.results.append(result)
+        return OperationResult(data={"result_id": str(result.id)}, summary={})
+
+    @registry.operation("slow", "Takes too long.", NoArgs)
+    async def slow(ctx: OperationContext, args: NoArgs) -> OperationResult:
+        await asyncio.sleep(5)
+        return OperationResult(data={}, summary={})
+
+    @registry.operation("progresses", "Reports progress.", NoArgs)
+    async def progresses(ctx: OperationContext, args: NoArgs) -> OperationResult:
+        for done in range(1, 11):
+            ctx.progress(done, 10, "Matching services")
+            await asyncio.sleep(0.01)
+        return OperationResult(data={}, summary={})
+
+    return registry
+
+
+async def test_each_message_gets_its_own_match_book_and_sees_its_message(setup):
+    _db, _user, agent_session, message, _ = setup
+    seen: dict = {}
+    client = ScriptedModelClient([
+        Turn(tool_calls=[ToolCall("c1", "books", {}), ToolCall("c2", "books", {})]),
+        Turn(text=["Done."]),
+    ])
+    await _run(_ctx(setup, client, _registry_024(seen)))
+    assert len(set(seen["books"])) == 1  # one book for the whole message
+    assert (seen["message"], seen["agent_session"]) == (message.id, agent_session.id)
+
+
+async def test_a_result_is_sent_right_after_its_operation(setup):
+    from src.models.schemas import AgentResultEvent
+
+    client = ScriptedModelClient([
+        Turn(tool_calls=[ToolCall("c1", "makes_result", {})]),
+        Turn(text=["See the table."]),
+    ])
+    events = await _run(_ctx(setup, client, _registry_024({})))
+    kinds = [e.event for e in events]
+    at = kinds.index("operation")
+    assert kinds[at + 1] == "result"
+    result = events[at + 1]
+    assert isinstance(result, AgentResultEvent) and result.result.title == "AWS vs Azure"
+
+
+async def test_an_operation_past_the_time_limit_is_stopped_and_the_answer_continues(setup):
+    db, *_ = setup
+    client = ScriptedModelClient([
+        Turn(tool_calls=[ToolCall("c1", "slow", {})]),
+        Turn(text=["That took too long; try one category."]),
+    ])
+    events = await _run(_ctx(setup, client, _registry_024({}),
+                             effective=_effective(timeout_seconds=1)))
+    op = next(e for e in events if isinstance(e, AgentOperationEvent))
+    assert (op.name, op.outcome) == ("slow", "timeout")
+    assert events[-1].event == "done"
+    logged = (await db.execute(select(AgentOperation))).scalar_one()
+    assert logged.outcome == "timeout"
+    tool_message = client.calls[1].messages[-1]
+    assert tool_message.is_error and "took too long and was stopped" in tool_message.text
+
+
+async def test_progress_is_streamed_as_status_and_throttled(setup):
+    client = ScriptedModelClient([
+        Turn(tool_calls=[ToolCall("c1", "progresses", {})]),
+        Turn(text=["Done."]),
+    ])
+    events = await _run(_ctx(setup, client, _registry_024({})))
+    progress = [e for e in events if isinstance(e, AgentStatusEvent) and e.total]
+    assert progress, "no progress events"
+    assert all(e.state == "running_operation" and e.label == "Matching services"
+               and e.total == 10 for e in progress)
+    assert progress[-1].done == 10  # the last one always gets through
+    assert len(progress) < 10  # throttled (one every 250 ms, plus the last)

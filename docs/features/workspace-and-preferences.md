@@ -32,7 +32,8 @@ The workspace has three zones under the header:
   exactly like the inspector's (below); by default they're merged with Canvas in front, and
   nothing brings Agent forward by itself. To keep the agent in view, move it to the lower half.
   When the agent is switched off, or for a guest, the Agent tab is shown but inactive, and its
-  tooltip says why.
+  tooltip says why. Inside the Agent tab, the conversation and the Results pane share the width
+  with a divider (see [agent](agent.md#the-results-pane)).
   The open architecture's name sits in the tab bar beside the tabs (the upper one when split);
   a long name gets smaller to fit, then is cut off, with the full name on hover.
 - **Right inspector**: two tabs, **Pricing** and **Service**.
@@ -76,6 +77,7 @@ These follow you to any browser or device, for guests and logged-in users alike:
 - the inspector arrangement (merged or split, which tab is on top, the divider, the front tab);
 - the centre column's arrangement (merged or split, which tab is on top, the divider, the front
   tab);
+- the Agent tab's divider between the conversation and the Results pane;
 - the last provider you used;
 - the last architecture you opened: **Cloud Pricing** opens it again when no architecture is
   named (clicking the tab, or a return visit), unless it's been deleted or you can no longer open
@@ -96,4 +98,5 @@ zoom, and the last calculation result.
 [013](../../specs/013-column-resize-narrow-behavior/spec.md),
 [019](../../specs/019-gcp-azure-providers-trends/spec.md) (US4),
 [021](../../specs/021-workspace-layout-redesign/spec.md) (replaces the five-column layout of
-007–013).
+007–013),
+[024](../../specs/024-agent-pricing-questions/spec.md) (the Agent tab's results split).

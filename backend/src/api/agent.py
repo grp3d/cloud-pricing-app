@@ -14,16 +14,17 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from src.agent import limits, sessions
+from src.agent import results as agent_results
 from src.agent.loop import LoopContext, answer
 from src.agent.model import AgentUnavailable, build_client
 from src.agent.settings_service import EffectiveAgentSettings, effective_settings
 from src.api.deps import CurrentUser, DbSession, SessionFactory
 from src.logging_config import get_logger
-from src.models.orm import AgentMessage, AgentSession, User
+from src.models.orm import AgentMessage, AgentResult, AgentSession, User
 from src.models.schemas import (
     AgentAcceptedEvent,
     AgentErrorEvent,
@@ -114,12 +115,41 @@ async def start_agent_session(
 async def get_agent_session(session: DbSession, user: CurrentUser) -> AgentSessionDetailOut:
     _require_named(user)
     agent_session = await _session_or_404(session, user)
+    messages = await sessions.messages(session, agent_session)
+    results = await sessions.results(session, agent_session)
+    shown = sessions.result_ids_by_message(messages, results)
     return AgentSessionDetailOut(
         id=agent_session.id,
         started_at=agent_session.started_at,
         closes_at=agent_session.closes_at,
-        messages=[AgentMessageOut.model_validate(m)
-                  for m in await sessions.messages(session, agent_session)],
+        messages=[AgentMessageOut.model_validate(m).model_copy(
+            update={"result_ids": shown.get(m.id, [])}) for m in messages],
+        results=[agent_results.to_out(r) for r in results],
+    )
+
+
+@router.get(
+    "/session/results/{result_id}/csv",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}},
+                     "description": "The result as CSV (024, FR-020): a basis block, then the "
+                     "rows and totals shown."}},
+)
+async def get_agent_result_csv(result_id: uuid.UUID, session: DbSession,
+                               user: CurrentUser) -> Response:
+    """024: download one result of the caller's open session; another user's or an expired
+    session's result is 404 (FR-021)."""
+    _require_named(user)
+    agent_session = await _session_or_404(session, user)
+    result = await session.get(AgentResult, result_id)
+    if result is None or result.session_id != agent_session.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no_result")
+    out = agent_results.to_out(result)
+    return Response(
+        content=agent_results.write_csv(out).encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition":
+                 f'attachment; filename="{agent_results.csv_filename(out)}"'},
     )
 
 

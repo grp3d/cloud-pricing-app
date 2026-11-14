@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.orm import AgentMessage, AgentOperation, AgentSession, User
+from src.models.orm import AgentMessage, AgentOperation, AgentResult, AgentSession, User
 
 SESSION_LIFETIME = timedelta(days=3)
 
@@ -53,6 +53,39 @@ async def messages(db: AsyncSession, session: AgentSession) -> list[AgentMessage
         select(AgentMessage).where(AgentMessage.session_id == session.id)
         .order_by(AgentMessage.seq)
     )).scalars().all())
+
+
+async def results(db: AsyncSession, session: AgentSession) -> list[AgentResult]:
+    """024: the session's comparison results in order."""
+    return list((await db.execute(
+        select(AgentResult).where(AgentResult.session_id == session.id)
+        .order_by(AgentResult.seq)
+    )).scalars().all())
+
+
+def result_ids_by_message(messages: list[AgentMessage],
+                          results: list[AgentResult]) -> dict:
+    """024: which message shows each result's card. A result belongs to the user message whose
+    answer made it; its card goes on the agent message that answered that question (the next
+    agent message, unless another answered question comes first), else on the question itself
+    (a failed answer)."""
+    by_question: dict = {}
+    for result in results:
+        by_question.setdefault(result.message_id, []).append(result.id)
+    ordered = sorted(messages, key=lambda m: m.seq)
+    shown: dict = {}
+    for index, message in enumerate(ordered):
+        if message.id not in by_question:
+            continue
+        target = message
+        for later in ordered[index + 1:]:
+            if later.role == "agent":
+                target = later
+                break
+            if later.status == "answered":
+                break
+        shown.setdefault(target.id, []).extend(by_question[message.id])
+    return shown
 
 
 async def operations(db: AsyncSession, session: AgentSession) -> list[AgentOperation]:

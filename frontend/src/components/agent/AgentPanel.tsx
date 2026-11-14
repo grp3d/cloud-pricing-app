@@ -9,12 +9,23 @@
  *   as its tooltip, and the Canvas fills the pane.
  * - When the agent is on but this user can't use it, the Agent tab says why (and, for a
  *   monthly limit, when it resets); it doesn't say what to do.
+ *
+ * 024 (US6, FR-018): the conversation and a Results pane sit side by side, with a divider whose
+ * position is saved to the account; the pane opens when a comparison's result arrives, and on
+ * the latest result when a session with results is reopened. A narrow tab stacks them.
  */
 import { useQuery } from "@tanstack/react-query";
 import { History, MessagesSquare } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useReducer, useState } from "react";
 
-import { api, type AgentStatus } from "../../api/client";
+import { api, type AgentResult, type AgentStatus } from "../../api/client";
+import {
+  CLOSED,
+  RESULTS_SPLIT,
+  readResultsSplit,
+  resultsPane,
+  writeResultsSplit,
+} from "../../lib/agentResults";
 import {
   CANVAS_ONLY,
   CENTER_TABS,
@@ -27,9 +38,11 @@ import {
 import { usePreferences } from "../../lib/preferences";
 import { FitTitle } from "../layout/FitTitle";
 import { SplitTabPane } from "../layout/SplitTabPane";
+import { VerticalSplit } from "../layout/VerticalSplit";
 import { Button } from "../ui/button";
 import { AgentActivityLog } from "./AgentActivityLog";
 import { AgentConversation } from "./AgentConversation";
+import { AgentResultsPane } from "./AgentResultsPane";
 import { AgentSessionHeader } from "./AgentSessionHeader";
 import { refusalText } from "./agentText";
 
@@ -101,6 +114,37 @@ function AgentPanel({
   architectureId: string | null;
 }) {
   const [view, setView] = useState<"conversation" | "activity">("conversation");
+  const [prefs] = usePreferences();
+  const split = readResultsSplit(prefs.workspace);
+  const sessionId = status.session?.id ?? null;
+  const detail = useQuery({
+    queryKey: ["agentSession"],
+    queryFn: api.getAgentSession,
+    retry: false,
+    enabled: Boolean(sessionId),
+  });
+  const [streamed, setStreamed] = useState<AgentResult[]>([]);
+  const [pane, dispatch] = useReducer(resultsPane, CLOSED);
+
+  // Saved results first, then any that streamed in since the session was last loaded.
+  const results = useMemo(() => {
+    const saved = detail.data?.results ?? [];
+    const seen = new Set(saved.map((r) => r.id));
+    return [...saved, ...streamed.filter((r) => !seen.has(r.id))];
+  }, [detail.data?.results, streamed]);
+  const ids = useMemo(() => results.map((r) => r.id), [results]);
+  const byId = useMemo(() => Object.fromEntries(results.map((r) => [r.id, r])), [results]);
+
+  useEffect(() => {
+    dispatch({ type: "reset" });
+    setStreamed([]);
+  }, [sessionId]);
+  const savedIds = (detail.data?.results ?? []).map((r) => r.id).join(",");
+  useEffect(() => {
+    if (detail.data) dispatch({ type: "loaded", ids: savedIds ? savedIds.split(",") : [] });
+  }, [savedIds, detail.data]);
+
+  const showPane = view === "conversation" && pane.open && pane.selectedId !== null;
   return (
     <section aria-label="Agent" className="flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 items-start gap-2 border-b border-border px-2 py-1.5">
@@ -145,7 +189,38 @@ function AgentPanel({
       <div className="min-h-0 flex-1">
         {view === "conversation" ? (
           status.session ? (
-            <AgentConversation architectureId={architectureId} available={status.available} />
+            <VerticalSplit
+              label="Resize conversation and results"
+              split={split}
+              min={RESULTS_SPLIT.min}
+              max={RESULTS_SPLIT.max}
+              onCommit={(next) => writeResultsSplit(next)}
+              first={
+                <AgentConversation
+                  architectureId={architectureId}
+                  available={status.available}
+                  results={{
+                    byId,
+                    shownId: pane.open ? pane.selectedId : null,
+                    onShow: (id) => dispatch({ type: "show", id }),
+                    onArrived: (result) => {
+                      setStreamed((list) => [...list, result]);
+                      dispatch({ type: "arrived", id: result.id });
+                    },
+                  }}
+                />
+              }
+              second={
+                showPane ? (
+                  <AgentResultsPane
+                    results={results}
+                    selectedId={pane.selectedId as string}
+                    onStep={(delta) => dispatch({ type: "step", delta, ids })}
+                    onClose={() => dispatch({ type: "close" })}
+                  />
+                ) : null
+              }
+            />
           ) : (
             <p className="p-3 text-xs text-muted-foreground">
               Start a session with <strong>New agent session</strong> to ask about your

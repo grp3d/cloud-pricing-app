@@ -201,16 +201,38 @@ preview messages. For the hosted model, put `AGENT_ANTHROPIC_API_KEY=…` in `ba
   (`src/agent/clients/scripted.py`). The example conversations from the spec are in
   `backend/tests/agent_evals/cases/*.yaml`; the normal run plays each one with its script.
 - **Checking real models** is a separate run, against the same cases and fixed checks (figures
-  equal to the engine's to the cent, operations run, phrases present or absent, refusals):
+  equal to the engine's to the cent, operations run, phrases present or absent, refusals, and
+  for comparisons: each result row recalculated through the engine, match qualities, partial
+  totals, and no result for a single price):
 
   ```bash
   cd backend
-  AGENT_EVAL_MODELS="ollama:llama3.1,anthropic:claude-haiku-5-5" uv run pytest -m live_model
+  AGENT_EVAL_MODELS="ollama:llama3.1,anthropic:claude-sonnet-5-5" uv run pytest -m live_model
   ```
 
   It writes `backend/agent-eval-report.md` (not committed), with pass or fail per case and
-  per check, for each model. A hosted model needs `AGENT_ANTHROPIC_API_KEY` in the environment,
-  and costs a little per run.
+  per check, for each model. A hosted model needs `AGENT_ANTHROPIC_API_KEY`, in the environment
+  or in `backend/.env` (the same place the app reads it from). The comparison cases
+  (`pricing: combined`) price against every provider's test fixture at once.
+- **Budget for hosted-model runs.** Every case is several paid calls, and a full run of every
+  case is about a dollar on Sonnet. Testing one change must stay under **$0.50** unless the
+  person paying agrees to more first:
+  - Iterate with the scripted cases and a local model (`ollama:…`, free). A hosted run confirms
+    a change; it isn't for iterating.
+  - Before a hosted run, say which cases, which model, how many runs and roughly what it costs,
+    and get a yes.
+  - Run only the cases the change affects (`-k "GC-12 or GC-13"`), once. Use the cheapest model
+    that answers the question (Haiku before Sonnet). Run the full set only before a release or
+    when asked.
+  - At most two hosted runs per change. Fix wording or checks from the saved report, not by
+    running again; never repeat runs to test stability.
+  - If a run fails with an API error (credit, key, rate limit), stop: don't retry.
+  - The run enforces a cap: it makes at most `AGENT_EVAL_MAX_CALLS` paid calls (default 30),
+    then skips the remaining cases. Local models are counted but never capped.
+  - The report gives calls, input and output tokens, and cost for each case and each model.
+    For the cost, give the prices in USD per million tokens, as the provider lists them:
+    `AGENT_EVAL_PRICES="claude-sonnet-5-5=<in>/<out>,claude-haiku-5-5=<in>/<out>"`. Use the
+    last report's calls per case to quote a run before asking for it.
 - **End-to-end:** `e2e/agent.spec.ts` runs last, in its own Playwright project, because it
   switches the app-wide agent setting on (with the scripted model) and off again.
 

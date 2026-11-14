@@ -432,3 +432,40 @@ class AgentUsage(Base):
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=Decimal(0))
     counts_as_input: Mapped[bool] = mapped_column(default=False)
     is_preview: Mapped[bool] = mapped_column(default=False)
+
+
+class AgentResult(Base):
+    """One comparison result shown in the Agent tab's Results pane (024, data-model.md §1).
+
+    It belongs to the session and to the **user** message whose answer produced it (the agent
+    message is written only when the answer ends). Principle II: this is a record of what the
+    agent showed, with each provider's snapshot date and revision, like `agent_messages.content`.
+    It is never read as a source of prices; every comparison prices afresh through the engine.
+    Don't reuse it as a price cache."""
+
+    __tablename__ = "agent_results"
+    __table_args__ = (
+        UniqueConstraint("session_id", "seq", name="uq_agent_result_seq"),
+        CheckConstraint("kind IN ('category_comparison', 'architecture_comparison')",
+                        name="ck_agent_result_kind"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_messages.id", ondelete="CASCADE"), nullable=False
+    )
+    seq: Mapped[int] = mapped_column(nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[str] = mapped_column(String(200), nullable=False)
+    basis: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    sides: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    rows: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    totals: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    snapshots: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

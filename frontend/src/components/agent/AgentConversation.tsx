@@ -2,28 +2,44 @@
  * 023-agent-foundation (Stories 1, 2, 4): the conversation. Each message is sent with the
  * architecture open at the time (FR-012); the answer streams in (FR-009) with a status while
  * the agent thinks or looks things up; a failed message offers Retry, which uses no new input.
+ *
+ * 024 (FR-019): a comparison's result arrives as its own event; its card sits under the answer
+ * (or under the question, if the answer failed) and shows the result in the Results pane.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { api, type AgentStreamEvent } from "../../api/client";
+import { api, type AgentResult, type AgentStreamEvent } from "../../api/client";
 import { retryAgentMessage, sendAgentMessage, type SendOutcome } from "../../lib/agentStream";
 import { Button } from "../ui/button";
-import { ERROR_TEXT, STATUS_TEXT, refusalText } from "./agentText";
+import { AgentResultCard } from "./AgentResultCard";
+import { ERROR_TEXT, STATUS_TEXT, progressText, refusalText } from "./agentText";
 
 type Live = {
   question: string;
   text: string;
   status: keyof typeof STATUS_TEXT | null;
+  progress: { label: string; done: number; total: number } | null;
+  resultIds: string[];
+};
+
+export type ConversationResults = {
+  /** Every result known in this session, by id (saved and just streamed). */
+  byId: Record<string, AgentResult>;
+  shownId: string | null;
+  onShow: (id: string) => void;
+  onArrived: (result: AgentResult) => void;
 };
 
 export function AgentConversation({
   architectureId,
   available,
+  results,
 }: {
   architectureId: string | null;
   available: boolean;
+  results?: ConversationResults;
 }) {
   const queryClient = useQueryClient();
   const session = useQuery({
@@ -48,7 +64,23 @@ export function AgentConversation({
   };
 
   const onEvent = (event: AgentStreamEvent) => {
-    if (event.event === "status") setLive((l) => (l ? { ...l, status: event.state } : l));
+    if (event.event === "status")
+      setLive((l) =>
+        l
+          ? {
+              ...l,
+              status: event.state,
+              progress:
+                event.total != null && event.done != null
+                  ? { label: event.label ?? "", done: event.done, total: event.total }
+                  : null,
+            }
+          : l,
+      );
+    else if (event.event === "result") {
+      results?.onArrived(event.result);
+      setLive((l) => (l ? { ...l, resultIds: [...l.resultIds, event.result.id] } : l));
+    }
     else if (event.event === "text") setLive((l) => (l ? { ...l, text: l.text + event.delta } : l));
     else if (event.event === "operation")
       void queryClient.invalidateQueries({ queryKey: ["agentOperations"] });
@@ -67,14 +99,14 @@ export function AgentConversation({
     if (!content || live) return;
     setNotice(null);
     setDraft("");
-    setLive({ question: content, text: "", status: "thinking" });
+    setLive({ question: content, text: "", status: "thinking", progress: null, resultIds: [] });
     finish(await sendAgentMessage({ content, architecture_id: architectureId }, onEvent));
   }
 
   async function retry(messageId: string, question: string) {
     if (live) return;
     setNotice(null);
-    setLive({ question, text: "", status: "thinking" });
+    setLive({ question, text: "", status: "thinking", progress: null, resultIds: [] });
     finish(await retryAgentMessage(messageId, onEvent));
   }
 
@@ -85,6 +117,21 @@ export function AgentConversation({
       </p>
     );
   }
+
+  const cards = (ids: string[] | undefined) =>
+    results && ids && ids.length > 0
+      ? ids
+          .map((id) => results.byId[id])
+          .filter((r): r is AgentResult => Boolean(r))
+          .map((r) => (
+            <AgentResultCard
+              key={r.id}
+              result={r}
+              current={results.shownId === r.id}
+              onShow={results.onShow}
+            />
+          ))
+      : null;
 
   const lastFailed = [...messages].reverse().find((m) => m.role === "user");
   const retryable = lastFailed && lastFailed.status === "failed" ? lastFailed : null;
@@ -108,6 +155,7 @@ export function AgentConversation({
                 {ERROR_TEXT[m.error_kind ?? "failed"] ?? ERROR_TEXT.failed}
               </span>
             )}
+            {cards(m.result_ids)}
           </li>
         ))}
         {live && (
@@ -117,9 +165,10 @@ export function AgentConversation({
               {live.text}
               {live.status && live.status !== "writing" && (
                 <span role="status" className="block text-muted-foreground italic">
-                  {STATUS_TEXT[live.status]}
+                  {live.progress ? progressText(live.progress) : STATUS_TEXT[live.status]}
                 </span>
               )}
+              {cards(live.resultIds)}
             </li>
           </>
         )}

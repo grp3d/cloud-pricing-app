@@ -23,6 +23,7 @@ from src.agent.loop import LoopContext, answer
 from src.agent.settings_service import EffectiveAgentSettings
 from src.models.orm import (
     AgentMessage,
+    AgentResult,
     AgentSession,
     Architecture,
     Collection,
@@ -139,6 +140,66 @@ async def _figure_checks(db, architecture, specs) -> list[Check]:
     return checks
 
 
+def _engine_cell(provider: str, priced: dict, duration: str):
+    from src.agent.compare import PriceLine, price_lines
+
+    line = PriceLine("x", priced["service_code"], priced["sku"], priced["region"],
+                     Decimal(priced["quantity"]), priced["pricing_term"],
+                     priced["purchase_option"], priced.get("options"))
+    return price_lines(provider, [line], duration).amounts.get("x")
+
+
+def _result_checks(expect: dict, results: list, text: str) -> list[Check]:
+    """024 checks on the comparison results the conversation made."""
+    checks: list[Check] = []
+    if expect.get("no_result"):
+        checks.append(Check("makes no result", not results, f"{len(results)} results"))
+    if expect.get("result_rows"):
+        checks.append(Check("makes a result", bool(results)))
+        for result in results:
+            providers = {s["id"]: s["provider"] for s in result.sides}
+            duration = result.basis["duration"]
+            for row in result.rows:
+                for side_id, cell in row["cells"].items():
+                    if cell["status"] != "ok":
+                        continue
+                    engine = _engine_cell(providers[side_id], cell["priced"], duration)
+                    checks.append(Check(f"row {row['label']} {side_id} is the engine's",
+                                        engine is not None and Decimal(cell["amount"]) == engine,
+                                        f"{cell['amount']} vs {engine}"))
+    if expect.get("providers"):
+        sides = [s["provider"] for s in results[-1].sides] if results else []
+        checks.append(Check(f"compares {expect['providers']}", sides == expect["providers"],
+                            f"{sides}"))
+    if "partial_total" in expect:
+        partial = bool(results) and any(t.get("partial") for t in results[-1].totals.values())
+        checks.append(Check("total labelled partial" if expect["partial_total"]
+                            else "total complete", partial == expect["partial_total"]))
+    for label, wanted in (expect.get("qualities") or {}).items():
+        found = None
+        for result in results:
+            for row in result.rows:
+                if label.lower() in row["label"].lower():
+                    for side_id, quality in wanted.items():
+                        cell = row["cells"].get(side_id, {})
+                        found = cell.get("shown_quality") or cell.get("quality")
+                        checks.append(Check(f"{label} on {side_id} is {quality}",
+                                            found == quality, f"was {found}"))
+        if found is None:
+            checks.append(Check(f"{label} compared", False, "no such row"))
+    if expect.get("unavailable"):
+        side = expect["unavailable"]
+        cells = [r["cells"].get(side, {}) for res in results for r in res.rows]
+        checks.append(Check(f"{side} unavailable with no figure",
+                            all(c.get("status") != "ok" and c.get("amount") is None
+                                for c in cells) if cells else True))
+    if expect.get("max_questions") is not None:
+        asked = text.count("?")
+        checks.append(Check(f"at most {expect['max_questions']} questions",
+                            asked <= expect["max_questions"], f"{asked} asked"))
+    return checks
+
+
 async def run_case(db, case: dict, client) -> CaseResult:
     out = CaseResult(case["id"], case["title"])
     user, architecture = await _setup(db, case)
@@ -164,6 +225,13 @@ async def run_case(db, case: dict, client) -> CaseResult:
                     out.operations.append(event.name)
             elif event.event == "error":
                 out.error = f"{event.kind}: {event.message}"
+        # A failed answer rolls the session back, which expires these; reload them so the
+        # checks below report the error instead of failing on a lazy load.
+        await db.refresh(agent_session)
+        if architecture is not None:
+            await db.refresh(architecture)
+        if out.error:
+            break
     expect = case.get("expect") or {}
     lower = out.text.lower()
     for name in expect.get("operations") or []:
@@ -177,13 +245,19 @@ async def run_case(db, case: dict, client) -> CaseResult:
         check.detail = f"expected {check.detail}"
         out.checks.append(check)
     for phrase in expect.get("contains") or []:
-        out.checks.append(Check(f"contains {phrase!r}", phrase.lower() in lower))
+        # A list is one requirement worded several ways: any of them passes.
+        options = phrase if isinstance(phrase, list) else [phrase]
+        out.checks.append(Check(f"contains {phrase!r}",
+                                any(o.lower() in lower for o in options)))
     for phrase in expect.get("not_contains") or []:
         out.checks.append(Check(f"does not contain {phrase!r}", phrase.lower() not in lower))
     if expect.get("order"):
         positions = [lower.find(p.lower()) for p in expect["order"]]
         out.checks.append(Check(f"order {expect['order']}",
                                 -1 not in positions and positions == sorted(positions)))
+    results = (await db.execute(select(AgentResult).where(
+        AgentResult.session_id == agent_session.id).order_by(AgentResult.seq))).scalars().all()
+    out.checks.extend(_result_checks(expect, results, out.text))
     if "refused" in expect:
         declined = any(w in lower for w in DECLINE_WORDS)
         out.checks.append(Check("declines" if expect["refused"] else "doesn't decline",

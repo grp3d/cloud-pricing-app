@@ -11,7 +11,10 @@ import pytest
 from src.agent.clients.anthropic import AnthropicClient
 from src.agent.model import (
     ModelBadOutput,
+    ModelKeyRejected,
     ModelMessage,
+    ModelNoCredit,
+    ModelRateLimited,
     ModelUnreachable,
     TextDelta,
     ToolCall,
@@ -148,10 +151,21 @@ async def test_connection_error_is_unreachable():
         await _run(client)
 
 
-async def test_api_status_error_is_unreachable():
+def _status(cls, code, message):
     request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    error = anthropic.RateLimitError("slow down", response=httpx.Response(429, request=request),
-                                     body=None)
+    return cls(message, response=httpx.Response(code, request=request), body=None)
+
+
+@pytest.mark.parametrize(("error", "raised"), [
+    (_status(anthropic.BadRequestError, 400, "Your credit balance is too low to access the "
+             "Anthropic API."), ModelNoCredit),
+    (_status(anthropic.AuthenticationError, 401, "invalid x-api-key"), ModelKeyRejected),
+    (_status(anthropic.PermissionDeniedError, 403, "not allowed"), ModelKeyRejected),
+    (_status(anthropic.RateLimitError, 429, "slow down"), ModelRateLimited),
+    (_status(anthropic.BadRequestError, 400, "messages: bad shape"), ModelUnreachable),
+    (_status(anthropic.InternalServerError, 500, "oops"), ModelUnreachable),
+])
+async def test_api_status_errors_say_what_went_wrong(error, raised):
     client = _client(lambda: FakeStream([], None, raise_on_iter=error), [])
-    with pytest.raises(ModelUnreachable):
+    with pytest.raises(raised):
         await _run(client)

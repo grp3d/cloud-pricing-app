@@ -1,0 +1,22 @@
+id: GC-15
+title: "024 GC-6: the open architecture on GCP, per service and totals, partial where unmatched"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+messages:
+  - What would this architecture cost on GCP?
+expect:
+  operations: [find_matches, price_matches]
+  result_rows: true
+  providers: [aws, gcp]
+  partial_total: true
+  contains: ["partial", "guess", "not compared"]
+  not_contains: ["[figure unavailable]", "[figure removed]"]
+script:
+  - tool_calls: [{name: find_matches, arguments: {target_providers: [gcp]}}]
+  - tool_calls: [{name: price_matches, arguments: {}}]
+  - text: ["On GCP (regions us-east1 and us-west1, a guess), the services that have a match come
+      to [[F2]] against [[F1]] on AWS, a difference of [[F3]] ([[F4]]). These totals are
+      partial: some services were not compared because GCP has no equivalent here. The table
+      beside me lists each service with its match quality."]

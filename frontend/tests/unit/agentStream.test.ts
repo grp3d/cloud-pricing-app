@@ -82,3 +82,26 @@ describe("sendAgentMessage", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("024 events", () => {
+  it("parses result events and status progress", () => {
+    const { events } = parseEventLines(
+      'data: {"event":"status","state":"running_operation","label":"Matching services",' +
+        '"done":12,"total":20}\n\ndata: {"event":"result","result":{"id":"r1","title":"T"}}\n\n',
+    );
+    expect(events).toEqual([
+      { event: "status", state: "running_operation", label: "Matching services", done: 12,
+        total: 20 },
+      { event: "result", result: { id: "r1", title: "T" } },
+    ]);
+  });
+});
+
+describe("progressText", () => {
+  it("names the step and the count", async () => {
+    const { progressText } = await import("../../src/components/agent/agentText");
+    expect(progressText({ label: "Matching services", done: 12, total: 20 })).toBe(
+      "Matching services (12 of 20)…",
+    );
+  });
+});

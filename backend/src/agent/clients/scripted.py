@@ -52,14 +52,9 @@ class ScriptedModelClient:
 
     @classmethod
     def demo(cls) -> ScriptedModelClient:
-        """Prices the open architecture for 1 month, then states the total by reference."""
-        return cls([
-            Turn(tool_calls=[ToolCall("demo-1", "price_open_architecture",
-                                      {"duration": "1_month"})],
-                 usage=Usage(100, 20)),
-            Turn(text=["This architecture costs [[F1]] ", "for 1 month (31 days)."],
-                 usage=Usage(150, 30)),
-        ])
+        """The e2e model. A question that names Azure compares the open architecture with Azure
+        in eastus (024); anything else prices the open architecture for 1 month (023)."""
+        return _DemoClient()
 
     async def stream(
         self, system: str, messages: list[ModelMessage], tools: list[ToolSpec]
@@ -77,3 +72,42 @@ class ScriptedModelClient:
         for call in turn.tool_calls:
             yield call
         yield turn.usage
+
+
+class _DemoClient(ScriptedModelClient):
+    """Chooses its script from the question, on the first call of each answer."""
+
+    def __init__(self) -> None:
+        super().__init__([])
+        self._chosen = False
+
+    async def stream(self, system, messages, tools):
+        if not self._chosen:
+            self._chosen = True
+            question = next((m.text for m in reversed(messages) if m.role == "user"), "")
+            self._turns = _COMPARE() if "azure" in question.lower() else _PRICE()
+        async for event in super().stream(system, messages, tools):
+            yield event
+
+
+def _PRICE() -> list[Turn]:
+    return [
+        Turn(tool_calls=[ToolCall("demo-1", "price_open_architecture",
+                                  {"duration": "1_month"})],
+             usage=Usage(100, 20)),
+        Turn(text=["This architecture costs [[F1]] ", "for 1 month (31 days)."],
+             usage=Usage(150, 30)),
+    ]
+
+
+def _COMPARE() -> list[Turn]:
+    return [
+        Turn(tool_calls=[ToolCall("demo-1", "find_matches",
+                                  {"target_providers": ["azure"],
+                                   "target_regions": {"azure": "eastus"}})],
+             usage=Usage(100, 20)),
+        Turn(tool_calls=[ToolCall("demo-2", "price_matches", {})], usage=Usage(150, 30)),
+        Turn(text=["On Azure (eastus), the matched services come to [[F2]] against [[F1]] ",
+                   "on AWS. The table beside me shows each match."],
+             usage=Usage(200, 40)),
+    ]

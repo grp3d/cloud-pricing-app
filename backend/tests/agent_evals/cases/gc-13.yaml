@@ -1,0 +1,18 @@
+id: GC-13
+title: "024 GC-4: a provider with no pricing in the region is said, with no figure"
+pricing: combined
+messages:
+  - What does object storage cost on Azure in eastus and on GCP in asia-east1?
+  - Use defaults for anything I didn't say.
+expect:
+  operations: [search_products, price_products]
+  no_result: true
+  contains: [["can't price GCP", "not GCP", "no GCP pricing"], "asia-east1"]
+  not_contains: ["[figure unavailable]", "[figure removed]"]
+script:
+  - text: ["How much storage, and which tier? Or I can use defaults."]
+  - tool_calls: [{name: search_products, arguments: {providers: [azure, gcp], category: storage,
+      function: object_storage, regions: {azure: eastus, gcp: asia-east1}}}]
+  - tool_calls: [{name: price_products, arguments: {picks: [C1], usage: default}}]
+  - text: ["I can't price GCP in asia-east1: the app has no GCP pricing data there. Azure hot
+      object storage in eastus costs [[F1]] for 1 TB stored for the month, on demand."]

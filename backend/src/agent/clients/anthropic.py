@@ -16,8 +16,12 @@ import anthropic
 
 from src.agent.model import (
     ModelBadOutput,
+    ModelError,
     ModelEvent,
+    ModelKeyRejected,
     ModelMessage,
+    ModelNoCredit,
+    ModelRateLimited,
     ModelUnreachable,
     TextDelta,
     ToolCall,
@@ -89,7 +93,7 @@ class AnthropicClient:
         except anthropic.APIConnectionError as exc:
             raise ModelUnreachable("the hosted model can't be reached") from exc
         except anthropic.APIStatusError as exc:
-            raise ModelUnreachable(f"the hosted model answered {exc.status_code}") from exc
+            raise _status_error(exc) from exc
 
         tool_uses = [b for b in final.content if b.type == "tool_use"]
         if final.stop_reason == "refusal":
@@ -104,3 +108,14 @@ class AnthropicClient:
                 self._turns[block.id] = raw
                 yield ToolCall(block.id, block.name, block.input)
         yield Usage(int(final.usage.input_tokens or 0), int(final.usage.output_tokens or 0))
+
+
+def _status_error(exc: anthropic.APIStatusError) -> ModelError:
+    """The precise error for an HTTP error from the API (the user sees its fixed message)."""
+    if exc.status_code in (401, 403):
+        return ModelKeyRejected(f"the hosted model refused the API key ({exc.status_code})")
+    if exc.status_code == 429:
+        return ModelRateLimited("the hosted model is rate-limiting requests")
+    if exc.status_code in (400, 402) and "credit balance" in str(exc).lower():
+        return ModelNoCredit("the hosted model's account has no credit left")
+    return ModelUnreachable(f"the hosted model answered {exc.status_code}")

@@ -12,7 +12,7 @@ where a later spec changed an earlier one, the page describes the result.
 | [Trends](trends.md) | The SKUs Changed chart and the biggest movers |
 | [Accounts and sharing](accounts-and-sharing.md) | Guests, logins, public architectures, importing a copy, standard architectures |
 | [Admin](admin.md) | Agent settings, users, Admin import and export, System Information |
-| [Agent](agent.md) | The Agent tab, sessions, what the agent can answer, the activity log, access and limits |
+| [Agent](agent.md) | The Agent tab, what the agent can answer, price comparisons, the Results pane and CSV download, sessions, the activity log, access and limits |
 
 Deployment and operation are in [setup.md](../setup.md) and [operations.md](../operations.md);
 settings are in [configuration.md](../configuration.md).

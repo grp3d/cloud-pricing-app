@@ -34,6 +34,27 @@ one call (clarification 1).
   architectures, not a general finder. 022 R10 already left mapping data to agent-04.
 - Let the model call `search` per service. Rejected by clarification 1 (round limit).
 
+### R1 addendum: rules found against the real catalog (2026-11-13)
+
+Checked against the full pricing data, not just the fixtures:
+- **Narrowed searches.** Azure lists about 2,100 VMs and 1,300 managed-database rows in one
+  region, more than one 1,000-row search holds. So each source's search is narrowed by its
+  specs (`targeted_searches`):
+  - VMs by vCPU count in the size name, and on AWS in the `vcpu` attribute;
+  - databases by engine;
+  - blob operations, load balancers, DNS, transfer kind and Kubernetes by their product names.
+- **Never offered as a match** (`EXCLUDED_WORDS`): terms or discounts sold as their own SKU
+  (commitments, committed use, reservations, savings plans), spot or preemptible capacity,
+  Cloud Services, dedicated hosts, licences, and free, developer, read-replica, backup and
+  extended-support variants. AWS EC2/RDS rows that aren't shared, plain, used capacity are
+  also excluded.
+- **Ranking.** Niche variants (Enterprise Plus, dual- or multi-region, premium, internal,
+  cross-regional, "always ready", tagging, custom) rank after the plain product. So does a
+  product that names another part of the world than the target region (for example "from
+  Delhi" for us-east4).
+- **Speed** on the real data: `find_matches` takes 0.2–0.7 s for the standard architectures
+  against two providers (16 services: 0.4 s), well under the 10 s target.
+
 ## R2. Product profile
 
 **Decision**: `profile(item, provider) -> ProductProfile` with these fields.
@@ -47,6 +68,9 @@ one call (clarification 1).
 - **specs** (where the catalog attributes carry them): `vcpu`, `memory_gib`, `os`, `engine`,
   `storage_class` (hot/standard, cool/nearline, cold/coldline, archive), `redundancy`
   (local/zonal/regional/geo), `ha`, `media` (ssd/hdd).
+  - Added against the real catalog: `purpose` (general, compute, memory, storage,
+    accelerated, confidential), `burstable`, `transfer` (internet, inter-region or other),
+    `visibility` (public or private DNS), and `lb_layer` (application, network, gateway).
 - **unit_kind** (R4): `hour`, `gb_month`, `gb`, `request`, `vcpu_hour`, `gib_hour`, and so
   on, or `unknown`.
 
@@ -64,7 +88,7 @@ Explicit tables are reviewable, as in 014 and 022.
 |---|---|
 | exact | same function, same unit_kind, and every spec both sides have is equal |
 | close | same function, same unit_kind (or one simple scale, R4), and specs differ by at most one size step or one minor attribute (e.g. vCPU equal but memory up to 2× larger; same storage class with different redundancy) |
-| partial | same category, different function or a different billing model (for example per-instance versus per-vCPU/GiB, provisioned versus serverless), or usage that can't be converted |
+| partial | same category, a major spec difference (vCPU, less or over twice the memory, machine purpose, OS, engine, access tier, kind of transfer, DNS zone type, load balancer type), different function or a different billing model (for example per-instance versus per-vCPU/GiB, provisioned versus serverless), or usage that can't be converted |
 | no equivalent | no candidate in the same category |
 
 - `differences` is a list of short app-written facts, for example "memory 16 GiB vs 8 GiB",
@@ -80,9 +104,13 @@ Explicit tables are reviewable, as in 014 and 022.
 **Decision**: a source quantity is converted to the target's billing unit only when both bill
 the same kind of unit and at most a fixed scale is needed.
 
-- **Allowed scales**: GB↔GiB (1 GiB = 1.073741824 GB); seconds, minutes and hours; per-10K
-  and per-1M blocks (already normalised by the adapters); vCPU-hours for GCP machines
-  (instance-hours × vCPU, and × memory GiB for RAM).
+- **Allowed scales**: none beyond the adapters' own block normalisation (per-10K, per-1M),
+  plus GCP machines (instance-hours priced as vCPU × core rate + GiB × RAM rate by the
+  existing `gcp_machine` options).
+  - *Implementation note (2026-11-13)*: GB and GiB are treated as the same billed unit, not
+    scaled by 1.073741824. That's the convention 022's reviewed standard architectures use
+    (S3 2000 GB-months → GCP 2000 GiB-months), and AWS bills "GB" in binary gigabytes.
+    Scaling here would make 024's comparisons disagree with the seeded equivalents.
 - **Anything else** (for example RPU-hours to slot-hours) can't be converted. The candidate
   stays, but its quality is at most partial and its price is "unavailable: usage can't be
   converted". No figure is shown (FR-011).

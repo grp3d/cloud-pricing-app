@@ -12,7 +12,7 @@ One comparison result shown in the Results pane (spec US6, FR-013, FR-018–FR-0
 |---|---|---|
 | `id` | UUID PK | |
 | `session_id` | UUID FK → `agent_sessions.id` ON DELETE CASCADE, indexed | Results go when the session goes (023's 3-day expiry, or a new session) |
-| `message_id` | UUID FK → `agent_messages.id` ON DELETE CASCADE | The agent message the result belongs to (its card) |
+| `message_id` | UUID FK → `agent_messages.id` ON DELETE CASCADE | The **user** message whose answer produced it. The agent message is only written when the answer ends, and a failed answer has none, so results hang off the question; the API reports each result on the agent message that answered that question (`result_ids`), or on the user message when the answer failed |
 | `seq` | int | Order within the session (1, 2, …); unique with `session_id` |
 | `kind` | varchar(30) | `category_comparison` or `architecture_comparison`; check constraint |
 | `title` | varchar(200) | e.g. "Three-tier web app: AWS vs Azure, GCP" |

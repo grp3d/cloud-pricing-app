@@ -1,0 +1,17 @@
+id: GC-17
+title: "024 GC-8: a single on-demand price, with its basis, and no table"
+pricing: combined
+messages:
+  - What's the on-demand price of a t3.medium in eu-west-1 per month?
+expect:
+  operations: [search_products, price_products]
+  no_result: true
+  contains: ["t3.medium", "eu-west-1", "on demand", "1 month"]
+  not_contains: ["[figure unavailable]", "[figure removed]"]
+script:
+  - tool_calls: [{name: search_products, arguments: {providers: [aws], category: compute,
+      function: vm, regions: {aws: eu-west-1}, text: t3.medium}}]
+  - tool_calls: [{name: price_products, arguments: {picks: [C1],
+      usage: {quantity: 1, unit: instances}, duration: 1_month}}]
+  - text: ["A t3.medium in eu-west-1, on demand and running all day, costs [[F1]] for 1 month
+      (31 days)."]

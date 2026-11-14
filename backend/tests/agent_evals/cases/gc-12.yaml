@@ -1,0 +1,23 @@
+id: GC-12
+title: "024 GC-3: a tier with no counterpart is named, with the closest match and differences"
+pricing: combined
+messages:
+  - What would S3 Glacier Instant Retrieval in us-east-1 cost on Azure?
+  - Use defaults for anything I didn't say.
+expect:
+  operations: [search_products, price_products]
+  result_rows: true
+  qualities:
+    "Object storage": {"azure:eastus": partial}
+  contains: [["exact", "no direct", "found no", "has no"], "partial", "tier"]
+  not_contains: ["[figure unavailable]", "[figure removed]", "didn't come from", "not pulled from", "use the figures above instead"]
+script:
+  - text: ["Which amount and redundancy? Or I can use defaults."]
+  - tool_calls: [{name: search_products, arguments: {providers: [aws], category: storage,
+      function: object_storage, regions: {aws: us-east-1}, text: Archive}}]
+  - tool_calls: [{name: search_products, arguments: {providers: [azure], category: storage,
+      function: object_storage, regions: {azure: eastus}, reference: C1}}]
+  - tool_calls: [{name: price_products, arguments: {picks: [C1, C2], usage: default}}]
+  - text: ["Azure has no direct counterpart in this data: the closest is Hot LRS blob storage, a
+      partial match (access tier hot vs cold). Glacier Instant Retrieval costs [[F1]] and Hot
+      LRS [[F2]] for 1 TB stored for the month."]
