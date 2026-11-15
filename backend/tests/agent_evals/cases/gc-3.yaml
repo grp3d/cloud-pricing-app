@@ -10,7 +10,7 @@ expect:
   operations: [price_open_architecture]
   figures:
     - {of: total, duration: 1_month}
-  contains: ["NOSUCHSKU", "exclud"]
+  contains: ["NOSUCHSKU", ["exclud", "leaves out", "left out"]]
 script:
   - tool_calls: [{name: price_open_architecture, arguments: {duration: 1_month}}]
   - text: ["It costs [[F1]] per month (1 month, 31 days). One service, AmazonEC2 SKU NOSUCHSKU, can't be priced, so the total excludes it."]

@@ -4,13 +4,25 @@ Start with [README.md](README.md). The development guide is [docs/development.md
 current behaviour is described in [docs/features/](docs/features/).
 The project's rules are in `.specify/memory/constitution.md`.
 
-## Testing the agent with hosted models
+## Paid API usage
 
-Hosted-model runs (`pytest -m live_model` with an `anthropic:` model) are paid by the user. Follow
-the budget rules in [docs/development.md](docs/development.md#the-agent): under $0.50 per
-change unless the user agrees to more, ask first (cases, model, runs, cost), only the affected
-cases, once, at most two runs per change, never repeat runs for stability, and stop on any API
-error.
+Any API call that costs the user money (hosted models such as `anthropic:`, AWS, any other paid
+service) needs an approved estimate first:
+
+1. **Estimate before starting.** Say what will be called, how many times, and the cost in USD,
+   worked out from the last report or the provider's prices. Then stop and wait for a yes.
+2. **Hold to the approved estimate.** Spend only what was approved: the cases, model and runs
+   named, within the amount.
+3. **Stop if the estimate changes.** If the work turns out to need more calls, runs, cases or
+   money than approved, or a call costs more than estimated, stop at once and give a new
+   estimate. Don't continue until it's approved.
+4. **Stop on any API error** (credit, key, rate limit, timeout). Don't retry.
+
+For hosted-model evals the run enforces this: it won't make a paid call without
+`AGENT_EVAL_APPROVED_USD` and a price, and stops itself before going over. The details and the
+other budget rules (under $0.50 per change unless agreed, only affected cases, once, at most two
+runs per change, no repeat runs for stability) are in
+[docs/development.md](docs/development.md#the-agent).
 
 ## Documentation
 

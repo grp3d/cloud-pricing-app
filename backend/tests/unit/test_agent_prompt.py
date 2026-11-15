@@ -8,7 +8,7 @@ from src.agent.prompt import PROMPT_VERSION, SYSTEM_PROMPT
 
 
 def test_version():
-    assert PROMPT_VERSION == "024.2"
+    assert PROMPT_VERSION == "024.4"
 
 
 def test_names_every_comparison_operation_and_they_exist():
@@ -19,7 +19,8 @@ def test_names_every_comparison_operation_and_they_exist():
 
 def test_keeps_the_comparison_rules():
     for rule in ("Never recommend a provider", "at most three short questions",
-                 "is a guess", "Never name a SKU yourself", "never raise it",
+                 "Count every question mark", "by its service and SKU",
+                 "a guess, in those words", "Never name a SKU yourself", "never raise it",
                  "give no figure for it", "shown to the user as a table",
                  "Those amounts came from operation results"):
         assert rule in SYSTEM_PROMPT, rule

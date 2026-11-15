@@ -9,7 +9,7 @@ expect:
   result_rows: true
   qualities:
     "Object storage": {"azure:eastus": partial}
-  contains: [["exact", "no direct", "found no", "has no"], "partial", "tier"]
+  contains: [["exact", "no direct", "found no", "has no", "closest"], "partial", "tier"]
   not_contains: ["[figure unavailable]", "[figure removed]", "didn't come from", "not pulled from", "use the figures above instead"]
 script:
   - text: ["Which amount and redundancy? Or I can use defaults."]

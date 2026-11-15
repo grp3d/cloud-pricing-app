@@ -8,7 +8,7 @@ expect:
   operations: [search_products, price_products]
   result_rows: true
   providers: [azure, gcp]
-  contains: ["1 TB", "guess", "on demand"]
+  contains: ["1 TB", "guess", ["on demand", "on-demand"]]
   not_contains: ["[figure unavailable]", "[figure removed]", "I recommend", "didn't come from", "not pulled from", "use the figures above instead"]
 script:
   - text: ["Which storage, tier, redundancy, regions and amount? Or I can use defaults."]

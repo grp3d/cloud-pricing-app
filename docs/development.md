@@ -219,20 +219,31 @@ preview messages. For the hosted model, put `AGENT_ANTHROPIC_API_KEY=…` in `ba
   person paying agrees to more first:
   - Iterate with the scripted cases and a local model (`ollama:…`, free). A hosted run confirms
     a change; it isn't for iterating.
-  - Before a hosted run, say which cases, which model, how many runs and roughly what it costs,
-    and get a yes.
+  - Before a hosted run, give an estimate (which cases, which model, how many runs, calls and
+    cost in USD, from the last report's calls and tokens per case) and get a yes. If the work
+    then needs more than was approved, stop and give a new estimate.
   - Run only the cases the change affects (`-k "GC-12 or GC-13"`), once. Use the cheapest model
     that answers the question (Haiku before Sonnet). Run the full set only before a release or
     when asked.
   - At most two hosted runs per change. Fix wording or checks from the saved report, not by
     running again; never repeat runs to test stability.
   - If a run fails with an API error (credit, key, rate limit), stop: don't retry.
-  - The run enforces a cap: it makes at most `AGENT_EVAL_MAX_CALLS` paid calls (default 30),
-    then skips the remaining cases. Local models are counted but never capped.
-  - The report gives calls, input and output tokens, and cost for each case and each model.
-    For the cost, give the prices in USD per million tokens, as the provider lists them:
-    `AGENT_EVAL_PRICES="claude-sonnet-5-5=<in>/<out>,claude-haiku-5-5=<in>/<out>"`. Use the
-    last report's calls per case to quote a run before asking for it.
+  - The run enforces the approved estimate. A paid model runs only with
+    `AGENT_EVAL_APPROVED_USD` (the amount approved) and its price in `AGENT_EVAL_PRICES`, in USD
+    per million tokens as the provider lists them:
+
+    ```bash
+    AGENT_EVAL_MODELS="anthropic:claude-haiku-5-5" AGENT_EVAL_APPROVED_USD=0.25 \
+    AGENT_EVAL_PRICES="claude-haiku-5-5=<in>/<out>" AGENT_EVAL_MAX_CALLS=25 \
+    uv run pytest -m live_model -k "GC-12 or GC-13"
+    ```
+
+    Before each paid call it checks what has been spent: if one more call at the run's average
+    cost would go past the approved amount, or the run has made `AGENT_EVAL_MAX_CALLS` paid calls
+    (default 30), the whole run stops and says why. It also stops on an API error. Local models
+    are counted but never capped.
+  - The report gives calls, input and output tokens, and cost for each case and each model, and
+    what was spent against the approved amount.
 - **End-to-end:** `e2e/agent.spec.ts` runs last, in its own Playwright project, because it
   switches the app-wide agent setting on (with the scripted model) and off again.
 

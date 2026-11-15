@@ -7,15 +7,18 @@ run, and writes `backend/agent-eval-report.md` with pass/fail per case and per c
 A hosted model needs `AGENT_ANTHROPIC_API_KEY`; Ollama is reached at `AGENT_EVAL_OLLAMA_URL`
 (default http://localhost:11434).
 
-Cost control (`metering.py`): the report gives calls, tokens and cost per case and per model.
-A run makes at most `AGENT_EVAL_MAX_CALLS` paid calls (default 30); the cases after that are
-skipped. Prices: `AGENT_EVAL_PRICES="<model>=<in>/<out>,..."`, USD per million tokens.
+Cost control (`metering.py`, docs/development.md "Budget for hosted-model runs"): a paid model
+runs only with the estimate the user approved, `AGENT_EVAL_APPROVED_USD`, and a price for it in
+`AGENT_EVAL_PRICES="<model>=<in>/<out>,..."` (USD per million tokens). The run stops as soon as
+the next paid call would go past the approved amount or `AGENT_EVAL_MAX_CALLS` (default 30), and
+on any API error. The report gives calls, tokens and cost per case and per model.
 """
 
 from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -39,8 +42,11 @@ REPORT = Path(__file__).resolve().parents[2] / "agent-eval-report.md"
 MODELS = [m.strip() for m in os.environ.get("AGENT_EVAL_MODELS", "").split(",") if m.strip()]
 _results: dict[str, list[CaseResult]] = {}
 _meters: dict[tuple[str, str], Meter] = {}
-BUDGET = Budget(int(os.environ.get("AGENT_EVAL_MAX_CALLS", DEFAULT_MAX_CALLS)))
+APPROVED_USD = os.environ.get("AGENT_EVAL_APPROVED_USD", "").strip()
+BUDGET = Budget(int(os.environ.get("AGENT_EVAL_MAX_CALLS", DEFAULT_MAX_CALLS)),
+                Decimal(APPROVED_USD) if APPROVED_USD else None)
 PRICES = Prices.parse(os.environ.get("AGENT_EVAL_PRICES"))
+API_ERRORS = {"no_credit", "key_rejected", "rate_limited", "unreachable", "timeout"}
 
 
 def anthropic_key() -> str | None:
@@ -80,7 +86,9 @@ def _cost(model: str, meter: Meter) -> str:
 def _write_report() -> None:
     lines = ["# Agent evaluation report", "",
              f"Run {datetime.now(UTC):%Y-%m-%d %H:%M} UTC. Case runs: {len(_meters)}. Paid calls: "
-             f"{BUDGET.paid_calls} of the cap of {BUDGET.max_calls}.", ""]
+             f"{BUDGET.paid_calls} of the cap of {BUDGET.max_calls}. Spent "
+             f"{format_cost(BUDGET.spent_usd)} of the approved "
+             f"{format_cost(BUDGET.max_usd) if BUDGET.max_usd is not None else '(none)'}.", ""]
     lines += ["| Model | Passed | Calls | Input tokens | Output tokens | Cost | Cost per case |",
               "|---|---|---|---|---|---|---|"]
     for model, results in _results.items():
@@ -121,16 +129,24 @@ async def test_live_golden_conversation(db_session, use_pricing_root, model, cas
         use_pricing_root(combined_pricing_root())
     elif providers & {"gcp", "azure"}:
         use_pricing_root(STANDARD_PRICING_ROOT)
-    client = Metered(_client(model), BUDGET)
-    if client.paid and BUDGET.reached:
-        pytest.skip(f"the run's cap of {BUDGET.max_calls} paid calls is used up "
-                    "(AGENT_EVAL_MAX_CALLS)")
+    client = Metered(_client(model), BUDGET, PRICES)
+    if client.paid:
+        if BUDGET.max_usd is None:
+            pytest.skip("no approved estimate: set AGENT_EVAL_APPROVED_USD to the amount the "
+                        "user approved")
+        if client.model not in PRICES.by_model:
+            pytest.skip(f"no price for {client.model} in AGENT_EVAL_PRICES, so spend can't be "
+                        "held to the approved amount")
+        if reason := BUDGET.over():
+            pytest.exit(f"stopped before {case['id']}: {reason}. Ask before spending more.")
     result = await run_case(db_session, case, client)
     _meters[(model, case["id"])] = client.meter
     _results.setdefault(model, []).append(result)
     _write_report()
     if client.meter.stopped:
-        pytest.fail(f"stopped: the run's cap of {BUDGET.max_calls} paid calls is used up "
-                    "(AGENT_EVAL_MAX_CALLS); this case didn't finish")
+        pytest.exit(f"stopped in {case['id']}: {client.meter.stop_reason}. Ask before "
+                    "spending more.")
+    if client.paid and result.error and result.error.split(":")[0] in API_ERRORS:
+        pytest.exit(f"stopped in {case['id']}: {result.error}. Don't retry.")
     failed = [c.name for c in result.checks if not c.passed]
     assert result.passed, f"{result.error or ''} {failed}"

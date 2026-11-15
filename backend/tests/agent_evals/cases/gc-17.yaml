@@ -6,7 +6,7 @@ messages:
 expect:
   operations: [search_products, price_products]
   no_result: true
-  contains: ["t3.medium", "eu-west-1", "on demand", "1 month"]
+  contains: ["t3.medium", "eu-west-1", ["on demand", "on-demand"], "1 month"]
   not_contains: ["[figure unavailable]", "[figure removed]"]
 script:
   - tool_calls: [{name: search_products, arguments: {providers: [aws], category: compute,
