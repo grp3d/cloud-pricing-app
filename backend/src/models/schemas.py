@@ -1023,6 +1023,8 @@ class AgentMessageOut(ORMBase):
     # 024: the results shown with this message (its cards): on the agent message that answered,
     # or on the user message when its answer failed.
     result_ids: list[uuid.UUID] = []
+    # 025: the proposals shown with this message, placed the same way.
+    proposal_ids: list[uuid.UUID] = []
 
 
 # --- 024: comparison results (contracts/agent-api.md, data-model.md §3) -------------------------
@@ -1104,10 +1106,108 @@ class AgentResultOut(ORMBase):
     created_at: datetime
 
 
+# 025 (contracts/agent-api.md, data-model.md §2–§4): proposals.
+
+ProposalKind = Literal["change", "create", "import"]
+ProposalStatus = Literal["pending", "accepted", "rejected", "superseded", "expired"]
+
+
+class ProposalItemOut(BaseModel):
+    ref: str
+    op: Literal["add", "change", "remove"]
+    target: Literal["collection", "service", "connector", "architecture"]
+    label: str
+    group: str | None = None
+    before: dict | None = None
+    after: dict | None = None
+
+
+class ProposalMoney(BaseModel):
+    total: Decimal
+    partial: bool = False
+
+
+class ProposalCostLine(BaseModel):
+    label: str
+    before: Decimal | None = None
+    after: Decimal | None = None
+    difference: Decimal | None = None
+
+
+class ProposalContribution(BaseModel):
+    group: str
+    difference: Decimal
+
+
+class ProposalUnpriced(BaseModel):
+    label: str
+    reason: str
+
+
+class ProposalCostOut(BaseModel):
+    duration: CalculationDuration
+    snapshot: dict
+    before: ProposalMoney | None = None
+    after: ProposalMoney
+    difference: Decimal | None = None
+    percent: Decimal | None = None
+    by_service: list[ProposalCostLine] = []
+    by_region: list[ProposalCostLine] = []
+    contributions: list[ProposalContribution] = []
+    unpriceable: list[ProposalUnpriced] = []
+
+
+class ProposalAssumption(BaseModel):
+    kind: Literal["region", "term", "size", "usage", "default"]
+    text: str = Field(max_length=300)
+    guessed: bool = False
+
+
+class ProposalUndoOut(BaseModel):
+    status: Literal["available", "undone", "ended"]
+    can_undo: bool
+    can_redo: bool
+    end_reason: Literal["edited", "superseded", "session_ended", "deleted"] | None = None
+
+
+class AgentProposalOut(BaseModel):
+    id: uuid.UUID
+    message_id: uuid.UUID
+    seq: int
+    kind: ProposalKind
+    architecture_id: uuid.UUID | None = None
+    architecture_name: str | None = None
+    title: str
+    status: ProposalStatus
+    stale: bool = False
+    items: list[ProposalItemOut]
+    cost: ProposalCostOut
+    assumptions: list[ProposalAssumption] = []
+    undo: ProposalUndoOut | None = None
+    created_at: datetime
+    decided_at: datetime | None = None
+
+
+class ProposalAcceptBody(BaseModel):
+    """The architecture open in the browser (null when none is), and whether the user has seen
+    the re-priced figures of a stale proposal (FR-007)."""
+
+    architecture_id: uuid.UUID | None = None
+    confirm_restaled: bool = False
+
+
+class ProposalActionOut(BaseModel):
+    proposal: AgentProposalOut
+    # For an accepted create or import: the new architecture, to open.
+    open_architecture_id: uuid.UUID | None = None
+
+
 class AgentSessionDetailOut(AgentSessionOut):
     messages: list[AgentMessageOut]
     # 024: the session's results in order.
     results: list[AgentResultOut] = []
+    # 025: the session's proposals in order.
+    proposals: list[AgentProposalOut] = []
 
 
 class AgentMessageCreate(BaseModel):
@@ -1187,6 +1287,22 @@ class AgentResultEvent(BaseModel):
     result: AgentResultOut
 
 
+class AgentProposalEvent(BaseModel):
+    """025: a proposal, sent when a `propose_*` operation succeeds."""
+
+    event: Literal["proposal"] = "proposal"
+    proposal: AgentProposalOut
+
+
+class AgentOpenArchitectureEvent(BaseModel):
+    """025 (research R7): the agent is opening one of the user's architectures; the browser runs
+    its unsaved-work check, then opens it."""
+
+    event: Literal["open_architecture"] = "open_architecture"
+    architecture_id: uuid.UUID
+    name: str
+
+
 AgentStreamEvent = Annotated[
     AgentAcceptedEvent
     | AgentStatusEvent
@@ -1194,7 +1310,9 @@ AgentStreamEvent = Annotated[
     | AgentOperationEvent
     | AgentDoneEvent
     | AgentErrorEvent
-    | AgentResultEvent,
+    | AgentResultEvent
+    | AgentProposalEvent
+    | AgentOpenArchitectureEvent,
     Field(discriminator="event"),
 ]
 

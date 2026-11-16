@@ -1,0 +1,21 @@
+id: GC-24
+title: "025 GC-6 and US7: a what-if is a proposal the user rejects, and nothing changes"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+messages:
+  - What if I doubled the S3 storage?
+expect:
+  operations: [describe_open_architecture, propose_changes]
+  proposal: {kind: change, at_least: {change: 1}, none_of: [add, remove]}
+  contains: ["won't be saved", "accept"]
+  not_contains: ["[figure removed]", "I saved", "I've doubled"]
+actions: [reject]
+script:
+  - tool_calls: [{name: describe_open_architecture, arguments: {}}]
+  - tool_calls: [{name: propose_changes, arguments: {
+      title: Double the S3 storage,
+      change_services: [{ref: V7, scale: 2}]}}]
+  - text: ["Doubling the S3 storage would take the total from [[F2]] to [[F1]], [[F3]] ([[F4]])
+      more. It's a proposal beside me and won't be saved unless you accept it."]

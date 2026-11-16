@@ -42,7 +42,9 @@ from src.models.orm import AgentMessage, AgentOperation, AgentSession, AgentUsag
 from src.models.schemas import (
     AgentDoneEvent,
     AgentErrorEvent,
+    AgentOpenArchitectureEvent,
     AgentOperationEvent,
+    AgentProposalEvent,
     AgentResultEvent,
     AgentStatusEvent,
     AgentTextEvent,
@@ -235,6 +237,8 @@ async def answer(ctx: LoopContext) -> AsyncIterator:
                 clock = time.perf_counter()
                 snapshot = None
                 results_before = len(op_context.results)
+                proposals_before = len(op_context.proposals)
+                opens_before = len(op_context.opened)
                 progress: asyncio.Queue = asyncio.Queue()
                 op_context.progress = _progress_reporter(progress)
                 running = asyncio.ensure_future(
@@ -262,6 +266,14 @@ async def answer(ctx: LoopContext) -> AsyncIterator:
                     from src.agent.results import to_out
 
                     yield AgentResultEvent(result=to_out(made))
+                # 025: an architecture the agent opened, then the proposals it made.
+                for architecture_id, name in op_context.opened[opens_before:]:
+                    yield AgentOpenArchitectureEvent(architecture_id=architecture_id, name=name)
+                for made in op_context.proposals[proposals_before:]:
+                    from src.agent.proposals import to_out as proposal_out
+
+                    yield AgentProposalEvent(proposal=await proposal_out(ctx.session, ctx.user,
+                                                                         made))
                 conversation.append(ModelMessage(
                     role="tool", text=content, tool_call_id=call.id, tool_name=call.name,
                     is_error=is_error,

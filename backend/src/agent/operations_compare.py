@@ -165,6 +165,55 @@ async def _regions(ctx: OperationContext, providers: list[str],
     return out
 
 
+async def search_region(searcher, provider: str, region: str, functions: list[str],
+                        text: str | None, reference: Candidate | None = None) -> list[Candidate]:
+    """The catalog's products of `functions` in one provider and region, best first (up to
+    TOP_N), with match qualities against `reference` when given. Shared by `search_products`
+    (024) and `find_products` (025), so both search the catalog the same way."""
+    rows = []
+    for function in functions:
+        for filters in SEARCHES[provider].get(function, []):
+            if text:
+                filters = {**filters, "text": text}
+            rows.extend(await searcher.search(provider, region, filters))
+    units: dict = {}
+    if provider == "aws" and rows:
+        from src.agent.matching.candidates import _aws_units
+
+        units = _aws_units(region, sorted({r.sku for r in rows}))
+    candidates: list[Candidate] = []
+    seen: set[str] = set()
+    for row in rows:
+        if row.sku in seen:
+            continue
+        seen.add(row.sku)
+        target = profile(row, unit=units.get(row.sku) if provider == "aws" else None)
+        if target.function not in functions:
+            continue
+        if excluded(product_label(row), row.attributes):
+            continue
+        candidate = Candidate(
+            source_ref=None, provider=provider, region=region,
+            service_code=row.service_code, sku=row.sku, label=product_label(row),
+            profile=target, price_types=tuple(row.price_types),
+            unit=units.get(row.sku) or row.unit, ram_sku=row.attributes.get("ram_sku"),
+        )
+        if reference is not None:
+            candidate.quality, candidate.differences = quality(reference.profile, target)
+        candidates.append(candidate)
+    if provider == "gcp":
+        from src.agent.matching.candidates import _gcp_ram_skus
+
+        pairs = _gcp_ram_skus(rows)
+        for c in candidates:
+            c.ram_sku = c.ram_sku or pairs.get(c.sku)
+    from src.agent.matching.quality import LABELS
+
+    candidates.sort(key=lambda c: (LABELS.index(c.quality) if c.quality else 0,
+                                   functions.index(c.profile.function), c.label, c.sku))
+    return [c for c in candidates if c.quality != "no_equivalent"][:TOP_N]
+
+
 @registry.operation(
     "search_products",
     "Find products in a category on one or more providers (up to 5 each), for a comparison or "
@@ -188,48 +237,8 @@ async def search_products(ctx: OperationContext, args: SearchProductsInput) -> O
         if not choice.available:
             data["providers"][provider] = entry
             continue
-        rows = []
-        for function in functions:
-            for filters in SEARCHES[provider].get(function, []):
-                if args.text:
-                    filters = {**filters, "text": args.text}
-                rows.extend(await searcher.search(provider, choice.region, filters))
-        units: dict = {}
-        if provider == "aws" and rows:
-            from src.agent.matching.candidates import _aws_units
-
-            units = _aws_units(choice.region, sorted({r.sku for r in rows}))
-        candidates: list[Candidate] = []
-        seen: set[str] = set()
-        for row in rows:
-            if row.sku in seen:
-                continue
-            seen.add(row.sku)
-            target = profile(row, unit=units.get(row.sku) if provider == "aws" else None)
-            if target.function not in functions:
-                continue
-            if excluded(product_label(row), row.attributes):
-                continue
-            candidate = Candidate(
-                source_ref=None, provider=provider, region=choice.region,
-                service_code=row.service_code, sku=row.sku, label=product_label(row),
-                profile=target, price_types=tuple(row.price_types),
-                unit=units.get(row.sku) or row.unit, ram_sku=row.attributes.get("ram_sku"),
-            )
-            if reference is not None:
-                candidate.quality, candidate.differences = quality(reference.profile, target)
-            candidates.append(candidate)
-        if provider == "gcp":
-            from src.agent.matching.candidates import _gcp_ram_skus
-
-            pairs = _gcp_ram_skus(rows)
-            for c in candidates:
-                c.ram_sku = c.ram_sku or pairs.get(c.sku)
-        from src.agent.matching.quality import LABELS
-
-        candidates.sort(key=lambda c: (LABELS.index(c.quality) if c.quality else 0,
-                                       functions.index(c.profile.function), c.label, c.sku))
-        kept = [c for c in candidates if c.quality != "no_equivalent"][:TOP_N]
+        kept = await search_region(searcher, provider, choice.region, functions, args.text,
+                                   reference)
         for c in kept:
             ctx.matches.add_candidate(c)
         entry["products"] = [_candidate_out(c, with_quality=reference is not None)

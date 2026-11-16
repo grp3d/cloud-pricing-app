@@ -1,0 +1,15 @@
+id: GC-21B
+title: "025 edge case: the user declines the questions and the defaults, so nothing is proposed"
+pricing: combined
+messages:
+  - Create a three-tier web app on GCP.
+  - I don't want to answer questions, and I don't want your defaults either.
+expect:
+  no_operations: true
+  no_proposal: true
+  contains: ["need"]
+script:
+  - text: ["Which region, and how many web servers of what size? Which database? How much
+      storage? Or I can use my defaults."]
+  - text: ["Then I can't propose one yet. I need at least the region and roughly how big each
+      tier should be."]

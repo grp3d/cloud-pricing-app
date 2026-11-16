@@ -1,0 +1,42 @@
+id: GC-20
+title: "025 GC-2: replication to another region gets questions, then additions with before and after cost"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+messages:
+  - Change this architecture to include replication to another region.
+  - us-west-2. Copy the load balancer, the web servers and the database at full size.
+  - Make the standby's web servers and database half the size.
+expect:
+  operations: [describe_open_architecture, find_region_equivalents, propose_changes]
+  max_questions: 3
+  proposal: {kind: change, at_least: {add: 6}, none_of: [remove]}
+  contains: ["us-west-2", ["on demand", "on-demand"], "accept", "driver", "half"]
+  not_contains: ["[figure removed]", "[figure unavailable]", "I saved", "I've replicated"]
+script:
+  - text: ["Which region should the replica be in? Which components should I copy? How large
+      should the standby be, and how much data changes a month? Or I can use defaults."]
+  - tool_calls: [{name: describe_open_architecture, arguments: {}}]
+  - tool_calls: [{name: find_region_equivalents, arguments: {services: [V2, V3, V4, V5, V6],
+      region: us-west-2}}]
+  - tool_calls: [{name: propose_changes, arguments: {
+      title: Replicate to us-west-2,
+      add_collections: [{ref: new1, type: vpc, name: Standby, region: us-west-2,
+                         group: standby}],
+      add_services: [{in: new1, product: C1, group: standby}, {in: new1, product: C2, group: standby},
+                     {in: new1, product: C3, group: standby}, {in: new1, product: C4, group: standby},
+                     {in: new1, product: C5, group: standby}],
+      assumptions: [{kind: size, text: "the standby is the same size as the primary"},
+                    {kind: term, text: "the copies keep the originals' term: on demand"}]}}]
+  - text: ["I've proposed a standby in us-west-2 with copies of the load balancer, the web servers
+      and the database at full size, on demand like the originals. The total goes from [[F2]] to
+      [[F1]], [[F3]] ([[F4]]) more; the biggest driver is [[F5]]. Nothing is saved until you
+      accept it."]
+  - tool_calls: [{name: describe_open_architecture, arguments: {}}]
+  - tool_calls: [{name: propose_changes, arguments: {
+      title: Replicate to us-west-2 at half size, revise_pending: true,
+      change_services: [{ref: P4, scale: 0.5}, {ref: P5, scale: 0.5}, {ref: P6, scale: 0.5}]}}]
+  - text: ["I've changed the proposal: the standby's web servers and database are now half the
+      size; everything else is the same. The total goes from [[F2]] to [[F1]], [[F3]] more.
+      Nothing is saved until you accept."]

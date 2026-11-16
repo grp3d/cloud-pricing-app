@@ -2,10 +2,14 @@
  * 023-agent-foundation (Story 7, FR-024, constitution Principle VII): every operation the agent
  * ran in this session, with its inputs, outcome, time and the pricing snapshot behind any
  * figure.
+ *
+ * 025 (FR-014): the user's decisions on proposals (accept, reject, undo, redo) are listed too,
+ * named as theirs.
  */
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../../api/client";
+import { USER_ACTION_TEXT } from "../../lib/agentProposals";
 import { formatSessionTime } from "./agentText";
 
 function snapshotText(snapshot: Record<string, unknown> | null | undefined): string | null {
@@ -38,7 +42,7 @@ export function AgentActivityLog() {
             className="rounded-md border border-border px-2 py-1.5"
           >
             <div className="flex items-baseline justify-between gap-2">
-              <span className="font-medium">{op.name}</span>
+              <span className="font-medium">{USER_ACTION_TEXT[op.name] ?? op.name}</span>
               <span className={op.outcome === "ok" ? "text-muted-foreground" : "text-destructive"}>
                 {op.outcome === "ok" ? "ok" : "failed"} · {formatSessionTime(op.started_at)} ·{" "}
                 {op.duration_ms} ms

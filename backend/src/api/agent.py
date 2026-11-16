@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
-from src.agent import limits, sessions
+from src.agent import limits, proposals, sessions
 from src.agent import results as agent_results
 from src.agent.loop import LoopContext, answer
 from src.agent.model import AgentUnavailable, build_client
@@ -37,6 +37,8 @@ from src.models.schemas import (
     AgentSessionOut,
     AgentStatusOut,
     AgentStreamEnvelope,
+    ProposalAcceptBody,
+    ProposalActionOut,
 )
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -118,14 +120,67 @@ async def get_agent_session(session: DbSession, user: CurrentUser) -> AgentSessi
     messages = await sessions.messages(session, agent_session)
     results = await sessions.results(session, agent_session)
     shown = sessions.result_ids_by_message(messages, results)
+    found = await proposals.session_proposals(session, agent_session)
+    latest = proposals._latest_accepted(found)
+    proposal_outs = [await proposals.to_out(session, user, p, latest) for p in found]
+    await session.commit()  # an undo found ended is saved as ended (research R3)
+    placed = sessions.result_ids_by_message(messages, found)
     return AgentSessionDetailOut(
         id=agent_session.id,
         started_at=agent_session.started_at,
         closes_at=agent_session.closes_at,
         messages=[AgentMessageOut.model_validate(m).model_copy(
-            update={"result_ids": shown.get(m.id, [])}) for m in messages],
+            update={"result_ids": shown.get(m.id, []), "proposal_ids": placed.get(m.id, [])})
+            for m in messages],
         results=[agent_results.to_out(r) for r in results],
+        proposals=proposal_outs,
     )
+
+
+# --- 025: the user's decisions on proposals (contracts/agent-api.md) ---------------------------
+
+_ACTION_RESPONSES = {
+    404: {"description": "Not the caller's proposal."},
+    409: {"description": "Not possible now: not pending, busy, the architecture isn't open, "
+                         "undo has ended, or (accept) stale: accept again to confirm."},
+    422: {"description": "The proposal no longer passes the edit rules."},
+}
+
+
+async def _proposal_action(session, user, action, *args):
+    _require_named(user)
+    agent_session = await _session_or_404(session, user)
+    try:
+        return agent_session, await action(session, user, agent_session, *args)
+    except proposals.ProposalActionError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+
+
+async def _action_out(session, user, agent_session, proposal, opened=None) -> ProposalActionOut:
+    found = await proposals.session_proposals(session, agent_session)
+    out = await proposals.to_out(session, user, proposal, proposals._latest_accepted(found))
+    await session.commit()
+    return ProposalActionOut(proposal=out, open_architecture_id=opened)
+
+
+@router.post("/proposals/{proposal_id}/accept", response_model=ProposalActionOut,
+             responses=_ACTION_RESPONSES)
+async def accept_proposal(proposal_id: uuid.UUID, body: ProposalAcceptBody,
+                          session: DbSession, user: CurrentUser) -> ProposalActionOut:
+    """Save the proposal (FR-003). No model call and no message from the allowance (FR-016)."""
+    agent_session, (proposal, opened) = await _proposal_action(
+        session, user, proposals.accept, proposal_id, body)
+    return await _action_out(session, user, agent_session, proposal, opened)
+
+
+@router.post("/proposals/{proposal_id}/reject", response_model=ProposalActionOut,
+             responses=_ACTION_RESPONSES)
+async def reject_proposal(proposal_id: uuid.UUID, session: DbSession,
+                          user: CurrentUser) -> ProposalActionOut:
+    agent_session, proposal = await _proposal_action(session, user, proposals.reject,
+                                                     proposal_id)
+    return await _action_out(session, user, agent_session, proposal)
 
 
 @router.get(
@@ -288,3 +343,21 @@ async def retry_agent_message(
     message.status, message.error_kind = "accepted", None
     await session.commit()
     return _stream(factory, user.id, agent_session.id, message.id, charge_input=False)
+
+
+@router.post("/proposals/{proposal_id}/undo", response_model=ProposalActionOut,
+             responses=_ACTION_RESPONSES)
+async def undo_proposal(proposal_id: uuid.UUID, session: DbSession,
+                        user: CurrentUser) -> ProposalActionOut:
+    """Undo everything one accepted message changed (FR-005); no model call (FR-016)."""
+    agent_session, proposal = await _proposal_action(session, user, proposals.undo, proposal_id)
+    return await _action_out(session, user, agent_session, proposal)
+
+
+@router.post("/proposals/{proposal_id}/redo", response_model=ProposalActionOut,
+             responses=_ACTION_RESPONSES)
+async def redo_proposal(proposal_id: uuid.UUID, session: DbSession,
+                        user: CurrentUser) -> ProposalActionOut:
+    agent_session, proposal = await _proposal_action(session, user, proposals.redo, proposal_id)
+    return await _action_out(session, user, agent_session, proposal)
+

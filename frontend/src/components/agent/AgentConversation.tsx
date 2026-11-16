@@ -5,14 +5,18 @@
  *
  * 024 (FR-019): a comparison's result arrives as its own event; its card sits under the answer
  * (or under the question, if the answer failed) and shows the result in the Results pane.
+ *
+ * 025 (FR-015, FR-017): proposals arrive the same way, with their own cards; when the agent opens
+ * one of the user's architectures, the workspace is asked to open it.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { api, type AgentResult, type AgentStreamEvent } from "../../api/client";
+import { api, type AgentProposal, type AgentResult, type AgentStreamEvent } from "../../api/client";
 import { retryAgentMessage, sendAgentMessage, type SendOutcome } from "../../lib/agentStream";
 import { Button } from "../ui/button";
+import { AgentProposalCard } from "./AgentProposalCard";
 import { AgentResultCard } from "./AgentResultCard";
 import { ERROR_TEXT, STATUS_TEXT, progressText, refusalText } from "./agentText";
 
@@ -22,6 +26,7 @@ type Live = {
   status: keyof typeof STATUS_TEXT | null;
   progress: { label: string; done: number; total: number } | null;
   resultIds: string[];
+  proposalIds: string[];
 };
 
 export type ConversationResults = {
@@ -30,6 +35,13 @@ export type ConversationResults = {
   shownId: string | null;
   onShow: (id: string) => void;
   onArrived: (result: AgentResult) => void;
+  /** 025: proposals by id (saved and just streamed), and the stream's new ones. */
+  proposalsById?: Record<string, AgentProposal>;
+  onProposal?: (proposal: AgentProposal) => void;
+  /** 025: the agent is opening one of the user's architectures. */
+  onOpenArchitecture?: (id: string, name: string) => void;
+  /** 025: a message is being answered (decisions on proposals wait). */
+  onAnswering?: (answering: boolean) => void;
 };
 
 export function AgentConversation({
@@ -53,6 +65,11 @@ export function AgentConversation({
   const endRef = useRef<HTMLDivElement>(null);
 
   const messages = session.data?.messages ?? [];
+  const answering = Boolean(live);
+  const onAnswering = results?.onAnswering;
+  useEffect(() => {
+    onAnswering?.(answering);
+  }, [answering, onAnswering]);
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: "end" });
   }, [messages.length, live?.text]);
@@ -80,6 +97,15 @@ export function AgentConversation({
     else if (event.event === "result") {
       results?.onArrived(event.result);
       setLive((l) => (l ? { ...l, resultIds: [...l.resultIds, event.result.id] } : l));
+    } else if (event.event === "proposal") {
+      results?.onProposal?.(event.proposal);
+      setLive((l) =>
+        l && !l.proposalIds.includes(event.proposal.id)
+          ? { ...l, proposalIds: [...l.proposalIds, event.proposal.id] }
+          : l,
+      );
+    } else if (event.event === "open_architecture") {
+      results?.onOpenArchitecture?.(event.architecture_id, event.name);
     }
     else if (event.event === "text") setLive((l) => (l ? { ...l, text: l.text + event.delta } : l));
     else if (event.event === "operation")
@@ -99,14 +125,21 @@ export function AgentConversation({
     if (!content || live) return;
     setNotice(null);
     setDraft("");
-    setLive({ question: content, text: "", status: "thinking", progress: null, resultIds: [] });
+    setLive({
+      question: content,
+      text: "",
+      status: "thinking",
+      progress: null,
+      resultIds: [],
+      proposalIds: [],
+    });
     finish(await sendAgentMessage({ content, architecture_id: architectureId }, onEvent));
   }
 
   async function retry(messageId: string, question: string) {
     if (live) return;
     setNotice(null);
-    setLive({ question, text: "", status: "thinking", progress: null, resultIds: [] });
+    setLive({ question, text: "", status: "thinking", progress: null, resultIds: [], proposalIds: [] });
     finish(await retryAgentMessage(messageId, onEvent));
   }
 
@@ -129,6 +162,22 @@ export function AgentConversation({
               result={r}
               current={results.shownId === r.id}
               onShow={results.onShow}
+            />
+          ))
+      : null;
+
+  const proposalCards = (ids: string[] | undefined) =>
+    results?.proposalsById && ids && ids.length > 0
+      ? ids
+          .map((id) => results.proposalsById?.[id])
+          .filter((p): p is AgentProposal => Boolean(p))
+          .map((p) => (
+            <AgentProposalCard
+              key={p.id}
+              proposal={p}
+              current={results.shownId === p.id}
+              onShow={results.onShow}
+              answering={answering}
             />
           ))
       : null;
@@ -156,6 +205,7 @@ export function AgentConversation({
               </span>
             )}
             {cards(m.result_ids)}
+            {proposalCards(m.proposal_ids)}
           </li>
         ))}
         {live && (
@@ -169,6 +219,7 @@ export function AgentConversation({
                 </span>
               )}
               {cards(live.resultIds)}
+              {proposalCards(live.proposalIds)}
             </li>
           </>
         )}

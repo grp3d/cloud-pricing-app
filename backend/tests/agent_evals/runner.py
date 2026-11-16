@@ -18,6 +18,7 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from src.agent import proposals
 from src.agent.figures import format_usd
 from src.agent.loop import LoopContext, answer
 from src.agent.settings_service import EffectiveAgentSettings
@@ -31,7 +32,14 @@ from src.models.orm import (
     SKUSelection,
     User,
 )
-from src.models.schemas import AgentOperationEvent, AgentTextEvent, CalculationDuration
+from src.models.schemas import (
+    AgentOpenArchitectureEvent,
+    AgentOperationEvent,
+    AgentTextEvent,
+    CalculationDuration,
+    ProposalAcceptBody,
+)
+from src.services.architecture_state import ArchitectureState, fingerprint, read_state
 from src.services.price_calculation import calculate_architecture_price
 from tests.helpers.agent import build_standard
 
@@ -208,10 +216,11 @@ async def run_case(db, case: dict, client) -> CaseResult:
                                  closes_at=now + timedelta(days=3))
     db.add(agent_session)
     await db.commit()
+    open_id = architecture.id if architecture else None
+    start_state = await read_state(db, open_id) if open_id else None
     for seq, content in enumerate(case["messages"], start=1):
         message = AgentMessage(session_id=agent_session.id, seq=seq * 2 - 1, role="user",
-                               content=content, status="accepted",
-                               architecture_id=architecture.id if architecture else None)
+                               content=content, status="accepted", architecture_id=open_id)
         db.add(message)
         await db.commit()
         context = LoopContext(session=db, user=user, agent_session=agent_session,
@@ -223,6 +232,8 @@ async def run_case(db, case: dict, client) -> CaseResult:
             elif isinstance(event, AgentOperationEvent):
                 if event.outcome == "ok":
                     out.operations.append(event.name)
+            elif isinstance(event, AgentOpenArchitectureEvent):
+                open_id = event.architecture_id  # 025: the browser opens it
             elif event.event == "error":
                 out.error = f"{event.kind}: {event.message}"
         # A failed answer rolls the session back, which expires these; reload them so the
@@ -258,8 +269,139 @@ async def run_case(db, case: dict, client) -> CaseResult:
     results = (await db.execute(select(AgentResult).where(
         AgentResult.session_id == agent_session.id).order_by(AgentResult.seq))).scalars().all()
     out.checks.extend(_result_checks(expect, results, out.text))
+    # 025: proposals, nothing saved before accept, and the user's actions afterwards.
+    found = await proposals.session_proposals(db, agent_session)
+    if architecture is not None and start_state is not None and (
+            expect.get("proposal") or case.get("actions")):
+        now_state = await read_state(db, architecture.id)
+        out.checks.append(Check("nothing saved before accept",
+                                now_state is not None
+                                and fingerprint(now_state) == fingerprint(start_state)))
+    out.checks.extend(proposal_checks(expect, found))
+    if case.get("actions") and not out.error:
+        out.checks.extend(await run_actions(db, user, agent_session, found, case["actions"]))
     if "refused" in expect:
         declined = any(w in lower for w in DECLINE_WORDS)
         out.checks.append(Check("declines" if expect["refused"] else "doesn't decline",
                                 declined == expect["refused"]))
     return out
+
+
+
+# --- 025: proposals (research R10) ---------------------------------------------------------------
+
+
+def proposal_checks(expect: dict, found: list) -> list[Check]:
+    """Checks on the session's latest proposal: its kind and items, figures equal to the
+    engine's for its base and target states, and contributions that add up."""
+    checks: list[Check] = []
+    if expect.get("no_proposal"):
+        checks.append(Check("makes no proposal", not found, f"{len(found)} proposals"))
+    wanted = expect.get("proposal")
+    if not wanted:
+        return checks
+    checks.append(Check("makes a proposal", bool(found)))
+    if not found:
+        return checks
+    latest = found[-1]
+    if "kind" in wanted:
+        checks.append(Check(f"proposal is a {wanted['kind']}", latest.kind == wanted["kind"],
+                            f"was {latest.kind}"))
+    counts = {op: sum(1 for i in latest.items if i["op"] == op)
+              for op in ("add", "change", "remove")}
+    for op, least in (wanted.get("at_least") or {}).items():
+        checks.append(Check(f"at least {least} {op}", counts[op] >= least, f"{counts[op]}"))
+    for op in wanted.get("none_of") or []:
+        checks.append(Check(f"no {op}", counts[op] == 0, f"{counts[op]}"))
+    if "name" in wanted:
+        name = latest.target_state.get("name")
+        checks.append(Check(f"named {wanted['name']!r}", name == wanted["name"], f"{name!r}"))
+    duration = latest.cost["duration"]
+    after = proposals.price_state(ArchitectureState.model_validate(latest.target_state),
+                                  duration).total
+    checks.append(Check("after total is the engine's",
+                        Decimal(latest.cost["after"]["total"]) == after,
+                        f"{latest.cost['after']['total']} vs {after}"))
+    rows = sum(Decimal(r["after"]) for r in latest.cost["by_service"] if r["after"] is not None)
+    checks.append(Check("service rows add up to the total",
+                        rows == Decimal(latest.cost["after"]["total"]),
+                        f"{rows} vs {latest.cost['after']['total']}"))
+    if latest.base_state is not None:
+        before = proposals.price_state(ArchitectureState.model_validate(latest.base_state),
+                                       duration).total
+        checks.append(Check("before total is the engine's",
+                            Decimal(latest.cost["before"]["total"]) == before,
+                            f"{latest.cost['before']['total']} vs {before}"))
+    if wanted.get("partial") is not None:
+        partial = latest.cost["after"]["partial"]
+        checks.append(Check("total labelled partial" if wanted["partial"] else "total complete",
+                            partial == wanted["partial"]))
+    if latest.cost.get("contributions"):
+        total = sum(Decimal(c["difference"]) for c in latest.cost["contributions"])
+        checks.append(Check("contributions add up",
+                            total == Decimal(latest.cost["difference"]),
+                            f"{total} vs {latest.cost['difference']}"))
+    return checks
+
+
+async def run_actions(db, user, agent_session, found: list, actions: list) -> list[Check]:
+    """Play the user's decisions on the latest proposal (`accept`, `reject`, `undo`, `redo`,
+    `manual_edit`, `undo_refused`), checking the saved architecture after each."""
+    checks: list[Check] = []
+    if not found:
+        return [Check("a proposal to act on", False)]
+    proposal = found[-1]
+    base = (ArchitectureState.model_validate(proposal.base_state)
+            if proposal.base_state is not None else None)
+    target = ArchitectureState.model_validate(proposal.target_state)
+
+    async def saved():
+        return await read_state(db, proposal.architecture_id) if proposal.architecture_id else None
+
+    def same(state, expected) -> bool:
+        if expected is None:
+            return state is None
+        if state is None:
+            return False
+        if proposal.kind != "change":  # a new architecture: compare content, not ids
+            return state.name == expected.name and len(state.services) == len(expected.services)
+        return fingerprint(state) == fingerprint(expected)
+
+    for action in actions:
+        name = action if isinstance(action, str) else next(iter(action))
+        try:
+            if name == "accept":
+                await proposals.accept(db, user, agent_session, proposal.id,
+                                       ProposalAcceptBody(architecture_id=proposal.architecture_id))
+                checks.append(Check("accept saves the proposal", same(await saved(), target)))
+            elif name == "reject":
+                await proposals.reject(db, user, agent_session, proposal.id)
+                checks.append(Check("reject changes nothing",
+                                    base is None or same(await saved(), base)))
+            elif name == "undo":
+                await proposals.undo(db, user, agent_session, proposal.id)
+                checks.append(Check("undo restores the architecture", same(await saved(), base)))
+            elif name == "undo_refused":
+                try:
+                    await proposals.undo(db, user, agent_session, proposal.id)
+                    checks.append(Check("undo is refused", False, "undo was allowed"))
+                except proposals.ProposalActionError as exc:
+                    checks.append(Check("undo is refused", True, str(exc.detail)))
+            elif name == "redo":
+                await proposals.redo(db, user, agent_session, proposal.id)
+                checks.append(Check("redo applies it again", same(await saved(), target)))
+            elif name == "manual_edit":
+                row = (await db.execute(select(SKUSelection).join(Collection).where(
+                    Collection.architecture_id == proposal.architecture_id,
+                    Collection.deleted_at.is_(None)).limit(1))).scalar_one()
+                row.usage_quantity = Decimal(row.usage_quantity) + 1
+                await db.commit()
+                latest = proposals._latest_accepted(
+                    await proposals.session_proposals(db, agent_session))
+                view = await proposals.undo_view(db, user, proposal, latest)
+                checks.append(Check("a manual edit ends undo",
+                                    view is not None and view.end_reason == "edited",
+                                    f"{view}"))
+        except proposals.ProposalActionError as exc:
+            checks.append(Check(f"{name} allowed", False, str(exc.detail)))
+    return checks

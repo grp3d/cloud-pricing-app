@@ -16,6 +16,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Numeric,
     String,
     UniqueConstraint,
@@ -469,3 +470,56 @@ class AgentResult(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class AgentProposal(Base):
+    """One proposal the agent made (025, data-model.md §4): a reviewable change to an
+    architecture, or a new architecture to create or import. Nothing is saved to architectures
+    until the user accepts (FR-003); accept, undo and redo apply `target_state` or `base_state`
+    (research R2). Principle II: `cost` is a record of what was shown, with its snapshot; nothing
+    prices from it (a stale proposal is re-priced before acceptance)."""
+
+    __tablename__ = "agent_proposals"
+    __table_args__ = (
+        UniqueConstraint("session_id", "seq", name="uq_agent_proposal_seq"),
+        CheckConstraint("kind IN ('change', 'create', 'import')", name="ck_agent_proposal_kind"),
+        CheckConstraint(
+            "status IN ('pending', 'accepted', 'rejected', 'superseded', 'expired')",
+            name="ck_agent_proposal_status"),
+        CheckConstraint("undo_status IS NULL OR undo_status IN ('available', 'undone', 'ended')",
+                        name="ck_agent_proposal_undo"),
+        CheckConstraint(
+            "undo_end_reason IS NULL OR undo_end_reason IN "
+            "('edited', 'superseded', 'session_ended', 'deleted')",
+            name="ck_agent_proposal_undo_reason"),
+        Index("ix_agent_proposals_session", "session_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_messages.id", ondelete="CASCADE"), nullable=False
+    )
+    seq: Mapped[int] = mapped_column(nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    architecture_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    source_architecture_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True),
+                                                                     default=None)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="pending")
+    items: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    base_state: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    target_state: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    base_fingerprint: Mapped[str | None] = mapped_column(String(64), default=None)
+    cost: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    assumptions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    before_fingerprint: Mapped[str | None] = mapped_column(String(64), default=None)
+    after_fingerprint: Mapped[str | None] = mapped_column(String(64), default=None)
+    undo_status: Mapped[str | None] = mapped_column(String(10), default=None)
+    undo_end_reason: Mapped[str | None] = mapped_column(String(16), default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)

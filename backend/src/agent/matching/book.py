@@ -48,6 +48,8 @@ class Candidate:
     price_types: tuple[str, ...] = ()
     unit: str | None = None
     ram_sku: str | None = None
+    # 025: a region equivalent keeps its original's term unless the agent sets one.
+    keep_term: tuple[str, str] | None = None  # (pricing_term, purchase_option)
     ref: str = ""
 
 

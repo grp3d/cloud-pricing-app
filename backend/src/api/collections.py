@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 from sqlalchemy import select
 
 from src.api.deps import CurrentUser, DbSession
 from src.models.orm import Collection
 from src.models.schemas import CollectionCreate, CollectionOut, CollectionUpdate
-from src.pricing_data.regions import list_available_regions
+from src.services import architecture_rules as rules
 from src.services.architecture_service import (
     get_owned_architecture,
     get_owned_collection,
@@ -37,10 +37,7 @@ async def create_collection(
         # any client-supplied `region` is ignored so a stale/bypassed client can never create a
         # mismatched nesting.
         if body.type.value != "application_component":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only an Application Component can be created with a parent_collection_id",
-            )
+            rules.check_nesting(body.type.value, "", None, creating=True)
         stmt = select(Collection).where(
             Collection.id == body.parent_collection_id,
             Collection.architecture_id == architecture.id,
@@ -49,26 +46,16 @@ async def create_collection(
         )
         result = await session.execute(stmt)
         parent = result.scalar_one_or_none()
-        if parent is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "parent_collection_id must reference an existing, non-deleted VPC "
-                    "Collection in the same Architecture"
-                ),
-            )
+        rules.check_nesting(
+            body.type.value, "",
+            None if parent is None else rules.CollectionFacts(type=parent.type,
+                                                              region=parent.region),
+            creating=True,
+        )
         region = parent.region
     else:
-        if not body.region:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="region is required when parent_collection_id is not given",
-            )
-        if body.region not in list_available_regions(architecture.provider):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"region '{body.region}' is not currently available",
-            )
+        rules.check_region_given(body.region)
+        rules.check_region_available(architecture.provider, body.region)
         region = body.region
 
     collection = Collection(

@@ -1,0 +1,23 @@
+id: GC-23
+title: "025 GC-5: a service that can't be priced is named, and the totals are labelled partial"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+  add_unpriceable: {service_code: AWSDataTransfer, sku: NOSUCHSKU}
+messages:
+  - Replicate the web servers to us-west-2, and use defaults for anything else.
+expect:
+  operations: [describe_open_architecture, find_region_equivalents, propose_changes]
+  proposal: {kind: change, at_least: {add: 2}, partial: true}
+  contains: ["partial", "NOSUCHSKU", ["exclud", "leaves out", "left out"]]
+script:
+  - tool_calls: [{name: describe_open_architecture, arguments: {}}]
+  - tool_calls: [{name: find_region_equivalents, arguments: {services: [V4], region: us-west-2}}]
+  - tool_calls: [{name: propose_changes, arguments: {
+      title: Web servers in us-west-2,
+      add_collections: [{ref: new1, type: vpc, name: Web standby, region: us-west-2}],
+      add_services: [{in: new1, product: C1}]}}]
+  - text: ["I've proposed copies of the web servers in us-west-2, on demand like the originals. The
+      data transfer service (AWSDataTransfer NOSUCHSKU) can't be priced, so both totals are
+      partial and exclude it: [[F2]] before, [[F1]] after. Nothing is saved until you accept."]

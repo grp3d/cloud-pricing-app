@@ -210,6 +210,12 @@ preview messages. For the hosted model, put `AGENT_ANTHROPIC_API_KEY=…` in `ba
   AGENT_EVAL_MODELS="ollama:llama3.1,anthropic:claude-sonnet-5-5" uv run pytest -m live_model
   ```
 
+  Since 025 the cases also check proposals: their kind and changes, figures equal to the
+  engine's for the before and after states, nothing saved before Accept, and scripted user
+  actions after the answer (`actions: [accept, undo, redo, manual_edit, undo_refused, reject]`),
+  with the saved architecture checked after each. 025's cases (`gc-19` to `gc-28`) are checked
+  live on Claude Haiku 5.5 only; other models may be run for information.
+
   It writes `backend/agent-eval-report.md` (not committed), with pass or fail per case and
   per check, for each model. A hosted model needs `AGENT_ANTHROPIC_API_KEY`, in the environment
   or in `backend/.env` (the same place the app reads it from). The comparison cases

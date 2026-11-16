@@ -41,6 +41,11 @@ class OperationContext:
     message: Any = None  # the user message being answered (src.models.orm.AgentMessage)
     results: list = field(default_factory=list)
     progress: Callable[[int, int, str], None] = _no_progress
+    # 025: proposals made in this message, architectures opened (id, name), and the references
+    # to rows of the open architecture (A…/V…/K…) and of the pending proposal (P…).
+    proposals: list = field(default_factory=list)
+    opened: list = field(default_factory=list)
+    rows: dict = field(default_factory=dict)
 
 
 def _match_book():
@@ -206,29 +211,77 @@ _EMPTY = {"empty": True, "message": "The open architecture has no services."}
 )
 async def describe_open_architecture(ctx: OperationContext, args: NoInput) -> OperationResult:
     _architecture, detail = await _open_architecture(ctx)
+    described = describe_detail(ctx, detail)
+    pending = await describe_pending(ctx, detail.id)
+    if pending:
+        described.data["pending_proposal"] = pending
+    return described
+
+
+async def describe_pending(ctx: OperationContext, architecture_id) -> dict | None:
+    """025 (US6): the session's pending proposal for this architecture, its items as P…
+    references, so a refinement in a later message can refer to them."""
+    if ctx.agent_session is None:
+        return None
+    from sqlalchemy import select
+
+    from src.models.orm import AgentProposal
+
+    pending = (await ctx.session.execute(select(AgentProposal).where(
+        AgentProposal.session_id == ctx.agent_session.id, AgentProposal.status == "pending",
+        AgentProposal.architecture_id == architecture_id))).scalar_one_or_none()
+    if pending is None:
+        return None
+    items = []
+    for item in pending.items:
+        ref = item["ref"]
+        if item["target"] != "architecture":
+            ctx.rows[ref] = (item["target"], uuid.UUID(item["id"]))
+        items.append({"ref": ref, "op": item["op"], "label": item["label"],
+                      **({"group": item["group"]} if item.get("group") else {})})
+    return {"proposal": f"Q{pending.seq}", "title": pending.title, "items": items,
+            "revise": "propose_changes with revise_pending: true keeps these items; change or "
+                      "remove them by P… reference"}
+
+
+def _ref(ctx: OperationContext, prefix: str, kind: str, row_id) -> str:
+    """025: a short reference to a row of the open architecture (A… collections, V… services,
+    K… connectors), valid for this message; the model never sees the id."""
+    for ref, (k, rid) in ctx.rows.items():
+        if k == kind and rid == row_id:
+            return ref
+    count = sum(1 for r in ctx.rows if r.startswith(prefix))
+    ref = f"{prefix}{count + 1}"
+    ctx.rows[ref] = (kind, row_id)
+    return ref
+
+
+def describe_detail(ctx: OperationContext, detail) -> OperationResult:
     names = {c.id: c.name for c in detail.collections}
 
     def service(s) -> dict:
-        return {"service": _service_label(s), "service_code": s.service_code, "sku": s.sku,
+        return {"ref": _ref(ctx, "V", "service", s.id), "service": _service_label(s),
+                "service_code": s.service_code, "sku": s.sku,
                 "quantity": str(s.usage_quantity), "unit": s.unit,
                 "price_type": s.pricing_term.value}
 
     collections = [
-        {"name": c.name, "type": c.type.value, "region": c.region,
-         "inside": names.get(c.parent_collection_id),
+        {"ref": _ref(ctx, "A", "collection", c.id), "name": c.name, "type": c.type.value,
+         "region": c.region, "inside": names.get(c.parent_collection_id),
          "services": [service(s) for s in c.sku_selections]}
         for c in detail.collections
     ]
     connectors = [
-        {"from": names.get(c.from_collection_id), "to": names.get(c.to_collection_id),
+        {"ref": _ref(ctx, "K", "connector", c.id), "from": names.get(c.from_collection_id),
+         "to": names.get(c.to_collection_id),
          "service": service(c.sku_selection) if c.sku_selection else None}
         for c in detail.connectors
     ]
     count = sum(len(c["services"]) for c in collections) + sum(
         1 for c in connectors if c["service"])
     return OperationResult(
-        data={"name": detail.name, "provider": detail.provider, "collections": collections,
-              "connectors": connectors},
+        data={"name": detail.name, "provider": detail.provider, "owned": True,
+              "collections": collections, "connectors": connectors},
         summary={"architecture": detail.name, "collections": len(collections),
                  "services": count},
     )
@@ -325,8 +378,8 @@ class ImportableInput(BaseModel):
 @registry.operation(
     "list_importable_architectures",
     "The public architectures this user can import, grouped by owner (Admin first), as the "
-    "Import list in the Cloud Pricing menu shows them. Importing makes the user's own private "
-    "copy; you can't import for them yet.",
+    "Import list in the Cloud Pricing menu shows them, each with an I… reference for "
+    "propose_import. Importing makes the user's own private copy.",
     ImportableInput,
 )
 async def list_importable_architectures(ctx: OperationContext,
@@ -345,17 +398,19 @@ async def list_importable_architectures(ctx: OperationContext,
         providers = dict(rows.all())
     groups = [
         {"owner": g.owner_username,
-         "architectures": [{"name": a.name, "provider": providers.get(a.id)}
+         "architectures": [{"ref": _ref(ctx, "I", "importable", a.id), "name": a.name,
+                            "provider": providers.get(a.id)}
                            for a in g.architectures]}
         for g in listing.groups
     ]
     return OperationResult(
         data={"provider": args.provider, "groups": groups,
-              "how_to_import": "Import in the Cloud Pricing menu, under the provider."},
+              "how_to_import": "propose_import with the I… reference (the user accepts it), or "
+                               "Import in the Cloud Pricing menu, under the provider."},
         summary={"provider": args.provider, "groups": len(groups),
                  "architectures": len(ids)},
     )
 
 
-# 024: the comparison operations register themselves in the same registry.
-from src.agent import operations_compare  # noqa: E402,F401
+# 024 and 025: the comparison and change operations register themselves in the same registry.
+from src.agent import operations_change, operations_compare  # noqa: E402,F401,I001

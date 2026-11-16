@@ -1,5 +1,5 @@
 import { Plus, Save } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import type {
   CatalogKind,
@@ -22,6 +22,7 @@ import {
   itemShape,
   sameInputs,
 } from "../lib/pricingInputs";
+import { useUnsavedWork } from "../lib/unsavedWork";
 import { usageQuantityHint } from "../lib/usageQuantityHint";
 import { AwsFields } from "./providers/AwsFields";
 import { type AzureOs, AzureFields } from "./providers/AzureFields";
@@ -93,6 +94,30 @@ export function PricingInputsForm({
   const [lastSaved, setLastSaved] = useState<PricingInputs | null>(null);
   const changed = !sameInputs(current, lastSaved ?? inputsOf(start, ctx));
   const submitVariant = submitLabel === "Save" && !changed ? "soft" : "default";
+
+  // 025 (FR-017): an edit of a saved service that isn't saved yet is unsaved work, so the app
+  // asks before the agent opens another architecture. Discarding puts back what was saved.
+  const formId = useId();
+  // (Opening the other architecture unmounts the form; resetting keeps it right meanwhile.)
+  const reset = () => {
+    setTerm(start.term);
+    setPurchaseOption(start.purchaseOption);
+    setQuantity(start.quantity);
+    setOs(start.os);
+    setVcpus(start.vcpus);
+    setMemoryGib(start.memoryGib);
+  };
+  useUnsavedWork(
+    formId,
+    submitLabel === "Save" && changed,
+    "the Service tab",
+    async () => {
+      const ok = await Promise.resolve(onSubmit(current));
+      if (ok !== false) setLastSaved(current);
+      return ok !== false;
+    },
+    reset,
+  );
 
   // Which of the two proration interpretations this quantity represents (004, FR-007) — only
   // meaningful for usage-priced terms (006-fix-reserved-pricing: usage_quantity has no

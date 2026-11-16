@@ -27,6 +27,8 @@ export type AgentResultsPaneProps = {
   onStep: (delta: -1 | 1) => void;
   onClose: () => void;
   download?: (id: string) => Promise<void>;
+  /** 025: where this result sits among the pane's results and proposals. */
+  position?: { index: number; total: number };
 };
 
 function signed(text: string): string {
@@ -93,12 +95,15 @@ export function AgentResultsPane({
   onStep,
   onClose,
   download = downloadResultCsv,
+  position,
 }: AgentResultsPaneProps) {
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const index = results.findIndex((r) => r.id === selectedId);
   const result = results[index];
   if (!result) return null;
+  const at = position?.index ?? index;
+  const total = position?.total ?? results.length;
   const names = sideNames(result.sides);
   const reference = result.basis.reference_side;
   const isArchitecture = result.basis.question_kind === "architecture";
@@ -126,20 +131,20 @@ export function AgentResultsPane({
           size="sm"
           variant="ghost"
           aria-label="Previous result"
-          disabled={index <= 0}
+          disabled={at <= 0}
           onClick={() => onStep(-1)}
         >
           <ChevronLeft />
         </Button>
         <span aria-live="polite">
-          Result {index + 1} of {results.length}
+          Result {at + 1} of {total}
         </span>
         <Button
           type="button"
           size="sm"
           variant="ghost"
           aria-label="Next result"
-          disabled={index >= results.length - 1}
+          disabled={at >= total - 1}
           onClick={() => onStep(1)}
         >
           <ChevronRight />

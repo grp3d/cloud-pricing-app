@@ -1,0 +1,19 @@
+id: GC-26
+title: "025 GC-8: after accepting, a manual edit ends undo"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+messages:
+  - Halve the web servers in us-east-1.
+expect:
+  operations: [describe_open_architecture, propose_changes]
+  proposal: {kind: change, at_least: {change: 1}}
+  contains: ["accept"]
+actions: [accept, manual_edit, undo_refused]
+script:
+  - tool_calls: [{name: describe_open_architecture, arguments: {}}]
+  - tool_calls: [{name: propose_changes, arguments: {
+      title: Halve the web servers, change_services: [{ref: V4, scale: 0.5}]}}]
+  - text: ["Halving the web servers takes the total from [[F2]] to [[F1]]. Nothing is saved until
+      you accept."]

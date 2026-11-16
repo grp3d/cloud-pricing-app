@@ -57,6 +57,13 @@ collection or to a connector:
 - Box positions and sizes, icon arrangement, connector bends and sides, and zoom are kept in the
   browser, per architecture (see [workspace and preferences](workspace-and-preferences.md#settings-saved-to-your-account)).
 
+## Through the agent
+
+The [agent](agent.md#changes) can propose a new architecture, or changes to one of yours, which
+you review with their cost and accept or reject. An accepted change is saved like an edit you made,
+and can be undone as one step until you edit the architecture yourself. Boxes the agent adds are
+placed automatically.
+
 ## Not built yet
 
 - **Branching connectors** (one-to-many, many-to-one): specified in 019 and deferred. The API
@@ -80,4 +87,5 @@ collection or to a connector:
 [016](../../specs/016-canvas-icon-layout/spec.md),
 [019](../../specs/019-gcp-azure-providers-trends/spec.md) (US5),
 [020](../../specs/020-provider-icons-connector-fixes/spec.md) (US2),
-[021](../../specs/021-workspace-layout-redesign/spec.md) (US5, US7, US9).
+[021](../../specs/021-workspace-layout-redesign/spec.md) (US5, US7, US9),
+[025](../../specs/025-agent-architecture-changes/spec.md).

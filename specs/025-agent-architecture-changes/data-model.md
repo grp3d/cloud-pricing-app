@@ -111,8 +111,10 @@ Applied to the target state by `architecture_rules` (R1), the same functions the
 4. Connectors join two different collections of the architecture.
 5. Every service's SKU exists in its region's pricing data; price type, purchase option and
    provider options are valid for the provider and item.
-6. New architecture and import names are not already used by the user.
-7. At most 100 change items.
+6. At most 100 change items.
+
+Names aren't checked for clashes: manual creation and the menu's Import allow a name the user
+already has, so proposals do too (same rules as manual edits).
 
 The first failure is returned to the model as a tool error with the item's reference, and the
 proposal isn't created.

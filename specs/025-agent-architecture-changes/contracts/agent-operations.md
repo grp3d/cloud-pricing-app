@@ -107,14 +107,12 @@ For the open architecture, or the one just opened. Replaces any pending proposal
 }
 ```
 
-Output as for `propose_changes`, with no before figures. Errors: name already used; any
-validation failure.
+Output as for `propose_changes`, with no before figures. Errors: any validation failure.
 
 ## `propose_import`
 
 Input: `{"architecture": "I2", "name": "My Serverless Microservices Back-End"}` (name optional,
-default "My <name>"). Output: the proposal with the copy's cost. Errors: name already used; not
-importable.
+default "My <name>"). Output: the proposal with the copy's cost. Errors: not importable.
 
 ## Activity log
 

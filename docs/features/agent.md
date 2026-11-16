@@ -1,8 +1,8 @@
 # Agent
 
-A logged-in user can ask an agent about their architectures and compare prices across providers,
-in the Agent tab beside the canvas. In this version the agent only answers questions; it doesn't
-change anything.
+A logged-in user can ask an agent about their architectures, compare prices across providers,
+and have it propose changes, in the Agent tab beside the canvas. The agent never saves anything
+itself: every change is a proposal you accept or reject.
 
 ## What it can do
 
@@ -16,9 +16,13 @@ change anything.
   - the open architecture, or one category of it, on one or both other providers: "What would
     this cost on Azure?", "on the other two clouds?", "my storage on GCP?";
   - a single price: "What's the on-demand price of an m5.large in eu-west-1 per month?".
+- Propose changes (see [Changes](#changes)): create a new architecture ("a three-tier web app on
+  GCP in us-central1"); add collections, services and connectors; scale quantities, sizes and
+  pricing terms; replicate components to another region; remove components as part of a change;
+  import a public architecture as your own private copy.
 
-Asked to change, create or import something, it says it can't yet and points to where you can do
-it. Asked something outside the app (the time, general knowledge), it says it can't help with
+Asked for anything else (a cost alert, a budget, translating to another provider), it says it
+can't and lists what it can do. Asked something outside the app (the time, general knowledge), it says it can't help with
 that here and what it can help with, rather than answering something else. Asked what it can do,
 it lists the above with an example question for each. It sees only what you can see in the app, and treats names and other text inside
 architectures as data, never as instructions.
@@ -107,6 +111,46 @@ currency, usage and assumptions), then a blank line, then the table:
 Text that starts like a spreadsheet formula (`=`, `+`, `-`, `@`) is written with a leading `'`,
 so names from imported architectures can't run as formulas.
 
+## Changes
+
+- **Questions first.** The agent asks what it needs (provider, regions, sizes, amounts, term,
+  which components), at most three short questions, then offers its defaults. Say "use your best
+  defaults" and it states every default it used. If you decline both, it proposes nothing and
+  says what it needs.
+- **A proposal**, not a change. It appears in the Results pane beside the conversation, in the
+  same ◀ ▶ sequence as comparison results, with a card under the answer ("Prod Web · 6 changes ·
+  +$722.18 (+45.5%)"). The canvas shows only saved work. The proposal lists what will be added,
+  changed and removed; the pricing engine's cost before and after (total, difference and
+  percentage, by service and by region); each part's share when the request had several, in the
+  order applied, so the shares add up to the difference; anything that couldn't be priced (the
+  total is then partial); and the agent's assumptions, with guessed regions marked "(guess)". A
+  new architecture shows its cost only.
+- **The same rules as editing by hand.** A proposal is checked with the editor's own rules
+  (nesting, regions, region lock, connectors, price types) and uses only products from the
+  catalog; the agent never names a product itself. Something the catalog doesn't have is said and
+  left out. A replicated service keeps the original's pricing term unless you ask otherwise. A
+  proposal holds at most 100 changes; larger requests are built in parts.
+- **Accept or Reject.** Accept saves exactly what was proposed, in one go. For a change, the
+  architecture must be the one open; for a new or imported architecture, it opens when you
+  accept, private and owned by you. Reject saves nothing. A proposal is **Stale** if the
+  architecture changed after it was made: Accept checks it again and re-prices it, and you accept
+  the updated figures. A newer proposal in the session replaces a pending one (**Superseded**).
+- **Undo and Redo** are on the accepted proposal, in the pane and on its card. Undo puts the
+  architecture back exactly as it was before you accepted, box positions included; for a new or
+  imported architecture it removes it. Redo applies the change again. One level of each, for the
+  latest accepted proposal only. Undo ends, and the panel says so once, when you change the
+  architecture yourself (any saved change, renaming included; making it public or private, or
+  moving boxes, doesn't count), when you accept a later proposal, when you delete the
+  architecture, or when the session ends.
+- **Refinements and what-ifs.** "Make the standby half the size" updates the pending proposal and
+  says what changed. "What if I doubled the storage?" is a proposal you don't have to accept.
+- **Another architecture.** Name one of yours and the agent opens it. If the open one has unsaved
+  Service tab input, you're asked first: **Save and continue** or **Discard and continue**.
+- **Import** proposes "My <name>"; accepting makes the same private copy the menu's Import does.
+- Accept, Reject, Undo and Redo make no model call and use no message from your allowance, so they
+  work after a limit is reached. They wait while the agent is answering. They appear in the
+  activity log as your actions.
+
 ## The Agent tab
 
 - The agent is the **Agent** tab beside **Canvas** in the centre column. The two tabs merge,
@@ -149,7 +193,8 @@ so names from imported architectures can't run as formulas.
 **Activity** lists every operation the agent ran in this session, in order: its name, the inputs
 it was given, whether it worked (or was stopped for taking too long), when, how long it took,
 and the pricing snapshot behind any figure. For comparisons the summary names the regions, the
-products priced (by SKU) and the result.
+products priced (by SKU) and the result. Your decisions on proposals (accept, reject, undo,
+redo) are listed too, as yours.
 
 ## Access and limits
 
@@ -178,12 +223,12 @@ Every automated test uses a scripted model. Checking real models is a separate r
 
 ## Not built yet
 
-Changing, creating and importing architectures through the agent; building or saving a
-comparison as an architecture on another provider (cross-cloud translation); reviewed
-cross-provider mappings (until then the app's candidates and quality rules decide); download
+Building or saving a comparison as an architecture on another provider (cross-cloud
+translation); reviewed cross-provider mappings (until then the app's candidates and quality rules decide); download
 formats other than CSV; an agent for users with no architecture open.
 
 ## Specs
 
 [023](../../specs/023-agent-foundation/spec.md),
-[024](../../specs/024-agent-pricing-questions/spec.md)
+[024](../../specs/024-agent-pricing-questions/spec.md),
+[025](../../specs/025-agent-architecture-changes/spec.md)

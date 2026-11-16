@@ -23,14 +23,11 @@ from src.models.schemas import (
 )
 from src.pricing_data.active_snapshot import get_active_snapshot
 from src.pricing_data.providers.base import (
-    OPTION_PROVIDERS,
-    PROVIDER_PRICE_TYPES,
-    PROVIDER_PURCHASE_OPTIONS,
     PricingProvider,
 )
 from src.pricing_data.providers.registry import get_provider
-from src.pricing_data.regions import list_available_regions
 from src.pricing_data.snapshot import ActiveSnapshot
+from src.services import architecture_rules as rules
 
 
 async def get_owned_architecture(
@@ -80,13 +77,6 @@ async def get_owned_collection(
     return collection
 
 
-def _field_error(field: str, message: str) -> HTTPException:
-    return HTTPException(
-        status_code=422,
-        detail=[{"loc": ["body", field], "msg": message, "type": "value_error"}],
-    )
-
-
 async def architecture_provider(architecture_id: uuid.UUID, session: AsyncSession) -> str:
     provider = await session.scalar(
         select(Architecture.provider).where(Architecture.id == architecture_id)
@@ -106,42 +96,12 @@ async def validate_selection(
     session: AsyncSession,
 ) -> str:
     """019 (contracts §4, data-model §3): refuse (422, with the field) a selection the
-    architecture's provider can't price, so it is never stored. Returns the provider.
-
-    - The price type must be one the provider supports (research R6 table) and, when the
-      adapter reports them per item (Azure, GCP), one the item publishes (FR-005).
-    - The purchase option must be one the provider has (`not_applicable` for Azure and GCP).
-    - `provider_options.kind` must belong to the provider.
-    - An item the adapter reports price types for must exist in the region.
-    """
+    architecture's provider can't price, so it is never stored. Returns the provider. The rules
+    are `architecture_rules.check_selection` (025), shared with agent proposals."""
     provider = await architecture_provider(architecture_id, session)
-    if pricing_term not in PROVIDER_PRICE_TYPES.get(provider, frozenset()):
-        raise _field_error(
-            "pricing_term", f"{provider} does not publish the price type {pricing_term!r}"
-        )
-    if purchase_option not in PROVIDER_PURCHASE_OPTIONS.get(provider, frozenset()):
-        raise _field_error(
-            "purchase_option", f"{provider} prices have no purchase option {purchase_option!r}"
-        )
-    if provider_options is not None:
-        kind = provider_options.get("kind")
-        if OPTION_PROVIDERS.get(kind) != provider:
-            raise _field_error(
-                "provider_options", f"{kind!r} options don't apply to a {provider} architecture"
-            )
-    adapter = get_provider(provider)
-    if adapter.reports_price_types:
-        snapshot = get_active_snapshot(adapter.code)
-        item = adapter.describe(snapshot, [(service_code, sku)], region=region).get(
-            (service_code, sku)
-        )
-        if item is None:
-            raise _field_error("sku", f"{service_code} / {sku} is not in the {region} pricing data")
-        if pricing_term not in item.price_types:
-            raise _field_error(
-                "pricing_term",
-                f"this item doesn't publish the price type {pricing_term!r} in {region}",
-            )
+    rules.check_selection(provider, service_code=service_code, sku=sku,
+                          pricing_term=pricing_term, purchase_option=purchase_option,
+                          provider_options=provider_options, region=region)
     return provider
 
 
@@ -215,10 +175,7 @@ async def set_collection_parent(
         return collection
 
     if collection.type != "application_component":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only an Application Component can be nested inside a VPC",
-        )
+        rules.check_nesting(collection.type, collection.region, None)
 
     stmt = select(Collection).where(
         Collection.id == parent_collection_id,
@@ -228,27 +185,13 @@ async def set_collection_parent(
     )
     result = await session.execute(stmt)
     parent = result.scalar_one_or_none()
-    if parent is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "parent_collection_id must reference an existing, non-deleted VPC Collection "
-                "in the same Architecture"
-            ),
-        )
-
     # 010-multi-region-support, spec FR-004: an Application can only nest inside a same-region
     # VPC — enforced here as the authoritative server-side gate (a client-side check also
     # exists, research.md §8), so a bypassed/stale client can never create a mismatched nest.
-    if collection.region != parent.region:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "error": "region_mismatch",
-                "application_region": collection.region,
-                "vpc_region": parent.region,
-            },
-        )
+    rules.check_nesting(
+        collection.type, collection.region,
+        None if parent is None else rules.CollectionFacts(type=parent.type, region=parent.region),
+    )
 
     collection.parent_collection_id = parent.id
     await session.commit()
@@ -283,19 +226,10 @@ async def set_collection_region(
 ) -> Collection:
     """Change a collection's region while it's still unlocked (010-multi-region-support, spec
     FR-003). `collection` must already be resolved via `get_owned_collection`."""
-    if not region:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="region is required")
-    if await is_collection_locked(collection, session):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This collection's region is locked because it already has content",
-        )
+    rules.check_region_given(region, creating=False)
+    rules.check_region_change(locked=await is_collection_locked(collection, session))
     provider = await architecture_provider(collection.architecture_id, session)
-    if region not in list_available_regions(provider):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"region '{region}' is not currently available",
-        )
+    rules.check_region_available(provider, region)
     collection.region = region
     await session.commit()
     await session.refresh(collection)

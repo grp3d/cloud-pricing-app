@@ -1,5 +1,5 @@
 id: GC-7
-title: Asked to import, the agent says it can't yet and points to Import
+title: Asked to import, the agent proposes the import (025; 023 said it couldn't yet)
 architecture: null
 others:
   - owner: Admin
@@ -8,7 +8,11 @@ others:
 messages:
   - Import the Serverless architecture for me.
 expect:
-  refused: true
-  contains: ["Import"]
+  operations: [list_importable_architectures, propose_import]
+  proposal: {kind: import, name: My Serverless Microservices Back-End}
+  contains: ["accept"]
 script:
-  - text: ["I can't import architectures for you yet. Use Import in the Cloud Pricing menu."]
+  - tool_calls: [{name: list_importable_architectures, arguments: {}}]
+  - tool_calls: [{name: propose_import, arguments: {architecture: I1}}]
+  - text: ["I've proposed the import as \"My Serverless Microservices Back-End\", your own private
+      copy. Nothing is created until you accept."]

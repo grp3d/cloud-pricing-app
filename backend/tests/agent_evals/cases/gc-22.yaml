@@ -1,0 +1,19 @@
+id: GC-22
+title: "025 GC-4: a component with no replication option in the catalog is said, nothing invented"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+messages:
+  - Replicate the DNS and the S3 requests to us-west-2.
+expect:
+  operations: [describe_open_architecture, find_region_equivalents]
+  no_proposal: true
+  contains: ["no equivalent", "us-west-2"]
+  not_contains: ["[figure removed]"]
+script:
+  - tool_calls: [{name: describe_open_architecture, arguments: {}}]
+  - tool_calls: [{name: find_region_equivalents, arguments: {services: [V1, V8, V9],
+      region: us-west-2}}]
+  - text: ["The catalog has no equivalent of the DNS queries or the S3 requests in us-west-2, so I
+      can't replicate them and haven't proposed anything. I can replicate the other components."]

@@ -632,6 +632,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent/proposals/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Proposal
+         * @description Save the proposal (FR-003). No model call and no message from the allowance (FR-016).
+         */
+        post: operations["accept_proposal_api_v1_agent_proposals__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Proposal */
+        post: operations["reject_proposal_api_v1_agent_proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/session/results/{result_id}/csv": {
         parameters: {
             query?: never;
@@ -702,6 +739,43 @@ export interface paths {
          *     on and usable, and the global cap is checked before each model call.
          */
         post: operations["retry_agent_message_api_v1_agent_session_messages__message_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/proposals/{proposal_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Proposal
+         * @description Undo everything one accepted message changed (FR-005); no model call (FR-016).
+         */
+        post: operations["undo_proposal_api_v1_agent_proposals__proposal_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/proposals/{proposal_id}/redo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redo Proposal */
+        post: operations["redo_proposal_api_v1_agent_proposals__proposal_id__redo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -911,6 +985,30 @@ export interface components {
              * @default []
              */
             result_ids: string[];
+            /**
+             * Proposal Ids
+             * @default []
+             */
+            proposal_ids: string[];
+        };
+        /**
+         * AgentOpenArchitectureEvent
+         * @description 025 (research R7): the agent is opening one of the user's architectures; the browser runs
+         *     its unsaved-work check, then opens it.
+         */
+        AgentOpenArchitectureEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "open_architecture";
+            /**
+             * Architecture Id
+             * Format: uuid
+             */
+            architecture_id: string;
+            /** Name */
+            name: string;
         };
         /** AgentOperationEvent */
         AgentOperationEvent: {
@@ -996,6 +1094,70 @@ export interface components {
             height?: number | null;
             /** Width */
             width?: number | null;
+        };
+        /**
+         * AgentProposalEvent
+         * @description 025: a proposal, sent when a `propose_*` operation succeeds.
+         */
+        AgentProposalEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            event: "proposal";
+            proposal: components["schemas"]["AgentProposalOut"];
+        };
+        /** AgentProposalOut */
+        AgentProposalOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "change" | "create" | "import";
+            /** Architecture Id */
+            architecture_id?: string | null;
+            /** Architecture Name */
+            architecture_name?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "accepted" | "rejected" | "superseded" | "expired";
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /** Items */
+            items: components["schemas"]["ProposalItemOut"][];
+            cost: components["schemas"]["ProposalCostOut"];
+            /**
+             * Assumptions
+             * @default []
+             */
+            assumptions: components["schemas"]["ProposalAssumption"][];
+            undo?: components["schemas"]["ProposalUndoOut"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
         };
         /**
          * AgentRefusalOut
@@ -1230,6 +1392,11 @@ export interface components {
              * @default []
              */
             results: components["schemas"]["AgentResultOut"][];
+            /**
+             * Proposals
+             * @default []
+             */
+            proposals: components["schemas"]["AgentProposalOut"][];
         };
         /** AgentSessionOut */
         AgentSessionOut: {
@@ -1357,7 +1524,7 @@ export interface components {
          */
         AgentStreamEnvelope: {
             /** Data */
-            data: components["schemas"]["AgentAcceptedEvent"] | components["schemas"]["AgentStatusEvent"] | components["schemas"]["AgentTextEvent"] | components["schemas"]["AgentOperationEvent"] | components["schemas"]["AgentDoneEvent"] | components["schemas"]["AgentErrorEvent"] | components["schemas"]["AgentResultEvent"];
+            data: components["schemas"]["AgentAcceptedEvent"] | components["schemas"]["AgentStatusEvent"] | components["schemas"]["AgentTextEvent"] | components["schemas"]["AgentOperationEvent"] | components["schemas"]["AgentDoneEvent"] | components["schemas"]["AgentErrorEvent"] | components["schemas"]["AgentResultEvent"] | components["schemas"]["AgentProposalEvent"] | components["schemas"]["AgentOpenArchitectureEvent"];
         };
         /** AgentTextEvent */
         AgentTextEvent: {
@@ -2220,6 +2387,151 @@ export interface components {
          * @enum {string}
          */
         PricingTerm: "on_demand" | "reserved_1yr" | "reserved_3yr" | "savings_plan_1yr" | "savings_plan_3yr" | "commitment_1yr" | "commitment_3yr";
+        /**
+         * ProposalAcceptBody
+         * @description The architecture open in the browser (null when none is), and whether the user has seen
+         *     the re-priced figures of a stale proposal (FR-007).
+         */
+        ProposalAcceptBody: {
+            /** Architecture Id */
+            architecture_id?: string | null;
+            /**
+             * Confirm Restaled
+             * @default false
+             */
+            confirm_restaled: boolean;
+        };
+        /** ProposalActionOut */
+        ProposalActionOut: {
+            proposal: components["schemas"]["AgentProposalOut"];
+            /** Open Architecture Id */
+            open_architecture_id?: string | null;
+        };
+        /** ProposalAssumption */
+        ProposalAssumption: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "region" | "term" | "size" | "usage" | "default";
+            /** Text */
+            text: string;
+            /**
+             * Guessed
+             * @default false
+             */
+            guessed: boolean;
+        };
+        /** ProposalContribution */
+        ProposalContribution: {
+            /** Group */
+            group: string;
+            /** Difference */
+            difference: string;
+        };
+        /** ProposalCostLine */
+        ProposalCostLine: {
+            /** Label */
+            label: string;
+            /** Before */
+            before?: string | null;
+            /** After */
+            after?: string | null;
+            /** Difference */
+            difference?: string | null;
+        };
+        /** ProposalCostOut */
+        ProposalCostOut: {
+            duration: components["schemas"]["CalculationDuration"];
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            };
+            before?: components["schemas"]["ProposalMoney"] | null;
+            after: components["schemas"]["ProposalMoney"];
+            /** Difference */
+            difference?: string | null;
+            /** Percent */
+            percent?: string | null;
+            /**
+             * By Service
+             * @default []
+             */
+            by_service: components["schemas"]["ProposalCostLine"][];
+            /**
+             * By Region
+             * @default []
+             */
+            by_region: components["schemas"]["ProposalCostLine"][];
+            /**
+             * Contributions
+             * @default []
+             */
+            contributions: components["schemas"]["ProposalContribution"][];
+            /**
+             * Unpriceable
+             * @default []
+             */
+            unpriceable: components["schemas"]["ProposalUnpriced"][];
+        };
+        /** ProposalItemOut */
+        ProposalItemOut: {
+            /** Ref */
+            ref: string;
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "add" | "change" | "remove";
+            /**
+             * Target
+             * @enum {string}
+             */
+            target: "collection" | "service" | "connector" | "architecture";
+            /** Label */
+            label: string;
+            /** Group */
+            group?: string | null;
+            /** Before */
+            before?: {
+                [key: string]: unknown;
+            } | null;
+            /** After */
+            after?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** ProposalMoney */
+        ProposalMoney: {
+            /** Total */
+            total: string;
+            /**
+             * Partial
+             * @default false
+             */
+            partial: boolean;
+        };
+        /** ProposalUndoOut */
+        ProposalUndoOut: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "undone" | "ended";
+            /** Can Undo */
+            can_undo: boolean;
+            /** Can Redo */
+            can_redo: boolean;
+            /** End Reason */
+            end_reason?: ("edited" | "superseded" | "session_ended" | "deleted") | null;
+        };
+        /** ProposalUnpriced */
+        ProposalUnpriced: {
+            /** Label */
+            label: string;
+            /** Reason */
+            reason: string;
+        };
         /** ProviderOut */
         ProviderOut: {
             /** Code */
@@ -4041,6 +4353,100 @@ export interface operations {
             };
         };
     };
+    accept_proposal_api_v1_agent_proposals__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalAcceptBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalActionOut"];
+                };
+            };
+            /** @description Not the caller's proposal. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The proposal no longer passes the edit rules. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reject_proposal_api_v1_agent_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalActionOut"];
+                };
+            };
+            /** @description Not the caller's proposal. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The proposal no longer passes the edit rules. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_agent_result_csv_api_v1_agent_session_results__result_id__csv_get: {
         parameters: {
             query?: never;
@@ -4204,6 +4610,96 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AgentRefusalOut"];
                 };
+            };
+        };
+    };
+    undo_proposal_api_v1_agent_proposals__proposal_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalActionOut"];
+                };
+            };
+            /** @description Not the caller's proposal. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The proposal no longer passes the edit rules. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    redo_proposal_api_v1_agent_proposals__proposal_id__redo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalActionOut"];
+                };
+            };
+            /** @description Not the caller's proposal. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The proposal no longer passes the edit rules. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

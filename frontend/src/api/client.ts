@@ -61,6 +61,9 @@ export type AgentStreamEvent = components["schemas"]["AgentStreamEnvelope"]["dat
 // 024: comparison results shown in the Agent tab's Results pane.
 export type AgentResult = components["schemas"]["AgentResultOut"];
 export type AgentResultCell = components["schemas"]["AgentResultCell"];
+// 025: proposals (contracts/agent-api.md).
+export type AgentProposal = components["schemas"]["AgentProposalOut"];
+export type ProposalAction = components["schemas"]["ProposalActionOut"];
 export type AgentSettings = components["schemas"]["AgentSettingsOut"];
 export type AgentSettingsUpdate = components["schemas"]["AgentSettingsUpdate"];
 /** Every field is optional on the server (defaults are generated as required). */
@@ -205,6 +208,20 @@ export const api = {
     }),
   getAgentSession: () => request<AgentSessionDetail>("/agent/session"),
   getAgentOperations: () => request<AgentOperation[]>("/agent/session/operations"),
+  /** 025: the user's decisions on a proposal. Refusals are `ApiStatusError`s with a brief
+   * detail (a 409 `{error: "stale"}` on accept means: the figures were re-priced; accept again
+   * with `confirmRestaled`). */
+  acceptProposal: (id: string, architectureId: string | null, confirmRestaled = false) =>
+    request<ProposalAction>(`/agent/proposals/${id}/accept`, {
+      method: "POST",
+      body: JSON.stringify({ architecture_id: architectureId, confirm_restaled: confirmRestaled }),
+    }),
+  rejectProposal: (id: string) =>
+    request<ProposalAction>(`/agent/proposals/${id}/reject`, { method: "POST" }),
+  undoProposal: (id: string) =>
+    request<ProposalAction>(`/agent/proposals/${id}/undo`, { method: "POST" }),
+  redoProposal: (id: string) =>
+    request<ProposalAction>(`/agent/proposals/${id}/redo`, { method: "POST" }),
   getAgentSettings: () => request<AgentSettings>("/admin/agent/settings"),
   updateAgentSettings: (update: AgentSettingsUpdate) =>
     request<AgentSettings>("/admin/agent/settings", {

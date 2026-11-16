@@ -185,3 +185,74 @@ test("compare the open architecture with Azure in the Results pane", async ({ pa
   await expect(divider).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Results" })).toBeVisible();
 });
+
+/**
+ * 025 (US2–US4): a change is a proposal in the Results pane; nothing is saved until Accept;
+ * Undo and Redo put it back and apply it again; a manual edit ends undo; Reject saves nothing.
+ */
+test("propose, accept, undo, redo and reject a change", async ({ page }) => {
+  const admin = await adminApi();
+  await admin.call("PUT", "/admin/agent/settings", SETTINGS);
+  const created = await admin.call<{ id: string }>("POST", "/admin/users", {
+    username: `changes-${randomUUID().slice(0, 8)}`,
+  });
+  await admin.call("PATCH", `/admin/users/${created.id}/agent`, { agent_enabled_for_user: true });
+  const user = new Api(created.id);
+  const { architectureId, selectionIds } = await user.architecture("aws", "eu-west-1", [
+    AWS_EU_WEST_1,
+  ]);
+  const quantity = async () => {
+    const detail = await user.call<{
+      collections: { sku_selections: { id: string; usage_quantity: string }[] }[];
+    }>("GET", `/architectures/${architectureId}`);
+    const selection = detail.collections[0].sku_selections.find((s) => s.id === selectionIds[0]);
+    return Number(selection?.usage_quantity);
+  };
+  expect(await quantity()).toBe(24);
+
+  await openArchitecture(page, user, architectureId);
+  await page.getByRole("tab", { name: "Agent" }).click();
+  await panel(page).getByRole("button", { name: "New agent session" }).click();
+  await expect(panel(page).getByText(/^Closes /)).toBeVisible();
+  const ask = async (question: string) => {
+    await panel(page).getByLabel("Message the agent").fill(question);
+    await panel(page).getByLabel("Message the agent").press("Enter");
+  };
+
+  await ask("Double the first service.");
+  const proposal = page.getByRole("region", { name: "Proposal" });
+  await expect(proposal).toBeVisible();
+  await expect(panel(page).getByText(/nothing is saved until you accept it/)).toBeVisible();
+  await expect(proposal.getByText("Pending")).toBeVisible();
+  await expect(proposal.getByText("quantity 24.0000 → 48.0000")).toBeVisible();
+  expect(await quantity()).toBe(24); // nothing saved yet
+
+  await proposal.getByRole("button", { name: "Accept" }).click();
+  await expect(proposal.getByText("Accepted")).toBeVisible();
+  await expect.poll(quantity).toBe(48);
+
+  await proposal.getByRole("button", { name: "Undo" }).click();
+  await expect(proposal.getByRole("button", { name: "Redo" })).toBeVisible();
+  await expect.poll(quantity).toBe(24);
+  await proposal.getByRole("button", { name: "Redo" }).click();
+  await expect(proposal.getByRole("button", { name: "Undo" })).toBeVisible();
+  await expect.poll(quantity).toBe(48);
+
+  // A manual edit ends undo, on the card and in the pane.
+  await user.call("PATCH", `/sku-selections/${selectionIds[0]}`, { usage_quantity: "30" });
+  await page.reload();
+  await page.getByRole("tab", { name: "Agent" }).click();
+  await expect(
+    panel(page).getByText(
+      "Your latest edit means the agent's previous change can no longer be undone.",
+    ).first(),
+  ).toBeVisible();
+  await expect(panel(page).getByRole("button", { name: "Undo" })).toHaveCount(0);
+
+  // Reject saves nothing.
+  await ask("Double the first service again.");
+  await expect(proposal.getByText("Pending")).toBeVisible();
+  await proposal.getByRole("button", { name: "Reject" }).click();
+  await expect(proposal.getByText("Rejected")).toBeVisible();
+  expect(await quantity()).toBe(30);
+});

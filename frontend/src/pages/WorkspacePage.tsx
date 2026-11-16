@@ -68,6 +68,8 @@ import {
   type PricingResultEntry,
 } from "../lib/architecturePricingResults";
 import { readPriorCalculation, writePriorCalculation } from "../lib/priorCalculation";
+import { unsavedWork } from "../lib/unsavedWork";
+import { UnsavedWorkDialog } from "../components/workspace/UnsavedWorkDialog";
 
 function errorMessageOf(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
@@ -184,6 +186,9 @@ export function WorkspacePage() {
 
 function WorkspacePageInner() {
   const { architectureId } = useParams<{ architectureId: string }>();
+  // 025 (FR-017): the agent opens one of the user's architectures; unsaved input in the open
+  // one is saved or discarded first, as the user chooses.
+  const [pendingOpen, setPendingOpen] = useState<{ id: string; name: string } | null>(null);
   const queryClient = useQueryClient();
 
   // --- Column widths (US4, FR-012/013): saved to the user's account since 019 (FR-023), each
@@ -326,6 +331,11 @@ function WorkspacePageInner() {
   // or an earlier one), once it's confirmed the current user can still open it. One that's
   // gone (deleted, or no longer theirs) leaves the usual empty workspace.
   const navigate = useNavigate();
+  const openFromAgent = (id: string, name?: string) => {
+    if (id === architectureId) return;
+    if (unsavedWork.dirty) setPendingOpen({ id, name: name ?? "another architecture" });
+    else navigate(`/architectures/${id}`);
+  };
   const [reopening, setReopening] = useState(false);
   const unopenableRef = useRef(new Set<string>());
   // The architecture last open on this page wins over the saved one, which may not have been
@@ -1035,9 +1045,28 @@ function WorkspacePageInner() {
           <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-2">
             {/* 023 (FR-001a): the Canvas and Agent tabs; the open architecture's name (021 US5,
                 FR-005, FR-036) is in their upper tab bar. */}
+            <UnsavedWorkDialog
+              open={pendingOpen !== null}
+              currentName={architecture.data?.name ?? "this architecture"}
+              nextName={pendingOpen?.name ?? ""}
+              onSave={async () => {
+                const ok = await unsavedWork.saveAll();
+                if (ok && pendingOpen) {
+                  navigate(`/architectures/${pendingOpen.id}`);
+                  setPendingOpen(null);
+                }
+                return ok;
+              }}
+              onDiscard={() => {
+                unsavedWork.discardAll();
+                if (pendingOpen) navigate(`/architectures/${pendingOpen.id}`);
+                setPendingOpen(null);
+              }}
+            />
             <WorkspaceCenter
               title={architecture.data ? canvasTitle : null}
               architectureId={architectureId ?? null}
+              onOpenArchitecture={openFromAgent}
               canvas={
                 <ArchitectureDiagramPanel
                   fillHeight

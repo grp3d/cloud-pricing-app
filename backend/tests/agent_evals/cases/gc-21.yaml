@@ -1,0 +1,33 @@
+id: GC-21
+title: "025 GC-3: 'use your best defaults' states the defaults and proposes"
+pricing: combined
+messages:
+  - Create a three-tier web app on GCP in us-east1.
+  - Use your best defaults.
+expect:
+  operations: [find_products, propose_new_architecture]
+  max_questions: 3
+  proposal: {kind: create, at_least: {add: 4}}
+  contains: ["default", "1 instance", "1 TB", ["on demand", "on-demand"]]
+  not_contains: ["[figure removed]", "I saved"]
+script:
+  - text: ["How many web servers and what size? Which database engine and size? How much file
+      storage? Or I can use my defaults."]
+  - tool_calls: [{name: find_products, arguments: {provider: gcp, region: us-east1, parts: [
+      {part: web, category: compute, function: vm},
+      {part: db, category: database, text: postgresql},
+      {part: files, category: storage, function: object_storage}]}}]
+  - tool_calls: [{name: propose_new_architecture, arguments: {
+      name: Three-tier web app, provider: gcp,
+      collections: [{ref: new1, type: vpc, name: Web app VPC, region: us-east1}],
+      services: [
+        {in: new1, product: C1, usage: default, size: {vcpu: 2, memory_gib: 8}},
+        {in: new1, product: C3, usage: default, size: {vcpu: 2, memory_gib: 8}},
+        {in: new1, product: C4, usage: default}],
+      assumptions: [{kind: default, text: "1 instance of 2 vCPU and 8 GB for the web tier"},
+                    {kind: default, text: "1 database instance of 2 vCPU and 8 GB"},
+                    {kind: default, text: "1 TB of object storage"},
+                    {kind: term, text: on demand}]}}]
+  - text: ["I used my defaults: 1 instance of 2 vCPU and 8 GB for the web tier, one database
+      instance of the same size, 1 TB of object storage, all on demand in us-east1. It costs
+      [[F1]] for 1 month (31 days). It's beside me; nothing is saved until you accept it."]

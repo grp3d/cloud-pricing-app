@@ -1,0 +1,21 @@
+id: GC-27
+title: "025 GC-9: 'import the serverless back-end' proposes 'My Serverless Microservices Back-End'; accepting creates a private copy"
+architecture: null
+others:
+  - owner: Admin
+    architectures:
+      - {provider: aws, name: Serverless Microservices Back-End, public: true}
+messages:
+  - Import the serverless back-end.
+expect:
+  operations: [list_importable_architectures, propose_import]
+  proposal: {kind: import, name: My Serverless Microservices Back-End, at_least: {add: 2}}
+  contains: ["My Serverless Microservices Back-End", "private", "accept"]
+  not_contains: ["I've imported", "I imported"]
+actions: [accept, undo, redo]
+script:
+  - tool_calls: [{name: list_importable_architectures, arguments: {provider: aws}}]
+  - tool_calls: [{name: propose_import, arguments: {architecture: I1}}]
+  - text: ["I've proposed importing Admin's Serverless Microservices Back-End as your own private
+      copy, \"My Serverless Microservices Back-End\". It costs [[F1]] for 1 month (31 days).
+      Nothing is created until you accept."]

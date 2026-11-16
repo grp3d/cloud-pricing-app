@@ -1,0 +1,28 @@
+id: GC-25
+title: "025 GC-7 and US8: one message makes many changes; accept, undo restores it exactly, redo applies it again"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+messages:
+  - Replicate the load balancer and the web servers to us-west-2, and double the database storage.
+expect:
+  operations: [describe_open_architecture, find_region_equivalents, propose_changes]
+  proposal: {kind: change, at_least: {add: 4, change: 1}}
+  contains: ["standby", "database", "accept"]
+  not_contains: ["[figure removed]", "[figure unavailable]"]
+actions: [accept, undo, redo]
+script:
+  - tool_calls: [{name: describe_open_architecture, arguments: {}}]
+  - tool_calls: [{name: find_region_equivalents, arguments: {services: [V2, V3, V4],
+      region: us-west-2}}]
+  - tool_calls: [{name: propose_changes, arguments: {
+      title: Standby in us-west-2 and more database storage,
+      add_collections: [{ref: new1, type: vpc, name: Standby, region: us-west-2,
+                         group: standby}],
+      add_services: [{in: new1, product: C1, group: standby}, {in: new1, product: C2, group: standby},
+                     {in: new1, product: C3, group: standby}],
+      change_services: [{ref: V6, scale: 2, group: database}]}}]
+  - text: ["I've proposed two changes. The standby in us-west-2 adds [[F6]] and doubling the
+      database storage adds [[F7]], so the total goes from [[F2]] to [[F1]]. Nothing is saved until
+      you accept."]

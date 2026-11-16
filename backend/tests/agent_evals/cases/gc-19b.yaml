@@ -1,0 +1,21 @@
+id: GC-19B
+title: "025 US1 scenario 4: a part the catalog has no product for is said and left out"
+pricing: combined
+messages:
+  - Create a web app on GCP in us-east1 with one web server of 2 vCPU and 8 GB, and a mainframe.
+expect:
+  operations: [find_products, propose_new_architecture]
+  proposal: {kind: create, at_least: {add: 2}}
+  contains: [["no mainframe", "doesn't have a mainframe", "has no mainframe"], ["left it out", "left out", "leave it out"]]
+  not_contains: ["[figure removed]"]
+script:
+  - tool_calls: [{name: find_products, arguments: {provider: gcp, region: us-east1, parts: [
+      {part: web, category: compute, function: vm},
+      {part: mainframe, category: compute, text: mainframe-zseries}]}}]
+  - tool_calls: [{name: propose_new_architecture, arguments: {
+      name: Web app, provider: gcp,
+      collections: [{ref: new1, type: vpc, name: Web, region: us-east1}],
+      services: [{in: new1, product: C1, usage: {quantity: 1, unit: instances},
+                  size: {vcpu: 2, memory_gib: 8}}]}}]
+  - text: ["The catalog has no mainframe, so I left it out. I've proposed the web server: it costs
+      [[F1]] for 1 month (31 days). Nothing is saved until you accept it."]

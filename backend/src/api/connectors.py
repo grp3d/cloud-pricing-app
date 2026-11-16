@@ -16,6 +16,7 @@ from src.models.schemas import (
     SKUSelectionCreate,
     SKUSelectionOut,
 )
+from src.services import architecture_rules as rules
 from src.services.architecture_service import (
     get_owned_architecture,
     get_owned_connector,
@@ -37,18 +38,12 @@ async def create_connector(
     session: DbSession,
     user: CurrentUser,
 ) -> DataConnector:
-    if body.from_collection_id == body.to_collection_id:
-        raise HTTPException(
-            status_code=400, detail="A connector cannot link a Collection to itself"
-        )
-
+    rules.check_connector_not_self(body.from_collection_id, body.to_collection_id)
     architecture = await get_owned_architecture(architecture_id, session, user)
-    collection_ids = {c.id for c in architecture.collections if c.deleted_at is None}
-    if body.from_collection_id not in collection_ids or body.to_collection_id not in collection_ids:
-        raise HTTPException(
-            status_code=400,
-            detail="Both collections must belong to this Architecture",
-        )
+    rules.check_connector_ends(
+        body.from_collection_id, body.to_collection_id,
+        {c.id for c in architecture.collections if c.deleted_at is None},
+    )
 
     connector = DataConnector(
         architecture_id=architecture.id,

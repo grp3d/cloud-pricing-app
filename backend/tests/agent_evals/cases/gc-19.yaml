@@ -1,0 +1,37 @@
+id: GC-19
+title: "025 GC-1: a three-tier web app on GCP gets short questions, then a priced proposal with real SKUs"
+pricing: combined
+messages:
+  - Create a three-tier web app on GCP in us-east1.
+  - Two web servers with 2 vCPU and 8 GB each, MySQL with 2 vCPU and 8 GB, and 1 TB of files. On demand.
+expect:
+  operations: [find_products, propose_new_architecture]
+  max_questions: 3
+  proposal: {kind: create, at_least: {add: 7}, none_of: [remove]}
+  contains: ["accept", ["on demand", "on-demand"], "1 month"]
+  not_contains: ["[figure removed]", "[figure unavailable]", "I've created", "I have created", "I saved"]
+script:
+  - text: ["How many web servers, and what size? Which database engine and size? How much file
+      storage? Or I can use my defaults."]
+  - tool_calls: [{name: find_products, arguments: {provider: gcp, region: us-east1, parts: [
+      {part: web, category: compute, function: vm},
+      {part: db, category: database},
+      {part: files, category: storage, function: object_storage}]}}]
+  - tool_calls: [{name: propose_new_architecture, arguments: {
+      name: Three-tier web app, provider: gcp,
+      collections: [
+        {ref: new1, type: vpc, name: Web app VPC, region: us-east1},
+        {ref: new2, type: application, name: Web tier, region: us-east1, parent: new1},
+        {ref: new3, type: application, name: Database, region: us-east1, parent: new1},
+        {ref: new4, type: application, name: Files, region: us-east1, parent: new1}],
+      services: [
+        {in: new2, product: C1, usage: {quantity: 2, unit: instances},
+         size: {vcpu: 2, memory_gib: 8}, group: web tier},
+        {in: new3, product: C2, usage: {quantity: 1, unit: instances},
+         size: {vcpu: 2, memory_gib: 8}, group: database},
+        {in: new4, product: C4, usage: {quantity: 1, unit: tb}, group: files}],
+      assumptions: [{kind: term, text: on demand for everything},
+                    {kind: usage, text: "both web servers and the database run all month"}]}}]
+  - text: ["I've proposed a three-tier web app on GCP in us-east1: two web servers, a MySQL
+      database and 1 TB of files, on demand. It costs [[F1]] for 1 month (31 days); the largest
+      part is [[F2]]. It's shown beside me, and nothing is saved until you accept it."]

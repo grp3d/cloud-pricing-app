@@ -24,7 +24,7 @@ from src.models.schemas import (
     ImportableArchitecturesOut,
     ProviderCode,
 )
-from src.pricing_data.providers.registry import has_adapter
+from src.services import architecture_rules as rules
 from src.services.architecture_import import import_architecture
 from src.services.architecture_service import (
     attach_units_to_architecture,
@@ -40,8 +40,7 @@ async def create_architecture(
     body: ArchitectureCreate, session: DbSession, user: CurrentUser
 ) -> Architecture:
     # 019 (US1): any provider with a pricing adapter (Constitution III).
-    if not has_adapter(body.provider):
-        raise HTTPException(status_code=400, detail=f"Provider not supported: {body.provider}")
+    rules.check_provider(body.provider)
     architecture = Architecture(user_id=user.id, name=body.name, provider=body.provider)
     session.add(architecture)
     await session.commit()

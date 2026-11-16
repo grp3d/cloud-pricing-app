@@ -1,0 +1,17 @@
+id: GC-28
+title: "025 GC-10: a request outside what the agent can do is declined, with what it can do"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+messages:
+  - Set up a Kubernetes cost alert.
+expect:
+  no_operations: true
+  no_proposal: true
+  refused: true
+  contains: ["I can't help with that here", "propos"]
+script:
+  - text: ["I can't help with that here. I can help with describing and pricing your
+      architectures, comparing prices across AWS, Azure and GCP, and proposing changes you
+      review: creating, scaling, replicating or importing an architecture."]

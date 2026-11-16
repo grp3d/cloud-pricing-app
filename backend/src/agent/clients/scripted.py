@@ -53,7 +53,8 @@ class ScriptedModelClient:
     @classmethod
     def demo(cls) -> ScriptedModelClient:
         """The e2e model. A question that names Azure compares the open architecture with Azure
-        in eastus (024); anything else prices the open architecture for 1 month (023)."""
+        in eastus (024); one that says "double" proposes doubling its first service (025);
+        anything else prices the open architecture for 1 month (023)."""
         return _DemoClient()
 
     async def stream(
@@ -85,7 +86,9 @@ class _DemoClient(ScriptedModelClient):
         if not self._chosen:
             self._chosen = True
             question = next((m.text for m in reversed(messages) if m.role == "user"), "")
-            self._turns = _COMPARE() if "azure" in question.lower() else _PRICE()
+            lowered = question.lower()
+            self._turns = (_COMPARE() if "azure" in lowered else
+                           _PROPOSE() if "double" in lowered else _PRICE())
         async for event in super().stream(system, messages, tools):
             yield event
 
@@ -111,3 +114,17 @@ def _COMPARE() -> list[Turn]:
                    "on AWS. The table beside me shows each match."],
              usage=Usage(200, 40)),
     ]
+
+
+def _PROPOSE() -> list[Turn]:
+    return [
+        Turn(tool_calls=[ToolCall("demo-1", "describe_open_architecture", {})],
+             usage=Usage(100, 20)),
+        Turn(tool_calls=[ToolCall("demo-2", "propose_changes", {
+            "title": "Double the first service",
+            "change_services": [{"ref": "V1", "scale": "2"}]})], usage=Usage(150, 30)),
+        Turn(text=["Doubling it takes the total from [[F2]] to [[F1]]. It's a proposal beside me; ",
+                   "nothing is saved until you accept it."],
+             usage=Usage(200, 40)),
+    ]
+
