@@ -5,11 +5,12 @@ architecture:
   provider: aws
   name: Active-Standby Multi-Region Web Application
 messages:
-  - Replicate the load balancer and the web servers to us-west-2, and double the database storage.
+  - Replicate the load balancer and the web servers to us-west-2, and double the database storage in us-east-1.
 expect:
   operations: [describe_open_architecture, find_region_equivalents, propose_changes]
-  proposal: {kind: change, at_least: {add: 4, change: 1}}
-  contains: ["standby", "database", "accept"]
+  proposal: {kind: change, adds_services: {region: us-west-2, codes: [AWSELB, AWSELB, AmazonEC2]},
+             changes_services: {region: us-east-1, codes: [AmazonRDS]}}
+  contains: ["us-west-2", "database", "accept"]
   not_contains: ["[figure removed]", "[figure unavailable]"]
 actions: [accept, undo, redo]
 script:
@@ -23,6 +24,6 @@ script:
       add_services: [{in: new1, product: C1, group: standby}, {in: new1, product: C2, group: standby},
                      {in: new1, product: C3, group: standby}],
       change_services: [{ref: V6, scale: 2, group: database}]}}]
-  - text: ["I've proposed two changes. The standby in us-west-2 adds [[F6]] and doubling the
-      database storage adds [[F7]], so the total goes from [[F2]] to [[F1]]. Nothing is saved until
+  - text: ["I've proposed two changes. The standby in us-west-2 adds [[F9]] and doubling the
+      database storage adds [[F10]], so the total goes from [[F2]] to [[F1]]. Nothing is saved until
       you accept."]

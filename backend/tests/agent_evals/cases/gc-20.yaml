@@ -11,8 +11,9 @@ messages:
 expect:
   operations: [describe_open_architecture, find_region_equivalents, propose_changes]
   max_questions: 3
-  proposal: {kind: change, at_least: {add: 6}, none_of: [remove]}
-  contains: ["us-west-2", ["on demand", "on-demand"], "accept", "driver", "half"]
+  proposal: {kind: change, none_of: [remove],
+             adds_services: {region: us-west-2, codes: [AWSELB, AWSELB, AmazonEC2, AmazonRDS, AmazonRDS]}}
+  contains: ["us-west-2", ["on demand", "on-demand"], "accept", ["driver", "largest"], ["half", "halved"]]
   not_contains: ["[figure removed]", "[figure unavailable]", "I saved", "I've replicated"]
 script:
   - text: ["Which region should the replica be in? Which components should I copy? How large

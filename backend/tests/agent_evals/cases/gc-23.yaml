@@ -9,7 +9,7 @@ messages:
   - Replicate the web servers to us-west-2, and use defaults for anything else.
 expect:
   operations: [describe_open_architecture, find_region_equivalents, propose_changes]
-  proposal: {kind: change, at_least: {add: 2}, partial: true}
+  proposal: {kind: change, partial: true, adds_services: {region: us-west-2, codes: [AmazonEC2]}}
   contains: ["partial", "NOSUCHSKU", ["exclud", "leaves out", "left out"]]
 script:
   - tool_calls: [{name: describe_open_architecture, arguments: {}}]

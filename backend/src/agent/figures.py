@@ -42,8 +42,30 @@ _MONEY = re.compile(
     r"|(?<![\w.])\d{1,3}(?:,\d{3})+(?:\.\d+)?"
     r"|(?<![\w.])\d+\.\d{2}(?!\d)"
 )
-# A trailing run of characters that could still become part of a reference or an amount.
-_HOLD = re.compile(r"[\[\]F\d$.,%USD \t]*\Z")
+# 025: a number followed by a usage unit ("1,000 GB-Mo", "744.00 Hrs") is a quantity from the
+# architecture, not money, so it stays. Units vary by provider, so the word after the number is
+# matched by how it starts.
+_UNIT_WORD = re.compile(r"\s?([A-Za-z][A-Za-z.\-]*)")
+_UNIT_STEMS = (
+    "kb", "mb", "gb", "gib", "tb", "tib", "pb", "terabyte", "gigabyte", "byte",
+    "hr", "hour", "second", "minute", "lcu", "rpu", "dpu", "vcpu", "cpu", "core",
+    "request", "putrequest", "readrequest", "writerequest", "quer", "object", "obj-",
+    "mau", "shard", "update", "instance", "node", "iops", "lambda-gb",
+)
+_UNIT_EXACT = frozenset({"h", "s", "io", "ios"})
+
+
+def _is_quantity(text: str, end: int) -> bool:
+    match = _UNIT_WORD.match(text, end)
+    if not match:
+        return False
+    word = match.group(1).lower()
+    return word in _UNIT_EXACT or word.startswith(_UNIT_STEMS)
+
+
+# A trailing run of characters that could still become part of a reference or an amount, or
+# the unit after a number.
+_HOLD = re.compile(r"[\[\]F\d$.,%USD \t]*(?:(?<=[\d ])[A-Za-z](?:[A-Za-z.\-]{0,18}[A-Za-z\-])?)?\Z")
 # Characters a reference or an amount can start with.
 _STARTS = frozenset("$[0123456789U")
 
@@ -129,7 +151,10 @@ class FigureStreamFilter:
         if not text:
             return ""
 
-        def remove(_match: re.Match) -> str:
+        def remove(match: re.Match) -> str:
+            if match.group(0)[0].isdigit() and not match.group(0).endswith(("%", "USD")) \
+                    and _is_quantity(text, match.end()):
+                return match.group(0)
             self.removed += 1
             return REMOVED
 

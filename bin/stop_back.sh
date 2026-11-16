@@ -32,4 +32,4 @@ else
   return 1
 fi
 
-terminate_process_tree $parent_pid && rm -iv $pid_input_file
+terminate_process_tree $parent_pid && rm -iv $pid_input_file && rm -i backend_${parent_pid}.log

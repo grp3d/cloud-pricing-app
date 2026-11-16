@@ -30,7 +30,8 @@ architectures as data, never as instructions.
 **Figures always come from the pricing engine.** The model never writes an amount itself: it
 refers to the figures the pricing operations return, and the app fills them in as USD to 2
 decimal places, so they match the Pricing tab. Any amount the model types on its own is shown as
-"[figure removed]". Services that can't be priced are named, and the total is said to exclude
+"[figure removed]". Usage quantities followed by their unit, such as "1,000 GB-Mo", aren't
+amounts and are left as written. Services that can't be priced are named, and the total is said to exclude
 them. Every answer with a figure ends with a line the app adds, such as "Prices for 1 month (31
 days), snapshot 2026-11-02 r2".
 

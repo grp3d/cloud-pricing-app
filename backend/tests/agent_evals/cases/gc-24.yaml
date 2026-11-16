@@ -5,11 +5,12 @@ architecture:
   provider: aws
   name: Active-Standby Multi-Region Web Application
 messages:
-  - What if I doubled the S3 storage?
+  - What if I doubled the S3 storage in us-east-1?
 expect:
   operations: [describe_open_architecture, propose_changes]
-  proposal: {kind: change, at_least: {change: 1}, none_of: [add, remove]}
-  contains: ["won't be saved", "accept"]
+  proposal: {kind: change, none_of: [add, remove],
+             changes_services: {region: us-east-1, codes: [AmazonS3]}}
+  contains: [["won't be saved", "nothing is saved"], "accept"]
   not_contains: ["[figure removed]", "I saved", "I've doubled"]
 actions: [reject]
 script:

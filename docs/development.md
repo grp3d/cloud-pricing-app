@@ -210,7 +210,9 @@ preview messages. For the hosted model, put `AGENT_ANTHROPIC_API_KEY=…` in `ba
   AGENT_EVAL_MODELS="ollama:llama3.1,anthropic:claude-sonnet-5-5" uv run pytest -m live_model
   ```
 
-  Since 025 the cases also check proposals: their kind and changes, figures equal to the
+  Since 025 the cases also check proposals: their kind and changes (`adds_services` and
+  `changes_services` name exactly which services, by code, change in which region, whichever
+  collection the model puts them in), figures equal to the
   engine's for the before and after states, nothing saved before Accept, and scripted user
   actions after the answer (`actions: [accept, undo, redo, manual_edit, undo_refused, reject]`),
   with the saved architecture checked after each. 025's cases (`gc-19` to `gc-28`) are checked

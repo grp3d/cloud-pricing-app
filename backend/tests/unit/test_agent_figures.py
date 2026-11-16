@@ -8,7 +8,13 @@ from decimal import Decimal
 
 import pytest
 
-from src.agent.figures import FigureBook, FigureStreamFilter, footer, format_usd
+from src.agent.figures import (
+    REMOVED,
+    FigureBook,
+    FigureStreamFilter,
+    footer,
+    format_usd,
+)
 
 SNAP = {"aws": {"date": "2026-11-02", "revision": 2}}
 
@@ -63,6 +69,36 @@ def test_plain_numbers_and_words_pass_through(plain):
     out = FigureStreamFilter(FigureBook())
     assert out.feed(f"It has {plain} here.") + out.flush() == f"It has {plain} here."
     assert out.removed == 0
+
+
+@pytest.mark.parametrize(
+    "quantity",
+    ["1,000 GB-Month", "1000.00 GB-Mo", "744.00 Hrs", "1,488 LCU-Hrs", "2.50 GiBy.mo",
+     "1,000,000 Requests", "12.50 vCPU-Hours", "730.00 h"],
+)
+def test_usage_quantities_with_a_unit_pass_through(quantity):
+    """025 (GC-24): quantities from the architecture aren't money."""
+    out = FigureStreamFilter(FigureBook())
+    assert out.feed(f"Each holds {quantity} now.") + out.flush() == f"Each holds {quantity} now."
+    assert out.removed == 0
+
+
+@pytest.mark.parametrize("written", ["1,780.96 per month", "12.50 a day", "$1,000 GB", "40% GB"])
+def test_money_next_to_other_words_is_still_removed(written):
+    out = FigureStreamFilter(FigureBook())
+    assert REMOVED in out.feed(f"It is {written}.") + out.flush()
+    assert out.removed == 1
+
+
+def test_a_unit_split_across_chunks_still_counts():
+    source = "S3 holds 1,000 GB-Month in each region, about $12.50 more."
+    expected = "S3 holds 1,000 GB-Month in each region, about [figure removed] more."
+    rng = random.Random(11)
+    for _ in range(200):
+        out = FigureStreamFilter(FigureBook())
+        cuts = sorted(rng.sample(range(1, len(source)), rng.randint(1, 12)))
+        pieces = [source[a:b] for a, b in zip([0, *cuts], [*cuts, len(source)], strict=True)]
+        assert "".join(out.feed(p) for p in pieces) + out.flush() == expected
 
 
 def test_any_chunk_split_gives_the_same_text():

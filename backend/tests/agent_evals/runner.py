@@ -9,6 +9,7 @@ or must not appear, and whether the request must be declined. No model grades th
 from __future__ import annotations
 
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -291,6 +292,28 @@ async def run_case(db, case: dict, client) -> CaseResult:
 # --- 025: proposals (research R10) ---------------------------------------------------------------
 
 
+def _services_check(proposal, op: str, spec: dict) -> Check:
+    """Exactly these services added (or changed) in `spec["region"]`, by service code, and none
+    elsewhere, whichever collection the model put them in (025, GC-20, GC-23 to GC-25)."""
+    target = ArchitectureState.model_validate(proposal.target_state)
+    regions = {c.id: c.region for c in target.collections}
+    by_id = {str(s.id): s for s in target.services}
+    ids = [i["id"] for i in proposal.items if i["op"] == op and i["target"] == "service"]
+    found: Counter = Counter()
+    elsewhere = 0
+    for service_id in ids:
+        service = by_id.get(service_id)
+        if service and regions.get(service.collection_id) == spec["region"]:
+            found[service.service_code] += 1
+        else:
+            elsewhere += 1
+    wanted = Counter(spec["codes"])
+    verb = "adds" if op == "add" else "changes"
+    return Check(f"{verb} {dict(wanted)} in {spec['region']}",
+                 found == wanted and elsewhere == 0,
+                 f"{dict(found)}, {elsewhere} elsewhere")
+
+
 def proposal_checks(expect: dict, found: list) -> list[Check]:
     """Checks on the session's latest proposal: its kind and items, figures equal to the
     engine's for its base and target states, and contributions that add up."""
@@ -313,6 +336,9 @@ def proposal_checks(expect: dict, found: list) -> list[Check]:
         checks.append(Check(f"at least {least} {op}", counts[op] >= least, f"{counts[op]}"))
     for op in wanted.get("none_of") or []:
         checks.append(Check(f"no {op}", counts[op] == 0, f"{counts[op]}"))
+    for key, op in (("adds_services", "add"), ("changes_services", "change")):
+        if key in wanted:
+            checks.append(_services_check(latest, op, wanted[key]))
     if "name" in wanted:
         name = latest.target_state.get("name")
         checks.append(Check(f"named {wanted['name']!r}", name == wanted["name"], f"{name!r}"))
