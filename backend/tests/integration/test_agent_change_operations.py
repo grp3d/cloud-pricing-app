@@ -75,9 +75,30 @@ async def test_find_products_says_when_a_part_has_no_product(world):
     ctx = ctx_for(world)
     found = await registry.run(ctx, "find_products", {
         "provider": "gcp", "region": "us-east1",
-        "parts": [{"part": "odd", "category": "storage", "text": "zzzz-no-such-thing"}]})
-    assert found.data["parts"]["odd"] == {
+        "parts": [{"part": "disk", "category": "storage", "function": "block_storage"}]})
+    assert found.data["parts"]["disk"] == {
         "none": "the catalog has no product of that kind in this region"}
+
+
+async def test_find_products_says_when_only_the_words_match_nothing(world):
+    ctx = ctx_for(world)
+    found = await registry.run(ctx, "find_products", {
+        "provider": "gcp", "region": "us-east1",
+        "parts": [{"part": "odd", "category": "storage", "function": "object_storage",
+                   "text": "zzzz-no-such-thing"}]})
+    assert found.data["parts"]["odd"] == {
+        "none": "no product of that kind matches 'zzzz-no-such-thing' here; search again with "
+                "a word from the product names, or no words"}
+
+
+async def test_find_products_tries_each_word_when_the_phrase_matches_nothing(world):
+    ctx = ctx_for(world)
+    found = await registry.run(ctx, "find_products", {
+        "provider": "gcp", "region": "us-east1",
+        "parts": [{"part": "cold", "category": "storage", "function": "object_storage",
+                   "text": "coldline archive"}]})
+    products = found.data["parts"]["cold"]["products"]
+    assert [p["product"] for p in products] == ["Coldline Storage South Carolina"]
 
 
 async def test_find_products_refuses_a_region_without_data(world):

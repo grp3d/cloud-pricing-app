@@ -36,6 +36,7 @@ export const ERROR_TEXT: Record<string, string> = {
   key_rejected: "The agent's model rejected its API key. An Admin needs to check the key.",
   rate_limited: "The agent's model is limiting requests. Try again in a minute.",
   bad_output: "The agent's model gave an answer the app couldn't use.",
+  too_many_steps: "The agent used all its steps before finishing its answer.",
   failed: "The agent couldn't answer.",
   session_closed: "This session has reached its close time.",
   global_cap: "The agent has reached its monthly limit.",

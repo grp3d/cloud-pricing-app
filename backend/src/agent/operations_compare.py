@@ -165,17 +165,31 @@ async def _regions(ctx: OperationContext, providers: list[str],
     return out
 
 
-async def search_region(searcher, provider: str, region: str, functions: list[str],
-                        text: str | None, reference: Candidate | None = None) -> list[Candidate]:
-    """The catalog's products of `functions` in one provider and region, best first (up to
-    TOP_N), with match qualities against `reference` when given. Shared by `search_products`
-    (024) and `find_products` (025), so both search the catalog the same way."""
+async def _search_rows(searcher, provider: str, region: str, functions: list[str],
+                       text: str | None) -> list:
     rows = []
     for function in functions:
         for filters in SEARCHES[provider].get(function, []):
             if text:
                 filters = {**filters, "text": text}
             rows.extend(await searcher.search(provider, region, filters))
+    return rows
+
+
+async def search_region(searcher, provider: str, region: str, functions: list[str],
+                        text: str | None, reference: Candidate | None = None) -> list[Candidate]:
+    """The catalog's products of `functions` in one provider and region, best first (up to
+    TOP_N), with match qualities against `reference` when given. Shared by `search_products`
+    (024) and `find_products` (025), so both search the catalog the same way."""
+    rows = await _search_rows(searcher, provider, region, functions, text)
+    # Search words are matched as one phrase. When several words find nothing (a name the
+    # catalog doesn't use, e.g. "internet egress"), try each word, longest first.
+    words = sorted({w for w in (text or "").split() if len(w) >= 3}, key=lambda w: (-len(w), w))
+    if not rows and len(words) > 1:
+        for word in words:
+            rows = await _search_rows(searcher, provider, region, functions, word)
+            if rows:
+                break
     units: dict = {}
     if provider == "aws" and rows:
         from src.agent.matching.candidates import _aws_units

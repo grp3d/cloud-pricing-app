@@ -29,7 +29,7 @@ if [[ -f "$pid_input_file" ]]; then
   parent_pid=$(<"$pid_input_file")
 else
   echo "Error: pid file {$pid_input_file} does not exist"
-  return 1
+  exit 1
 fi
 
 terminate_process_tree $parent_pid && rm -iv $pid_input_file && rm -i backend_${parent_pid}.log

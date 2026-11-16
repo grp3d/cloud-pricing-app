@@ -129,7 +129,10 @@ so names from imported architectures can't run as formulas.
 - **The same rules as editing by hand.** A proposal is checked with the editor's own rules
   (nesting, regions, region lock, connectors, price types) and uses only products from the
   catalog; the agent never names a product itself. Something the catalog doesn't have is said and
-  left out. A replicated service keeps the original's pricing term unless you ask otherwise. A
+  left out. The agent searches the catalog by kind of product, optionally with words from product
+  names; if several words together match nothing (GCP never says "egress", for example), each word
+  is tried alone, and the agent is told whether nothing of that kind exists or only its words
+  didn't match. A replicated service keeps the original's pricing term unless you ask otherwise. A
   proposal holds at most 100 changes; larger requests are built in parts.
 - **Accept or Reject.** Accept saves exactly what was proposed, in one go. For a change, the
   architecture must be the one open; for a new or imported architecture, it opens when you
@@ -159,6 +162,8 @@ so names from imported architectures can't run as formulas.
   [workspace and preferences](workspace-and-preferences.md)); the arrangement is saved to your
   account. Canvas is in front by default; to keep the agent in view, move Agent to the lower
   half.
+- The tabs are there with no architecture open too, so the agent can propose a new one; the
+  Canvas tab then says to open or create an architecture.
 - Usable only by logged-in users while the agent is switched on. For a guest, or with the agent
   off, the Agent tab is shown but inactive, and its tooltip says why.
 - **Conversation** and **Activity** switch the panel's view. Answers appear as they're written,
@@ -172,6 +177,11 @@ so names from imported architectures can't run as formulas.
   limiting requests (try again in a minute), it can't be reached, or it took too long. If the
   model writes out an operation instead of running it, as weaker local models sometimes do, the
   answer isn't shown: the panel says the model gave an answer the app couldn't use.
+- An answer can use up to 8 model calls. If the model is still running operations after the
+  last one, the panel says the agent used all its steps before finishing its answer. If it had
+  already made a proposal or a result, these stand: the answer ends with a note from the app
+  saying so instead of failing. Every failed answer's reason is in the backend log (not the
+  conversation).
 
 ## Sessions
 

@@ -87,9 +87,17 @@ async def find_products(ctx: OperationContext, args: FindProductsInput) -> Opera
         for candidate in kept:
             ctx.matches.add_candidate(candidate)
         found += len(kept)
-        data["parts"][part.part] = (
-            {"products": [_candidate_out(c, with_quality=False) for c in kept]} if kept
-            else {"none": "the catalog has no product of that kind in this region"})
+        if kept:
+            data["parts"][part.part] = {
+                "products": [_candidate_out(c, with_quality=False) for c in kept]}
+        elif part.text and await search_region(searcher, args.provider, args.region,
+                                               functions, None):
+            data["parts"][part.part] = {
+                "none": f"no product of that kind matches {part.text!r} here; search again "
+                        "with a word from the product names, or no words"}
+        else:
+            data["parts"][part.part] = {
+                "none": "the catalog has no product of that kind in this region"}
     return OperationResult(data=data, summary={"provider": args.provider,
                                                "region": args.region, "parts": len(args.parts),
                                                "candidates": found})

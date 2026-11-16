@@ -942,7 +942,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "timeout" | "unreachable" | "no_credit" | "key_rejected" | "rate_limited" | "bad_output" | "failed" | "session_closed" | "global_cap";
+            kind: "timeout" | "unreachable" | "no_credit" | "key_rejected" | "rate_limited" | "bad_output" | "too_many_steps" | "failed" | "session_closed" | "global_cap";
             /** Message */
             message: string;
         };

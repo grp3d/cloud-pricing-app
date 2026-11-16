@@ -1,6 +1,6 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -84,8 +84,14 @@ function errorMessageOf(err: unknown): string {
  * (SC-003) even before picking an Architecture. Column 3 (service configuration) stays
  * genuinely absent, per FR-012/quickstart's "column 3 is simply absent" — there's no service
  * to configure without a Collection to select one from.
+ *
+ * 025 (US1): with nothing open, `center` replaces the middle panel with the Canvas and Agent
+ * tabs, so the agent can propose a new architecture; the Canvas tab shows the message.
  */
-function EmptyWorkspacePanels({ message }: { message: string }) {
+const NOTHING_OPEN =
+  "Open or create an architecture from the Cloud Pricing menu (the arrow beside Cloud Pricing above) to get started.";
+
+function EmptyWorkspacePanels({ message, center }: { message: string; center?: ReactNode }) {
   const promptTextClassName = "p-4 text-center text-2xs text-muted-foreground";
   return (
     <>
@@ -94,13 +100,15 @@ function EmptyWorkspacePanels({ message }: { message: string }) {
       >
         {message}
       </aside>
-      <div className="min-w-0 flex-1 p-2">
-        <div
-          className={`flex h-full items-center justify-center rounded border border-border bg-muted/20 ${promptTextClassName}`}
-        >
-          {message}
+      {center ?? (
+        <div className="min-w-0 flex-1 p-2">
+          <div
+            className={`flex h-full items-center justify-center rounded border border-border bg-muted/20 ${promptTextClassName}`}
+          >
+            {message}
+          </div>
         </div>
-      </div>
+      )}
       <aside
         className={`flex w-[360px] shrink-0 items-center justify-center border-l border-border ${promptTextClassName}`}
       >
@@ -997,10 +1005,26 @@ function WorkspacePageInner() {
             !architectureId && reopening
               ? "Loading…"
               : !architectureId
-                ? "Open or create an architecture from the Cloud Pricing menu (the arrow beside Cloud Pricing above) to get started."
+                ? NOTHING_OPEN
                 : architecture.isLoading
                   ? "Loading…"
                   : "Architecture not found."
+          }
+          center={
+            !architectureId && !reopening ? (
+              <div className="flex min-w-0 flex-1 flex-col p-2">
+                <WorkspaceCenter
+                  title={null}
+                  architectureId={null}
+                  onOpenArchitecture={openFromAgent}
+                  canvas={
+                    <div className="flex h-full items-center justify-center p-4 text-center text-2xs text-muted-foreground">
+                      {NOTHING_OPEN}
+                    </div>
+                  }
+                />
+              </div>
+            ) : undefined
           }
         />
       )}

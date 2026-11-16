@@ -213,7 +213,10 @@ async def test_stops_after_the_maximum_rounds(setup):
     )
     events = await _run(_ctx(setup, client, _registry([])))
     assert len(client.calls) == MAX_ROUNDS
-    assert isinstance(events[-1], AgentErrorEvent)
+    assert isinstance(events[-1], AgentErrorEvent) and events[-1].kind == "too_many_steps"
+    db_message = (await db.execute(select(AgentMessage).where(AgentMessage.role == "user"))
+                  ).scalar_one()
+    assert db_message.error_kind == "too_many_steps"
 
 
 async def test_model_written_amounts_are_removed_and_logged(setup):
@@ -425,3 +428,26 @@ async def test_progress_is_streamed_as_status_and_throttled(setup):
                and e.total == 10 for e in progress)
     assert progress[-1].done == 10  # the last one always gets through
     assert len(progress) < 10  # throttled (one every 250 ms, plus the last)
+
+
+async def test_at_the_step_limit_an_answer_with_a_result_ends_with_the_apps_note(setup):
+    db, *_ = setup
+    client = ScriptedModelClient(
+        [Turn(text=["Comparing."], tool_calls=[ToolCall("c0", "makes_result", {})])]
+        + [Turn(tool_calls=[ToolCall(f"c{i}", "books", {})]) for i in range(1, MAX_ROUNDS)]
+    )
+    events = await _run(_ctx(setup, client, _registry_024({})))
+    assert events[-1].event == "done"
+    assert _text(events) == ("Comparing.\n\n(The agent used all its steps before finishing its "
+                             "answer. Its results are in the Results pane.)")
+    stored = (await db.execute(select(AgentMessage).where(AgentMessage.role == "agent"))
+              ).scalar_one()
+    assert stored.status == "complete" and stored.content == _text(events)
+
+
+def test_the_step_limit_note_for_a_proposal():
+    from src.agent.loop import _out_of_steps_note
+
+    assert _out_of_steps_note(True, False, False) == (
+        "(The agent used all its steps before finishing its answer. Its proposal is in the "
+        "Results pane; nothing is saved until you accept it.)")

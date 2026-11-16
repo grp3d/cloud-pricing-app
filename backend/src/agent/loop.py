@@ -52,7 +52,7 @@ from src.models.schemas import (
 
 logger = get_logger("cloud_pricing.agent")
 
-MAX_ROUNDS = 6
+MAX_ROUNDS = 8
 HISTORY_MESSAGES = 20
 # 024 (research R13): at most one progress status every this many seconds (the last always).
 PROGRESS_INTERVAL = 0.25
@@ -68,6 +68,7 @@ ERROR_MESSAGES = {
     "key_rejected": "The agent's model rejected its API key. An Admin needs to check the key.",
     "rate_limited": "The agent's model is limiting requests. Try again in a minute.",
     "bad_output": "The agent's model gave an answer the app couldn't use.",
+    "too_many_steps": "The agent used all its steps before finishing its answer.",
     "failed": "The agent couldn't answer.",
     "session_closed": "This session has reached its close time.",
     "global_cap": "The agent has reached its monthly limit.",
@@ -279,7 +280,17 @@ async def answer(ctx: LoopContext) -> AsyncIterator:
                     is_error=is_error,
                 ))
         else:
-            raise _Stop("bad_output")
+            # Still running operations after its last call. If it already made a proposal or a
+            # result, they stand: end the answer with the app's own note instead of failing.
+            if not (op_context.proposals or op_context.results):
+                raise _Stop("too_many_steps")
+            out = stream.feed(_out_of_steps_note(bool(op_context.proposals),
+                                                 bool(op_context.results), bool(shown)))
+            if out:
+                shown.append(out)
+                yield AgentTextEvent(delta=out)
+            logger.warning("agent answer ended at the step limit", rounds=MAX_ROUNDS,
+                           operations=op_seq)
 
         tail = stream.flush()
         if tail:
@@ -311,12 +322,21 @@ async def answer(ctx: LoopContext) -> AsyncIterator:
         yield AgentDoneEvent(agent_message_id=agent_message.id)
     except (_Stop, ModelError) as exc:
         kind = exc.kind
+        # The reason (not the conversation), so a failed answer can be traced in the log.
+        logger.warning("agent answer failed", kind=kind, detail=str(exc), operations=op_seq)
         await _fail(ctx, message_id, kind)
         yield AgentErrorEvent(kind=kind, message=ERROR_MESSAGES[kind])
     except Exception:
         logger.exception("agent answer failed")
         await _fail(ctx, message_id, "failed")
         yield AgentErrorEvent(kind="failed", message=ERROR_MESSAGES["failed"])
+
+
+def _out_of_steps_note(proposal: bool, result: bool, after_text: bool) -> str:
+    made = ("Its proposal is in the Results pane; nothing is saved until you accept it."
+            if proposal else "Its results are in the Results pane.")
+    note = f"(The agent used all its steps before finishing its answer. {made})"
+    return f"\n\n{note}" if after_text else note
 
 
 def _progress_reporter(queue: asyncio.Queue) -> Callable[[int, int, str], None]:

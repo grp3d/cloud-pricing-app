@@ -983,7 +983,7 @@ AgentRefusalReason = Literal[
 ]
 AgentErrorKind = Literal[
     "timeout", "unreachable", "no_credit", "key_rejected", "rate_limited", "bad_output",
-    "failed", "session_closed", "global_cap"
+    "too_many_steps", "failed", "session_closed", "global_cap"
 ]
 
 
