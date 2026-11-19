@@ -309,3 +309,22 @@ describe("ServiceConfigPanel pinned heading (021 US8)", () => {
     expect(scroll).toHaveClass("overflow-auto");
   });
 });
+
+// 025 (T065): accepting the agent's change to the open service saved a new quantity, but the
+// Service tab kept showing the old one until another service was selected.
+describe("ServiceConfigPanel — a change saved elsewhere", () => {
+  it("shows the service's new saved quantity", () => {
+    const before = sku({ id: "sku-a", usage_quantity: "500" });
+    const accepted = sku({ id: "sku-a", usage_quantity: "1000" });
+
+    const { rerender } = render(
+      panel({ ...noop, selection: existingServiceSelection("sku-a"), resolvedExisting: before }),
+    );
+    expect(screen.getByLabelText(/Usage quantity/)).toHaveValue(500);
+
+    rerender(
+      panel({ ...noop, selection: existingServiceSelection("sku-a"), resolvedExisting: accepted }),
+    );
+    expect(screen.getByLabelText(/Usage quantity/)).toHaveValue(1000);
+  });
+});

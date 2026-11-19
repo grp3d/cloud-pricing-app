@@ -96,3 +96,12 @@ export function defaultPricingInputs(ctx: Omit<FormContext, "initial">): Pricing
 
 export const sameInputs = (a: PricingInputs, b: PricingInputs) =>
   JSON.stringify(a) === JSON.stringify(b);
+
+/** The same inputs as stored: the server keeps a quantity to 4 places ("100" → "100.0000"). */
+export function sameSavedInputs(a: PricingInputs, b: PricingInputs): boolean {
+  const quantity = (x: PricingInputs) => Number(x.usage_quantity);
+  return (
+    quantity(a) === quantity(b) &&
+    sameInputs({ ...a, usage_quantity: "" }, { ...b, usage_quantity: "" })
+  );
+}

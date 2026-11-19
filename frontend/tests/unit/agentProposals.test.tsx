@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../../src/api/client";
 import { AgentActivityLog } from "../../src/components/agent/AgentActivityLog";
+import { AgentProposalCard } from "../../src/components/agent/AgentProposalCard";
 import {
   changeText,
   groupItems,
@@ -33,7 +34,24 @@ describe("proposal helpers", () => {
   it("groups items and describes a change", () => {
     const groups = groupItems(changeProposal().items);
     expect([groups.add.length, groups.change.length, groups.remove.length]).toEqual([2, 1, 1]);
-    expect(changeText(groups.change[0])).toBe("quantity 744.0000 → 372.0000");
+    expect(changeText(groups.change[0])).toBe("quantity 744 → 372");
+    expect(changeText({ ...groups.change[0], quantity_unit: "GB a day" })).toBe(
+      "quantity 744 → 372 GB a day",
+    );
+    const machine = (vcpus: number, memory: string) => ({
+      kind: "gcp_machine",
+      version: 1,
+      vcpus,
+      memory_gib: memory,
+      ram_sku: "3788-1D54-5064",
+    });
+    expect(
+      changeText({
+        ...groups.change[0],
+        before: { provider_options: machine(4, "16.0") },
+        after: { provider_options: machine(8, "32") },
+      }),
+    ).toBe("size 4 vCPU, 16 GiB → 8 vCPU, 32 GiB");
   });
 
   it("notices once when an edit ends undo, not on the first load", () => {
@@ -85,5 +103,27 @@ describe("AgentActivityLog", () => {
     );
     expect(await screen.findByText("You accepted a proposal")).toBeInTheDocument();
     expect(screen.getByText("propose_changes")).toBeInTheDocument();
+  });
+});
+
+describe("the proposal card", () => {
+  it("opens a new architecture again on Redo", async () => {
+    const proposal = acceptedCreate({
+      undo: { status: "undone", can_undo: false, can_redo: true, end_reason: null },
+    });
+    vi.spyOn(api, "redoProposal").mockResolvedValue({ proposal, open_architecture_id: "a2" });
+    const opened = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <AgentProposalCard
+          proposal={proposal}
+          current={false}
+          onShow={() => {}}
+          onOpenArchitecture={opened}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    await waitFor(() => expect(opened).toHaveBeenCalledWith("a2"));
   });
 });

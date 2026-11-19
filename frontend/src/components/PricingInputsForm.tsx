@@ -1,5 +1,5 @@
 import { Plus, Save } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import type {
   CatalogKind,
@@ -21,6 +21,7 @@ import {
   inputsOf,
   itemShape,
   sameInputs,
+  sameSavedInputs,
 } from "../lib/pricingInputs";
 import { useUnsavedWork } from "../lib/unsavedWork";
 import { usageQuantityHint } from "../lib/usageQuantityHint";
@@ -94,6 +95,28 @@ export function PricingInputsForm({
   const [lastSaved, setLastSaved] = useState<PricingInputs | null>(null);
   const changed = !sameInputs(current, lastSaved ?? inputsOf(start, ctx));
   const submitVariant = submitLabel === "Save" && !changed ? "soft" : "default";
+
+  // 025 (T065): a change saved elsewhere (the agent's Accept, Undo or Redo) reloads the fields.
+  // The form's own save comes back too, as stored ("100.0000" for "100"): that keeps what's
+  // shown, and the Save colour, as they are.
+  const saved = inputsOf(initialState(ctx), ctx);
+  const savedKey = JSON.stringify(saved);
+  const seen = useRef(savedKey);
+  useEffect(() => {
+    if (savedKey === seen.current) return;
+    seen.current = savedKey;
+    if (lastSaved && sameSavedInputs(saved, lastSaved)) return;
+    const fresh = initialState(ctx);
+    setTerm(fresh.term);
+    setPurchaseOption(fresh.purchaseOption);
+    setQuantity(fresh.quantity);
+    setOs(fresh.os);
+    setVcpus(fresh.vcpus);
+    setMemoryGib(fresh.memoryGib);
+    setLastSaved(saved);
+    // Only a new saved value matters; `saved` and `ctx` are rebuilt every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedKey]);
 
   // 025 (FR-017): an edit of a saved service that isn't saved yet is unsaved work, so the app
   // asks before the agent opens another architecture. Discarding puts back what was saved.

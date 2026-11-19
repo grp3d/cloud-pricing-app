@@ -74,14 +74,38 @@ const FIELD_TEXT: Record<string, string> = {
   name: "name",
 };
 
-/** "quantity 744 → 372; term on demand → reserved 1 year" for a change item. */
+/** "500.0000" → "500": a stored quantity as the Service tab shows it. */
+function plainNumber(value: unknown): string {
+  const text = String(value ?? "—");
+  return /^-?\d+\.\d+$/.test(text) ? text.replace(/\.?0+$/, "") : text;
+}
+
+/** "quantity 744 → 372 Hrs a day; term on demand → reserved 1 year" for a change item. The
+ * quantity's unit says its period: hours, GB transferred and requests are a daily rate. */
 export function changeText(item: AgentProposal["items"][number]): string {
   const before = (item.before ?? {}) as Record<string, unknown>;
   const after = (item.after ?? {}) as Record<string, unknown>;
+  const sizes = [sizeText(before.provider_options), sizeText(after.provider_options)];
+  const size =
+    sizes[0] && sizes[1] && sizes[0] !== sizes[1] ? `size ${sizes[0]} → ${sizes[1]}` : "";
   return Object.keys(after)
     .filter((key) => key in FIELD_TEXT)
-    .map((key) => `${FIELD_TEXT[key]} ${String(before[key] ?? "—")} → ${String(after[key])}`)
+    .map((key) => {
+      if (key !== "usage_quantity") {
+        return `${FIELD_TEXT[key]} ${String(before[key] ?? "—")} → ${String(after[key])}`;
+      }
+      const unit = item.quantity_unit ? ` ${item.quantity_unit}` : "";
+      return `quantity ${plainNumber(before[key])} → ${plainNumber(after[key])}${unit}`;
+    })
+    .concat(size ? [size] : [])
     .join("; ");
+}
+
+/** "4 vCPU, 16 GiB" for a GCP machine's options; null for anything else. */
+function sizeText(options: unknown): string | null {
+  const o = options as { kind?: string; vcpus?: unknown; memory_gib?: unknown } | null;
+  if (!o || o.kind !== "gcp_machine") return null;
+  return `${String(o.vcpus)} vCPU, ${plainNumber(o.memory_gib)} GiB`;
 }
 
 /** A refusal's detail as one brief sentence for the view. */

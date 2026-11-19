@@ -279,8 +279,8 @@ async def finish(ctx: OperationContext, draft: Draft, *, kind: str, title: str,
     data = {
         "proposal": f"Q{proposal.seq}",
         "status": "pending: shown to the user beside you; nothing is saved until they accept",
-        "items": [{"ref": i.ref, "op": i.op, "label": i.label, **({"group": i.group}
-                                                                  if i.group else {})}
+        "items": [{"ref": i.ref, "op": i.op, "label": i.label,
+                   **({"group": i.group} if i.group else {}), **_quantity_change(i)}
                   for i in draft.items],
         "cost": cost_for_model(ctx, cost),
     }
@@ -474,12 +474,21 @@ async def find_region_equivalents(ctx: OperationContext,
 
 class ServiceChangeInput(BaseModel):
     ref: str = Field(description="A V… service reference.")
-    usage: Usage | None = Field(default=None, description="The new amount.")
+    quantity: Decimal | None = Field(
+        default=None, gt=0, description="The new quantity exactly as the Service tab holds it, "
+        "in the service's own unit (see quantity_means: hours, GB transferred and requests are "
+        "a daily rate). Use when the user gives the number as stored ('change 730 to 500').")
+    usage: Usage | None = Field(default=None, description="A new amount stated per month "
+                                "('1 TB a month', '2 instances'); the app converts it.")
     scale: Decimal | None = Field(default=None, gt=0, description="Multiply the current amount, "
-                                  "e.g. 0.5 for half, 2 for double.")
+                                  "e.g. 0.5 for half, 2 for double. Use for 'double', 'halve', "
+                                  "'10% more'.")
     product: str | None = Field(default=None, description="A C… product to resize to (same "
                                 "region).")
-    size: Size | None = None
+    size: Size | None = Field(default=None, description="New vCPUs and memory for a GCP "
+                              "machine (its current size is in describe_open_architecture). "
+                              "Hours per day stay as they are unless you also change quantity "
+                              "or scale.")
     term: Term | None = None
     purchase_option: PurchaseOption | None = None
     group: str | None = Field(default=None, max_length=60)
@@ -558,6 +567,8 @@ async def propose_changes(ctx: OperationContext, args: ChangesInput) -> Operatio
         label = (f"{source.label} in {source.where}" if source else
                  next((i.label for i in draft.items if i.id == str(service_id)), change.ref))
         fields: dict = {}
+        if sum(x is not None for x in (change.quantity, change.usage, change.scale)) > 1:
+            raise ToolError(f"{change.ref}: give one of quantity, usage or scale")
         if change.product:
             candidate = ctx.matches.candidate(change.product)
             if candidate.region != region:
@@ -569,7 +580,12 @@ async def propose_changes(ctx: OperationContext, args: ChangesInput) -> Operatio
                                     size=change.size, term=current.pricing_term,
                                     purchase_option=None, ref=change.ref)
                 fields["provider_options"] = spec.provider_options
-        if change.usage is not None:
+        elif change.size:
+            fields["provider_options"] = _resized(current.provider_options, change.size,
+                                                  change.ref)
+        if change.quantity is not None:
+            fields["usage_quantity"] = str(Decimal(change.quantity))
+        elif change.usage is not None:
             if source is None:
                 raise ToolError(f"{change.ref} is added by the pending proposal: use scale "
                                 "(for example 0.5 for half) to change its amount")
@@ -586,13 +602,18 @@ async def propose_changes(ctx: OperationContext, args: ChangesInput) -> Operatio
                 change.purchase_option)
             fields.update(pricing_term=term, purchase_option=option)
         if not fields:
-            raise ToolError(f"{change.ref}: say what to change (usage, scale, product, size or "
+            raise ToolError(f"{change.ref}: say what to change (quantity, usage, scale, product, size or "
                             "term)")
         from src.services.architecture_state import quantity as q
 
         if "usage_quantity" in fields:
             fields["usage_quantity"] = str(q(fields["usage_quantity"]))
-        draft.change("service", service_id, fields, label=label, group=change.group)
+        from src.agent.matching.usage import quantity_unit
+
+        unit = (quantity_unit(source.unit, source.provider) if source
+                else _added_unit(draft, service_id))
+        draft.change("service", service_id, fields, label=label, group=change.group,
+                     quantity_unit=unit)
     for rename in args.rename_collections:
         _kind, collection_id = _row(ctx, rename.ref, ("collection",))
         draft.change("collection", collection_id, {"name": rename.name},
@@ -620,6 +641,55 @@ async def propose_changes(ctx: OperationContext, args: ChangesInput) -> Operatio
     return await finish(ctx, draft, kind="change", title=args.title, base=base,
                         duration=args.duration, assumptions=args.assumptions,
                         architecture_id=architecture.id)
+
+
+def _resized(options, size, ref: str) -> dict:
+    """The same GCP machine with new vCPUs and memory (its core and RAM SKUs unchanged)."""
+    from src.agent.matching.usage import plain_number
+
+    if options is not None and not isinstance(options, dict):
+        options = options.model_dump(mode="json")
+    if not options or options.get("kind") != "gcp_machine":
+        raise ToolError(f"{ref}: size (vCPUs and memory) applies to GCP machines only; for "
+                        "another size of this service, find_products and use product")
+    return {**options, "vcpus": int(size.vcpu),
+            "memory_gib": plain_number(size.memory_gib)}
+
+
+def size_text(options) -> str | None:
+    """"4 vCPU, 16 GiB" for a GCP machine's options."""
+    from src.agent.matching.usage import plain_number
+
+    if not options or options.get("kind") != "gcp_machine":
+        return None
+    return f"{options['vcpus']} vCPU, {plain_number(options['memory_gib'])} GiB"
+
+
+def _added_unit(draft: Draft, service_id) -> str | None:
+    """The quantity unit an earlier item recorded for a service the pending proposal adds."""
+    return next((i.quantity_unit for i in draft.items
+                 if i.id == str(service_id) and i.quantity_unit), None)
+
+
+def _quantity_change(item) -> dict:
+    """025: "500 → 1000 GB a day" and "4 vCPU, 16 GiB → 8 vCPU, 32 GiB", so the answer states
+    the change in the Service tab's terms."""
+    if item.op != "change" or not item.after:
+        return {}
+    from src.agent.matching.usage import plain_number
+
+    out = {}
+    if "usage_quantity" in item.after:
+        before = plain_number((item.before or {}).get("usage_quantity", 0))
+        after = plain_number(item.after["usage_quantity"])
+        unit = f" {item.quantity_unit}" if item.quantity_unit else ""
+        out["quantity"] = f"{before} → {after}{unit}"
+    if "provider_options" in item.after:
+        before = size_text((item.before or {}).get("provider_options"))
+        after = size_text(item.after["provider_options"])
+        if before and after:
+            out["size"] = f"{before} → {after}"
+    return out
 
 
 def _service_name(draft: Draft, service_id, fallback: str) -> str:

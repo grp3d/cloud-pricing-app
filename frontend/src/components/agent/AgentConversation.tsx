@@ -178,6 +178,7 @@ export function AgentConversation({
               current={results.shownId === p.id}
               onShow={results.onShow}
               answering={answering}
+              onOpenArchitecture={(id) => results.onOpenArchitecture?.(id, p.title)}
             />
           ))
       : null;

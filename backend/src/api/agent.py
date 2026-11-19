@@ -359,5 +359,7 @@ async def undo_proposal(proposal_id: uuid.UUID, session: DbSession,
 async def redo_proposal(proposal_id: uuid.UUID, session: DbSession,
                         user: CurrentUser) -> ProposalActionOut:
     agent_session, proposal = await _proposal_action(session, user, proposals.redo, proposal_id)
-    return await _action_out(session, user, agent_session, proposal)
+    # Redo brings back a created or imported architecture that undo removed: open it again.
+    opened = proposal.architecture_id if proposal.kind != "change" else None
+    return await _action_out(session, user, agent_session, proposal, opened)
 

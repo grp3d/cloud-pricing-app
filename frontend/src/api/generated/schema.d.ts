@@ -2500,6 +2500,8 @@ export interface components {
             after?: {
                 [key: string]: unknown;
             } | null;
+            /** Quantity Unit */
+            quantity_unit?: string | null;
         };
         /** ProposalMoney */
         ProposalMoney: {

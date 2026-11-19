@@ -8,7 +8,7 @@ from src.agent.prompt import PROMPT_VERSION, SYSTEM_PROMPT
 
 
 def test_version():
-    assert PROMPT_VERSION == "025.1"
+    assert PROMPT_VERSION == "025.3"
 
 
 def test_names_every_comparison_operation_and_they_exist():

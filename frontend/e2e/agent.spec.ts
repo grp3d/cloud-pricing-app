@@ -224,7 +224,7 @@ test("propose, accept, undo, redo and reject a change", async ({ page }) => {
   await expect(proposal).toBeVisible();
   await expect(panel(page).getByText(/nothing is saved until you accept it/)).toBeVisible();
   await expect(proposal.getByText("Pending")).toBeVisible();
-  await expect(proposal.getByText("quantity 24.0000 → 48.0000")).toBeVisible();
+  await expect(proposal.getByText("quantity 24 → 48 Hrs a day")).toBeVisible();
   expect(await quantity()).toBe(24); // nothing saved yet
 
   await proposal.getByRole("button", { name: "Accept" }).click();

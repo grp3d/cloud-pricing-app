@@ -107,6 +107,7 @@ async def test_twenty_changes_undo_and_redo_exactly(client, world):
 
     redone = await client.post(_url(proposal_id, "redo"), headers=_headers(user))
     assert redone.status_code == 200
+    assert redone.json()["open_architecture_id"] is None  # a change: it's already open
     assert_state_equal(await read_state(db, architecture_id), target)
     names = (await db.execute(select(AgentOperation.name).order_by(AgentOperation.seq)
                               )).scalars().all()
@@ -136,8 +137,9 @@ async def test_undoing_a_new_architecture_removes_it_and_redo_restores_it(client
     assert (await db.get(Architecture, new_id, populate_existing=True)).deleted_at is not None
     assert (await client.get(f"/api/v1/architectures/{new_id}", headers=_headers(user))
             ).status_code == 404
-    assert (await client.post(_url(proposal.id, "redo"), headers=_headers(user))).status_code \
-        == 200
+    redone = await client.post(_url(proposal.id, "redo"), headers=_headers(user))
+    assert redone.status_code == 200
+    assert redone.json()["open_architecture_id"] == str(new_id)  # the page opens it again
     assert (await db.get(Architecture, new_id, populate_existing=True)).deleted_at is None
     assert_state_equal(await read_state(db, new_id), target)
 

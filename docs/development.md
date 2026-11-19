@@ -203,7 +203,8 @@ preview messages. For the hosted model, put `AGENT_ANTHROPIC_API_KEY=…` in `ba
 - **Checking real models** is a separate run, against the same cases and fixed checks (figures
   equal to the engine's to the cent, operations run, phrases present or absent, refusals, and
   for comparisons: each result row recalculated through the engine, match qualities, partial
-  totals, and no result for a single price):
+  totals, and no result for a single price; for proposals: the services added or changed by
+  region, a changed quantity set exactly or multiplied, and a GCP machine's new size):
 
   ```bash
   cd backend

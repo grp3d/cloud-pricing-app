@@ -97,3 +97,28 @@ def test_default_usage_per_function():
     assert default_usage("data_transfer").unit == "tb"
     assert default_usage("object_requests_read").unit == "million_requests"
     assert default_usage("other") is None
+
+
+def test_a_stored_quantity_unit_says_its_period():
+    from src.agent.matching.usage import quantity_unit
+
+    assert quantity_unit("GB") == "GB a day"  # GB transferred: a daily rate
+    assert quantity_unit("Hrs") == "Hrs a day"
+    assert quantity_unit("GB-Mo") == "GB-Mo"  # its own period: the amount held
+    assert quantity_unit(None) is None
+
+
+def test_plain_numbers_drop_trailing_zeros():
+    from src.agent.matching.usage import plain_number
+
+    assert plain_number("500.0000") == "500"
+    assert plain_number("32.2581") == "32.2581"
+    assert plain_number(1000) == "1000"
+
+
+def test_each_providers_units_are_classified_by_its_own_table():
+    from src.agent.matching.usage import quantity_unit
+
+    assert quantity_unit("h", "gcp") == "h a day"  # GCP's hour: Hours per day in the Service tab
+    assert quantity_unit("GiBy.mo", "gcp") == "GiBy.mo"
+    assert quantity_unit("1 Hour", "azure") == "1 Hour a day"

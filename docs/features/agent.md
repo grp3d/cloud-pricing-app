@@ -126,6 +126,14 @@ so names from imported architectures can't run as formulas.
   order applied, so the shares add up to the difference; anything that couldn't be priced (the
   total is then partial); and the agent's assumptions, with guessed regions marked "(guess)". A
   new architecture shows its cost only.
+- **Quantities as the Service tab holds them.** A usage quantity in hours, GB transferred or
+  requests is a daily rate in the Service tab; the agent is told so. "Double" or "halve"
+  multiplies the current quantity; a number you give as the Service tab shows it ("change 96 to
+  128") is set exactly; an amount for the month ("1 TB a month") is converted to the daily rate.
+  A changed quantity is shown with its unit and period: "quantity 96 → 128 Hrs a day".
+- **GCP machines** are sized by vCPUs and memory, besides their hours per day. The agent sees
+  each machine's size and can resize it in place ("double the vCPUs and memory"), keeping its
+  hours; the change shows as "size 4 vCPU, 16 GiB → 8 vCPU, 32 GiB".
 - **The same rules as editing by hand.** A proposal is checked with the editor's own rules
   (nesting, regions, region lock, connectors, price types) and uses only products from the
   catalog; the agent never names a product itself. Something the catalog doesn't have is said and
@@ -139,9 +147,12 @@ so names from imported architectures can't run as formulas.
   accept, private and owned by you. Reject saves nothing. A proposal is **Stale** if the
   architecture changed after it was made: Accept checks it again and re-prices it, and you accept
   the updated figures. A newer proposal in the session replaces a pending one (**Superseded**).
+  The canvas and an open Service tab show the saved result at once, after Accept, Undo or Redo.
+  A service the proposal doesn't change is listed with a difference of $0.00.
 - **Undo and Redo** are on the accepted proposal, in the pane and on its card. Undo puts the
   architecture back exactly as it was before you accepted, box positions included; for a new or
-  imported architecture it removes it. Redo applies the change again. One level of each, for the
+  imported architecture it removes it and closes it, leaving the Agent tab open. Redo applies the
+  change again, and opens a new or imported architecture again. One level of each, for the
   latest accepted proposal only. Undo ends, and the panel says so once, when you change the
   architecture yourself (any saved change, renaming included; making it public or private, or
   moving boxes, doesn't count), when you accept a later proposal, when you delete the

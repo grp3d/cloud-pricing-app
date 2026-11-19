@@ -67,6 +67,10 @@ describe("figures", () => {
     expect(formatMoney("1234567.891")).toBe("$1,234,567.89");
     expect(formatMoney("-12")).toBe("-$12.00");
     expect(formatMoney(null)).toBe("");
+    // An unchanged service's zero difference, in Python's exponent form (T065, 2026-11-19).
+    expect(formatMoney("0E-13")).toBe("$0.00");
+    expect(formatMoney("-1.2345E+3")).toBe("-$1,234.50");
+    expect(formatMoney("5E-3")).toBe("$0.01");
     expect(formatPercent("12.35")).toBe("+12.4%");
     expect(formatPercent("-4")).toBe("-4.0%");
     expect(formatPercent("0.01")).toBe("0.0%");

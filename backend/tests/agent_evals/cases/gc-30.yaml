@@ -1,0 +1,23 @@
+id: GC-30
+title: "025 (T065): a number given as the Service tab shows it is set exactly, not read as a month"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+messages:
+  - Change the EC2 instance hours in us-west-2 from 96 to 128.
+expect:
+  operations: [describe_open_architecture, propose_changes]
+  proposal: {kind: change, none_of: [add, remove],
+             changes_services: {region: us-west-2, codes: [AmazonEC2]},
+             quantity: {code: AmazonEC2, to: 128}}
+  contains: ["128", "a day", "accept"]
+  not_contains: ["[figure removed]", "I saved"]
+script:
+  - tool_calls: [{name: describe_open_architecture, arguments: {}}]
+  - tool_calls: [{name: propose_changes, arguments: {
+      title: EC2 hours in us-west-2 to 128 a day,
+      change_services: [{ref: V13, quantity: 128}]}}]
+  - text: ["I've proposed changing the EC2 instance hours in us-west-2 from 96 to 128 Hrs a
+      day. The total goes from [[F2]] to [[F1]], [[F3]] ([[F4]]) more. Nothing is saved until
+      you accept it."]

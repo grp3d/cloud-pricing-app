@@ -463,3 +463,114 @@ async def test_revising_needs_a_pending_proposal(world):
     await registry.run(ctx, "describe_open_architecture", {})
     with pytest.raises(ToolError, match="no pending proposal"):
         await registry.run(ctx, "propose_changes", {"title": "x", "revise_pending": True})
+
+
+# --- Quantities as the Service tab holds them (T065 walk-through, 2026-11-19) -----------------------
+
+
+async def _a_daily_service(world):
+    """The open Prod Web, and a service whose quantity is a daily rate (hours, GB transferred)."""
+    architecture_id = await _prod_web(world)
+    ctx = ctx_for(world, architecture_id)
+    described = (await registry.run(ctx, "describe_open_architecture", {})).data
+    service = next(s for c in described["collections"] for s in c["services"]
+                   if s.get("quantity_means", "").endswith("(the Service tab's daily rate)"))
+    return ctx, service
+
+
+async def test_describe_says_what_each_quantity_means(world):
+    _ctx, service = await _a_daily_service(world)
+    from src.agent.matching.usage import plain_number
+
+    assert service["quantity_means"] == (
+        f"{plain_number(service['quantity'])} {service['unit']} a day "
+        "(the Service tab's daily rate)")
+
+
+async def test_a_quantity_is_set_exactly_as_the_service_tab_holds_it(world):
+    ctx, service = await _a_daily_service(world)
+    result = await registry.run(ctx, "propose_changes", {
+        "title": "Set it to 500", "change_services": [{"ref": service["ref"], "quantity": "500"}]})
+    from src.agent.matching.usage import plain_number
+
+    item = result.data["items"][0]
+    assert item["quantity"] == (
+        f"{plain_number(service['quantity'])} → 500 {service['unit']} a day")
+    proposal = ctx.proposals[0]
+    target = ArchitectureState.model_validate(proposal.target_state)
+    assert target.service(ctx.rows[service["ref"]][1]).usage_quantity == Decimal("500")
+    assert proposal.items[0]["quantity_unit"] == f"{service['unit']} a day"
+
+
+async def test_doubling_is_scale_and_is_stated_per_day(world):
+    ctx, service = await _a_daily_service(world)
+    result = await registry.run(ctx, "propose_changes", {
+        "title": "Double it", "change_services": [{"ref": service["ref"], "scale": "2"}]})
+    from src.agent.matching.usage import plain_number
+
+    doubled = plain_number(Decimal(service["quantity"]) * 2)
+    assert result.data["items"][0]["quantity"].endswith(f"→ {doubled} {service['unit']} a day")
+
+
+async def test_one_kind_of_amount_per_change(world):
+    ctx, service = await _a_daily_service(world)
+    with pytest.raises(ToolError, match="give one of quantity, usage or scale"):
+        await registry.run(ctx, "propose_changes", {
+            "title": "Both", "change_services": [{"ref": service["ref"], "quantity": "500",
+                                                  "scale": "2"}]})
+
+
+async def test_unchanged_services_have_a_plain_zero_difference(world):
+    """T065: an unchanged service's difference was sent as "0E-13", shown as "+$0E13.undefined"."""
+    ctx, service = await _a_daily_service(world)
+    await registry.run(ctx, "propose_changes", {
+        "title": "Double it", "change_services": [{"ref": service["ref"], "scale": "2"}]})
+    cost = ctx.proposals[0].cost
+    amounts = [row[key] for rows in (cost["by_service"], cost["by_region"]) for row in rows
+               for key in ("before", "after", "difference") if row[key] is not None]
+    amounts += [cost["difference"], cost["before"]["total"], cost["after"]["total"]]
+    assert all("E" not in a and "e" not in a for a in amounts), amounts
+    unchanged = [row for row in cost["by_service"] if row["before"] == row["after"]]
+    assert unchanged and all(Decimal(row["difference"]) == 0 for row in unchanged)
+
+
+# --- Resizing a GCP machine (T065, 2026-11-19) ------------------------------------------------------
+
+
+async def _a_gcp_machine(world):
+    from tests.helpers.agent import build_standard
+
+    db, user = world[0], world[1]
+    architecture = await build_standard(db, user, "gcp", WEB_APP, rename="GCP Web")
+    ctx = ctx_for(world, architecture.id)
+    described = (await registry.run(ctx, "describe_open_architecture", {})).data
+    machine = next(s for c in described["collections"] for s in c["services"] if "size" in s)
+    return ctx, machine
+
+
+async def test_a_gcp_machine_is_resized_in_place(world):
+    ctx, machine = await _a_gcp_machine(world)
+    vcpu, memory = machine["size"]["vcpu"], Decimal(machine["size"]["memory_gib"])
+    result = await registry.run(ctx, "propose_changes", {
+        "title": "Double the vCPUs and memory",
+        "change_services": [{"ref": machine["ref"],
+                             "size": {"vcpu": vcpu * 2, "memory_gib": str(memory * 2)}}]})
+    from src.agent.matching.usage import plain_number
+
+    item = result.data["items"][0]
+    assert item["size"] == (f"{vcpu} vCPU, {plain_number(memory)} GiB → {vcpu * 2} vCPU, "
+                            f"{plain_number(memory * 2)} GiB")
+    assert "quantity" not in item  # the hours per day stay as they are
+    target = ArchitectureState.model_validate(ctx.proposals[0].target_state)
+    service = target.service(ctx.rows[machine["ref"]][1])
+    assert (service.provider_options["vcpus"], Decimal(service.provider_options["memory_gib"])) \
+        == (vcpu * 2, memory * 2)
+    assert Decimal(ctx.proposals[0].cost["difference"]) > 0  # a bigger machine costs more
+
+
+async def test_size_is_refused_for_a_service_that_isnt_a_gcp_machine(world):
+    ctx, service = await _a_daily_service(world)
+    with pytest.raises(ToolError, match="applies to GCP machines only"):
+        await registry.run(ctx, "propose_changes", {
+            "title": "Bigger", "change_services": [{"ref": service["ref"],
+                                                    "size": {"vcpu": 8, "memory_gib": 32}}]})

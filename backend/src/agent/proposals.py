@@ -44,16 +44,22 @@ class ChangeItem:
     before: dict | None = None
     after: dict | None = None
     ref: str = ""
+    # For a changed service quantity: its unit with period, e.g. "GB a day" (a daily rate).
+    quantity_unit: str | None = None
 
     def to_json(self) -> dict:
-        return {"ref": self.ref, "op": self.op, "target": self.target, "id": self.id,
-                "label": self.label, "group": self.group, "before": self.before,
-                "after": self.after}
+        out = {"ref": self.ref, "op": self.op, "target": self.target, "id": self.id,
+               "label": self.label, "group": self.group, "before": self.before,
+               "after": self.after}
+        if self.quantity_unit:
+            out["quantity_unit"] = self.quantity_unit
+        return out
 
     @classmethod
     def from_json(cls, data: dict) -> ChangeItem:
         return cls(**{k: data.get(k) for k in ("op", "target", "id", "label", "group", "before",
-                                               "after")}, ref=data.get("ref", ""))
+                                               "after")}, ref=data.get("ref", ""),
+                   quantity_unit=data.get("quantity_unit"))
 
 
 _ROWS = {"collection": ("collections", CollectionState), "service": ("services", ServiceState),
@@ -169,7 +175,7 @@ class Draft:
         return new_id
 
     def change(self, target: str, row_id: uuid.UUID, fields: dict, *, label: str,
-               group: str | None) -> None:
+               group: str | None, quantity_unit: str | None = None) -> None:
         current = {"collection": self.state.collection, "service": self.state.service,
                    "connector": self.state.connector}[target](row_id)
         if current is None:
@@ -178,7 +184,9 @@ class Draft:
         changed = {k: v for k, v in fields.items() if before.get(k) != v}
         if changed:
             self._add(ChangeItem("change", target, str(row_id), label, group,
-                                 before={k: before[k] for k in changed}, after=changed))
+                                 before={k: before[k] for k in changed}, after=changed,
+                                 quantity_unit=quantity_unit if "usage_quantity" in changed
+                                 else None))
 
     def remove(self, target: str, row_id: uuid.UUID, *, label: str, group: str | None) -> None:
         current = {"collection": self.state.collection, "service": self.state.service,
@@ -306,6 +314,12 @@ def service_labels(state: ArchitectureState) -> dict[uuid.UUID, str]:
     return out
 
 
+def _amount(value) -> str:
+    """A plain decimal string: never Python's exponent form ("0E-13" for an unchanged service's
+    zero difference), which the UI can't read."""
+    return f"{Decimal(value):f}"
+
+
 def cost_summary(base: ArchitectureState | None, items: list[ChangeItem],
                  target: ArchitectureState, duration: str) -> dict:
     """The proposal's cost: before and after totals, the difference and percentage, by service
@@ -337,9 +351,9 @@ def cost_summary(base: ArchitectureState | None, items: list[ChangeItem],
         b_val = (b if b is not None else Decimal(0)) if in_before else None
         a_val = (a if a is not None else Decimal(0)) if in_after else None
         row = {"label": labels.get(service_id, str(service_id)),
-               "before": None if b_val is None else str(b_val),
-               "after": None if a_val is None else str(a_val),
-               "difference": None if before is None else str((a_val or 0) - (b_val or 0))}
+               "before": None if b_val is None else _amount(b_val),
+               "after": None if a_val is None else _amount(a_val),
+               "difference": None if before is None else _amount((a_val or 0) - (b_val or 0))}
         by_service.append(row)
         region = region_of(service_id)
         totals = by_region.setdefault(region, [Decimal(0), Decimal(0)])
@@ -348,11 +362,11 @@ def cost_summary(base: ArchitectureState | None, items: list[ChangeItem],
     cost: dict = {
         "duration": duration,
         "snapshot": after.snapshot,
-        "after": {"total": str(after.total), "partial": after.partial},
+        "after": {"total": _amount(after.total), "partial": after.partial},
         "by_service": by_service,
         "by_region": [
-            {"label": region, "before": None if before is None else str(b), "after": str(a),
-             "difference": None if before is None else str(a - b)}
+            {"label": region, "before": None if before is None else _amount(b), "after": _amount(a),
+             "difference": None if before is None else _amount(a - b)}
             for region, (b, a) in sorted(by_region.items())
         ],
         "unpriceable": [{"label": labels.get(sid, str(sid)), "reason": reason}
@@ -361,10 +375,10 @@ def cost_summary(base: ArchitectureState | None, items: list[ChangeItem],
     }
     if before is not None:
         diff = after.total - before.total
-        cost["before"] = {"total": str(before.total), "partial": before.partial}
-        cost["difference"] = str(diff)
+        cost["before"] = {"total": _amount(before.total), "partial": before.partial}
+        cost["difference"] = _amount(diff)
         pct = _pct(diff, before.total)
-        cost["percent"] = None if pct is None else str(pct)
+        cost["percent"] = None if pct is None else _amount(pct)
         groups = groups_in_order(items)
         if len(groups) > 1:
             previous = before.total
@@ -373,7 +387,7 @@ def cost_summary(base: ArchitectureState | None, items: list[ChangeItem],
                 state = apply_items(base, [i for i in items if (i.group or "changes") in upto])
                 total = (after.total if index == len(groups) - 1
                          else price_state(state, duration).total)
-                cost["contributions"].append({"group": group, "difference": str(total - previous)})
+                cost["contributions"].append({"group": group, "difference": _amount(total - previous)})
                 previous = total
     return cost
 

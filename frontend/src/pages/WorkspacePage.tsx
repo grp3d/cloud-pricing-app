@@ -10,6 +10,7 @@ import {
   type CollectionType,
   type DataConnector,
   type ProviderCode,
+  ApiStatusError,
   api,
 } from "../api/client";
 import { PROVIDER_LABELS, asProviderCode } from "../lib/providerPricing";
@@ -292,6 +293,9 @@ function WorkspacePageInner() {
     queryKey: ["architecture", architectureId],
     queryFn: () => api.getArchitecture(architectureId!),
     enabled: Boolean(architectureId),
+    // A missing architecture stays missing: say so (or close it, below) without a retry.
+    retry: (failures, error) =>
+      !(error instanceof ApiStatusError && error.status === 404) && failures < 1,
   });
   const collections = useMemo(() => architecture.data?.collections ?? [], [architecture.data]);
   const connectors = useMemo(() => architecture.data?.connectors ?? [], [architecture.data]);
@@ -341,9 +345,24 @@ function WorkspacePageInner() {
   const navigate = useNavigate();
   const openFromAgent = (id: string, name?: string) => {
     if (id === architectureId) return;
+    // Redo brings back an architecture undo removed, which reopening may have marked as gone.
+    unopenableRef.current.delete(id);
     if (unsavedWork.dirty) setPendingOpen({ id, name: name ?? "another architecture" });
     else navigate(`/architectures/${id}`);
   };
+  // 025 (FR-005): the open architecture went away while open (the agent's Undo removed the one it
+  // created, or it was deleted elsewhere). Its last copy would otherwise stay on the canvas: close
+  // it, so the workspace is empty and the Agent tab (with Redo) stays in reach.
+  const vanished =
+    Boolean(architectureId) &&
+    architecture.data?.id === architectureId &&
+    architecture.error instanceof ApiStatusError &&
+    architecture.error.status === 404;
+  useEffect(() => {
+    if (!vanished) return;
+    queryClient.removeQueries({ queryKey: ["architecture", architectureId] });
+    navigate("/", { replace: true });
+  }, [vanished, architectureId, queryClient, navigate]);
   const [reopening, setReopening] = useState(false);
   const unopenableRef = useRef(new Set<string>());
   // The architecture last open on this page wins over the saved one, which may not have been

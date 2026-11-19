@@ -55,9 +55,24 @@ export function resultsPane(state: ResultsPaneState, action: ResultsPaneAction):
 
 // --- Figures ------------------------------------------------------------------------------------
 
+/** "0E-13" → "0.0000000000000", "1.5E+3" → "1500": exponent form as a plain decimal, exactly
+ * (no float conversion). Anything else is returned unchanged. */
+function expandExponent(value: string): string {
+  const match = /^([+-]?)(\d*)(?:\.(\d*))?[eE]([+-]?\d+)$/.exec(value.trim());
+  if (!match) return value;
+  const [, sign, whole = "", fraction = "", exp] = match;
+  const digits = whole + fraction;
+  const point = whole.length + Number(exp);
+  let out: string;
+  if (point <= 0) out = `0.${"0".repeat(-point)}${digits}`;
+  else if (point >= digits.length) out = digits + "0".repeat(point - digits.length);
+  else out = `${digits.slice(0, point)}.${digits.slice(point)}`;
+  return sign + (out.startsWith(".") ? `0${out}` : out);
+}
+
 /** `value` (a decimal string) rounded half-up to `places`, as a plain decimal string. */
 export function roundDecimal(value: string, places: number): string {
-  const match = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(value.trim());
+  const match = /^([+-]?)(\d*)(?:\.(\d*))?$/.exec(expandExponent(value.trim()));
   if (!match) return value;
   const negative = match[1] === "-";
   const whole = match[2] || "0";

@@ -21,22 +21,26 @@ export function AgentProposalCard({
   current,
   onShow,
   answering = false,
+  onOpenArchitecture,
 }: {
   proposal: AgentProposal;
   current: boolean;
   onShow: (id: string) => void;
   answering?: boolean;
+  /** Redo of a created or imported architecture opens it again. */
+  onOpenArchitecture?: (id: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const status = statusOf(proposal);
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Promise<{ open_architecture_id?: string | null }>) {
     setError(null);
     setWorking(true);
     try {
-      await action();
+      const out = await action();
+      if (out.open_architecture_id) onOpenArchitecture?.(out.open_architecture_id);
     } catch (e) {
       setError(actionErrorText(e));
     } finally {

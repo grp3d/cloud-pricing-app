@@ -1,0 +1,23 @@
+id: GC-29
+title: "025 (T065): 'double' a daily-rate service multiplies its Service tab quantity by 2"
+pricing: combined
+architecture:
+  provider: aws
+  name: Active-Standby Multi-Region Web Application
+messages:
+  - Double the data transfer in us-east-1.
+expect:
+  operations: [describe_open_architecture, propose_changes]
+  proposal: {kind: change, none_of: [add, remove],
+             changes_services: {region: us-east-1, codes: [AWSDataTransfer]},
+             quantity: {code: AWSDataTransfer, times: 2}}
+  contains: ["a day", "accept"]
+  not_contains: ["[figure removed]", "I saved"]
+script:
+  - tool_calls: [{name: describe_open_architecture, arguments: {}}]
+  - tool_calls: [{name: propose_changes, arguments: {
+      title: Double the data transfer in us-east-1,
+      change_services: [{ref: V10, scale: 2}]}}]
+  - text: ["I've proposed doubling the data transfer in us-east-1, from 8.0645 to 16.129 GB a
+      day. The total goes from [[F2]] to [[F1]], [[F3]] ([[F4]]) more. Nothing is saved until
+      you accept it."]

@@ -1120,6 +1120,8 @@ class ProposalItemOut(BaseModel):
     group: str | None = None
     before: dict | None = None
     after: dict | None = None
+    # A changed service quantity's unit and period, e.g. "GB a day".
+    quantity_unit: str | None = None
 
 
 class ProposalMoney(BaseModel):

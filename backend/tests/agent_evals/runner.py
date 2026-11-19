@@ -314,6 +314,47 @@ def _services_check(proposal, op: str, spec: dict) -> Check:
                  f"{dict(found)}, {elsewhere} elsewhere")
 
 
+def _quantity_check(proposal, spec: dict) -> Check:
+    """The changed service of `spec["code"]` holds exactly `to` afterwards, or `times` its
+    quantity before (T065: "double it" is scale, "change 96 to 128" is the Service tab's own
+    number; neither is a monthly amount turned into a daily rate)."""
+    base = ArchitectureState.model_validate(proposal.base_state)
+    target = ArchitectureState.model_validate(proposal.target_state)
+    ids = [i["id"] for i in proposal.items if i["op"] == "change" and i["target"] == "service"
+           and "usage_quantity" in (i.get("after") or {})]
+    pairs = [(base.service(uuid.UUID(i)), target.service(uuid.UUID(i))) for i in ids]
+    pairs = [(b, t) for b, t in pairs if b and t and t.service_code == spec["code"]]
+    if "to" in spec:
+        name, want = f"{spec['code']} quantity set to {spec['to']}", Decimal(str(spec["to"]))
+        ok = len(pairs) == 1 and pairs[0][1].usage_quantity == want
+    else:
+        name, factor = f"{spec['code']} quantity times {spec['times']}", Decimal(str(spec["times"]))
+        ok = len(pairs) == 1 and pairs[0][1].usage_quantity == pairs[0][0].usage_quantity * factor
+    return Check(name, ok, ", ".join(f"{b.usage_quantity} → {t.usage_quantity}"
+                                     for b, t in pairs) or "no such change")
+
+
+def _size_check(proposal, spec: dict) -> Check:
+    """The changed GCP machine of `spec["code"]` has exactly these vCPUs and memory, and its
+    hours per day are unchanged (T065: "double the vCPUs and memory" isn't "double the hours")."""
+    base = ArchitectureState.model_validate(proposal.base_state)
+    target = ArchitectureState.model_validate(proposal.target_state)
+    ids = [i["id"] for i in proposal.items if i["op"] == "change" and i["target"] == "service"]
+    pairs = [(base.service(uuid.UUID(i)), target.service(uuid.UUID(i))) for i in ids]
+    pairs = [(b, t) for b, t in pairs if b and t and t.service_code == spec["code"]]
+    want = (int(spec["vcpu"]), Decimal(str(spec["memory_gib"])))
+
+    def size(service):
+        options = service.provider_options or {}
+        return (options.get("vcpus"), Decimal(str(options.get("memory_gib", 0))))
+
+    ok = (len(pairs) == 1 and size(pairs[0][1]) == want
+          and pairs[0][0].usage_quantity == pairs[0][1].usage_quantity)
+    return Check(f"{spec['code']} resized to {want[0]} vCPU, {want[1]} GiB, same hours", ok,
+                 ", ".join(f"{size(b)} {b.usage_quantity} → {size(t)} {t.usage_quantity}"
+                           for b, t in pairs) or "no such change")
+
+
 def proposal_checks(expect: dict, found: list) -> list[Check]:
     """Checks on the session's latest proposal: its kind and items, figures equal to the
     engine's for its base and target states, and contributions that add up."""
@@ -339,6 +380,10 @@ def proposal_checks(expect: dict, found: list) -> list[Check]:
     for key, op in (("adds_services", "add"), ("changes_services", "change")):
         if key in wanted:
             checks.append(_services_check(latest, op, wanted[key]))
+    if "quantity" in wanted:
+        checks.append(_quantity_check(latest, wanted["quantity"]))
+    if "size" in wanted:
+        checks.append(_size_check(latest, wanted["size"]))
     if "name" in wanted:
         name = latest.target_state.get("name")
         checks.append(Check(f"named {wanted['name']!r}", name == wanted["name"], f"{name!r}"))

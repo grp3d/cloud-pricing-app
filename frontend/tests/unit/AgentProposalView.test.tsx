@@ -47,7 +47,7 @@ describe("AgentProposalView", () => {
     expect(screen.getByText("Added")).toBeInTheDocument();
     expect(screen.getByText("Standby (us-west-2)")).toBeInTheDocument();
     expect(screen.getByText("Changed")).toBeInTheDocument();
-    expect(screen.getByText("quantity 744.0000 → 372.0000")).toBeInTheDocument();
+    expect(screen.getByText("quantity 744 → 372")).toBeInTheDocument();
     expect(screen.getByText("Removed")).toBeInTheDocument();
   });
 

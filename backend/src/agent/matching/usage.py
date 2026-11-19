@@ -61,6 +61,33 @@ def convert(source: ProductProfile, quantity: Decimal, target: ProductProfile, *
     return Converted(Decimal(quantity))
 
 
+# --- What a stored quantity means ---------------------------------------------------------------
+
+
+def quantity_unit(unit: str | None, provider: str = "aws") -> str | None:
+    """The unit of a stored (Service tab) quantity, with its period: "GB a day" for a unit with
+    no period (a daily rate), the unit itself for one with its own period ("GB-Mo"). Each
+    provider's units are classified by the engine's own table ("h" is GCP's hour)."""
+    from src.pricing_data.duration import classify_unit
+    from src.pricing_data.providers.units import parse_azure_unit, parse_gcp_unit
+
+    if not unit:
+        return None
+    if provider == "gcp":
+        category = parse_gcp_unit(unit, 1).classification.category
+    elif provider == "azure":
+        category = parse_azure_unit(unit).classification.category
+    else:
+        category = classify_unit(unit).category
+    return f"{unit} a day" if category == "no_period" else unit
+
+
+def plain_number(value) -> str:
+    """500.0000 → "500", 32.25806 → "32.2581" (as stored, without trailing zeros)."""
+    text = f"{Decimal(str(value)):f}"
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
 # --- Stated amounts and defaults ----------------------------------------------------------------
 
 # Units a user (or the agent, from what the user said) may state an amount in, per unit kind:

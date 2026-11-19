@@ -256,6 +256,30 @@ def _ref(ctx: OperationContext, prefix: str, kind: str, row_id) -> str:
     return ref
 
 
+def _quantity_means(quantity, unit: str | None, provider: str = "aws") -> dict:
+    """025: the quantity as the Service tab means it. A unit with no period is a daily rate,
+    which "a month" amounts would misread (500 taken as 500 GB a month = 16.13 a day)."""
+    from src.agent.matching.usage import plain_number, quantity_unit
+
+    shown = quantity_unit(unit, provider)
+    if shown is None:
+        return {}
+    note = " (the Service tab's daily rate)" if shown.endswith(" a day") else ""
+    return {"quantity_means": f"{plain_number(quantity)} {shown}{note}"}
+
+
+def _machine_size(options) -> dict:
+    """025: a GCP machine's vCPUs and memory, so the agent can resize it ("double the vCPUs")."""
+    from src.agent.matching.usage import plain_number
+
+    if options is not None and not isinstance(options, dict):
+        options = options.model_dump(mode="json")
+    if not options or options.get("kind") != "gcp_machine":
+        return {}
+    return {"size": {"vcpu": int(options["vcpus"]),
+                     "memory_gib": plain_number(options["memory_gib"])}}
+
+
 def describe_detail(ctx: OperationContext, detail) -> OperationResult:
     names = {c.id: c.name for c in detail.collections}
 
@@ -263,6 +287,8 @@ def describe_detail(ctx: OperationContext, detail) -> OperationResult:
         return {"ref": _ref(ctx, "V", "service", s.id), "service": _service_label(s),
                 "service_code": s.service_code, "sku": s.sku,
                 "quantity": str(s.usage_quantity), "unit": s.unit,
+                **_quantity_means(s.usage_quantity, s.unit, detail.provider),
+                **_machine_size(s.provider_options),
                 "price_type": s.pricing_term.value}
 
     collections = [

@@ -1,0 +1,21 @@
+id: GC-31
+title: "025 (T065): 'double the vCPUs and memory' of a GCP machine resizes it, keeping its hours"
+pricing: combined
+architecture: {provider: gcp, name: Active-Standby Multi-Region Web Application}
+messages:
+  - Double the number of vCPUs and the memory of the Compute Engine machine in us-east1.
+expect:
+  operations: [describe_open_architecture, propose_changes]
+  proposal: {kind: change, none_of: [add, remove],
+             changes_services: {region: us-east1, codes: [6F81-5844-456A]},
+             size: {code: 6F81-5844-456A, vcpu: 8, memory_gib: 32}}
+  contains: ["8 vCPU", "32 GiB", "accept"]
+  not_contains: ["[figure removed]", "I saved"]
+script:
+  - tool_calls: [{name: describe_open_architecture, arguments: {}}]
+  - tool_calls: [{name: propose_changes, arguments: {
+      title: Double the Compute Engine machine in us-east1,
+      change_services: [{ref: V3, size: {vcpu: 8, memory_gib: 32}}]}}]
+  - text: ["I've proposed resizing the Compute Engine machine in us-east1 from 4 vCPU, 16 GiB
+      to 8 vCPU, 32 GiB, keeping its 96 hours a day. The total goes from [[F2]] to [[F1]],
+      [[F3]] ([[F4]]) more. Nothing is saved until you accept it."]
