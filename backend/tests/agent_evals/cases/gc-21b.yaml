@@ -7,7 +7,9 @@ messages:
 expect:
   no_operations: true
   no_proposal: true
-  contains: ["need"]
+  # Says what it needs to go on, in whatever words (T069: "I can't propose anything without at
+  # least some details... Tell me any one of these").
+  contains: [["need", "can't propose", "tell me"]]
 script:
   - text: ["Which region, and how many web servers of what size? Which database? How much
       storage? Or I can use my defaults."]

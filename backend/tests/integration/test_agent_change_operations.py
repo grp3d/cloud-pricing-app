@@ -574,3 +574,35 @@ async def test_size_is_refused_for_a_service_that_isnt_a_gcp_machine(world):
         await registry.run(ctx, "propose_changes", {
             "title": "Bigger", "change_services": [{"ref": service["ref"],
                                                     "size": {"vcpu": 8, "memory_gib": 32}}]})
+
+
+# --- T067 (FR-014): the activity log names every change item ----------------------------------------
+
+
+async def test_the_log_names_each_change_with_its_sku_and_before_and_after(world):
+    ctx, service = await _a_daily_service(world)
+    result = await registry.run(ctx, "propose_changes", {
+        "title": "Set it to 500",
+        "change_services": [{"ref": service["ref"], "quantity": "500"}],
+        "remove": [{"ref": "V2"}]})
+    from src.agent.matching.usage import plain_number
+
+    changes = result.summary["changes"]
+    assert len(changes) == len(result.data["items"]) == 2
+    changed = next(c for c in changes if c.startswith("change: "))
+    assert f"{service['service_code']} {service['sku']}" in changed
+    assert changed.endswith(
+        f"quantity {plain_number(service['quantity'])} → 500 {service['unit']} a day")
+    removed = next(c for c in changes if c.startswith("remove: "))
+    v2 = ctx.rows["V2"][1]
+    gone = ArchitectureState.model_validate(ctx.proposals[0].base_state).service(v2)
+    assert f"{gone.service_code} {gone.sku}" in removed
+
+
+async def test_the_log_names_a_resized_gcp_machine(world):
+    ctx, machine = await _a_gcp_machine(world)
+    result = await registry.run(ctx, "propose_changes", {
+        "title": "Bigger", "change_services": [{"ref": machine["ref"],
+                                                "size": {"vcpu": 8, "memory_gib": 32}}]})
+    assert result.summary["changes"][0].endswith(
+        f"size {machine['size']['vcpu']} vCPU, {machine['size']['memory_gib']} GiB → 8 vCPU, 32 GiB")

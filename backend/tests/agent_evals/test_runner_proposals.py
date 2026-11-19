@@ -90,3 +90,15 @@ async def test_reject_leaves_the_architecture(db_session):
     user, agent_session, proposal, base, _target = await _world(db_session)
     checks = await run_actions(db_session, user, agent_session, [proposal], ["reject"])
     assert [(c.name, c.passed) for c in checks] == [("reject changes nothing", True)]
+
+
+def test_the_question_limit_is_per_answer():
+    """T068: GC-20 asked 2, then 0, then 3 questions over three messages; the limit (FR-001) is
+    per answer, not per conversation."""
+    from tests.agent_evals.runner import _result_checks
+
+    answers = ["Which region? Which components?", "Proposed.", "Smaller family? Class? Storage?"]
+    check = _result_checks({"max_questions": 3}, [], "".join(answers), answers)[0]
+    assert check.passed and check.detail == "2, 0, 3 asked"
+    answers[2] += " And the term?"
+    assert not _result_checks({"max_questions": 3}, [], "".join(answers), answers)[0].passed

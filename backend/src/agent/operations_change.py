@@ -10,6 +10,7 @@ and `I…` architectures. It never sends an id or a SKU (FR-002).
 
 from __future__ import annotations
 
+import uuid
 from decimal import Decimal
 from typing import Literal
 
@@ -285,6 +286,7 @@ async def finish(ctx: OperationContext, draft: Draft, *, kind: str, title: str,
         "cost": cost_for_model(ctx, cost),
     }
     summary = {"proposal": str(proposal.id), "kind": kind, "items": len(draft.items),
+               "changes": [_log_line(i, target, base) for i in draft.items],
                "skus": sorted({f"{s['after']['service_code']}:{s['after']['sku']}"
                                for s in (i.to_json() for i in draft.items)
                                if s["target"] == "service" and s["op"] == "add"})}
@@ -663,6 +665,29 @@ def size_text(options) -> str | None:
     if not options or options.get("kind") != "gcp_machine":
         return None
     return f"{options['vcpus']} vCPU, {plain_number(options['memory_gib'])} GiB"
+
+
+# Fields a change line names, besides the quantity and size (`_quantity_change`).
+_LOGGED_FIELDS = ("sku", "pricing_term", "purchase_option", "name", "region", "arrow_style")
+
+
+def _log_line(item, target: ArchitectureState, base: ArchitectureState | None) -> str:
+    """T067 (FR-014): one change item for the activity log, readable after the message ends:
+    "change: AmazonSNS in VPC (us-west-2) (AmazonSNS MN9K…): quantity 500 → 1000 GB a day"."""
+    line = f"{item.op}: {item.label}"
+    if item.target == "service" and item.id:
+        service_id = uuid.UUID(item.id)
+        service = target.service(service_id) or (base.service(service_id) if base else None)
+        if service is not None:
+            line += f" ({service.service_code} {service.sku})"
+    if item.op != "change":
+        return line
+    details = list(_quantity_change(item).items())
+    details = [f"{key} {text}" for key, text in details]
+    for key in _LOGGED_FIELDS:
+        if key in (item.after or {}) and not (key == "sku" and item.target != "service"):
+            details.append(f"{key} {(item.before or {}).get(key)} → {item.after[key]}")
+    return f"{line}: {'; '.join(details)}" if details else line
 
 
 def _added_unit(draft: Draft, service_id) -> str | None:

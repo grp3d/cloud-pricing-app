@@ -64,6 +64,8 @@ class CaseResult:
     id: str
     title: str
     text: str = ""
+    # Each answer on its own (the question limit, FR-001, is per answer).
+    answers: list[str] = field(default_factory=list)
     operations: list[str] = field(default_factory=list)
     checks: list[Check] = field(default_factory=list)
     error: str | None = None
@@ -158,7 +160,8 @@ def _engine_cell(provider: str, priced: dict, duration: str):
     return price_lines(provider, [line], duration).amounts.get("x")
 
 
-def _result_checks(expect: dict, results: list, text: str) -> list[Check]:
+def _result_checks(expect: dict, results: list, text: str,
+                   answers: list[str] | None = None) -> list[Check]:
     """024 checks on the comparison results the conversation made."""
     checks: list[Check] = []
     if expect.get("no_result"):
@@ -203,9 +206,12 @@ def _result_checks(expect: dict, results: list, text: str) -> list[Check]:
                             all(c.get("status") != "ok" and c.get("amount") is None
                                 for c in cells) if cells else True))
     if expect.get("max_questions") is not None:
-        asked = text.count("?")
-        checks.append(Check(f"at most {expect['max_questions']} questions",
-                            asked <= expect["max_questions"], f"{asked} asked"))
+        # Per answer: a conversation of several messages may ask in more than one of them.
+        counts = [a.count("?") for a in (answers or [text])]
+        asked = max(counts, default=0)
+        checks.append(Check(f"at most {expect['max_questions']} questions in an answer",
+                            asked <= expect["max_questions"],
+                            f"{', '.join(map(str, counts))} asked"))
     return checks
 
 
@@ -227,9 +233,11 @@ async def run_case(db, case: dict, client) -> CaseResult:
         context = LoopContext(session=db, user=user, agent_session=agent_session,
                               user_message=message, client=client,
                               effective=_effective(client.provider))
+        out.answers.append("")
         async for event in answer(context):
             if isinstance(event, AgentTextEvent):
                 out.text += event.delta
+                out.answers[-1] += event.delta
             elif isinstance(event, AgentOperationEvent):
                 if event.outcome == "ok":
                     out.operations.append(event.name)
@@ -269,7 +277,7 @@ async def run_case(db, case: dict, client) -> CaseResult:
                                 -1 not in positions and positions == sorted(positions)))
     results = (await db.execute(select(AgentResult).where(
         AgentResult.session_id == agent_session.id).order_by(AgentResult.seq))).scalars().all()
-    out.checks.extend(_result_checks(expect, results, out.text))
+    out.checks.extend(_result_checks(expect, results, out.text, out.answers))
     # 025: proposals, nothing saved before accept, and the user's actions afterwards.
     found = await proposals.session_proposals(db, agent_session)
     if architecture is not None and start_state is not None and (

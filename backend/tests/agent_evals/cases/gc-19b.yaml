@@ -3,12 +3,16 @@ title: "025 US1 scenario 4: a part the catalog has no product for is said and le
 pricing: combined
 messages:
   - Create a web app on GCP in us-east1 with one web server of 2 vCPU and 8 GB, and a mainframe.
+  # A model may first ask what the mainframe should be (FR-001 allows it; T068: Haiku did). The
+  # reply doesn't say to leave anything out: the agent still has to find none and say so.
+  - Just use what the catalog offers.
 expect:
   operations: [find_products, propose_new_architecture]
   proposal: {kind: create, at_least: {add: 2}}
   contains: [["no mainframe", "doesn't have a mainframe", "has no mainframe"], ["left it out", "left out", "leave it out"]]
   not_contains: ["[figure removed]"]
 script:
+  - text: ["What should the mainframe be: a virtual machine of a given size, or something else?"]
   - tool_calls: [{name: find_products, arguments: {provider: gcp, region: us-east1, parts: [
       {part: web, category: compute, function: vm},
       {part: mainframe, category: compute, text: mainframe-zseries}]}}]

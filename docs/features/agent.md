@@ -215,8 +215,10 @@ so names from imported architectures can't run as formulas.
 **Activity** lists every operation the agent ran in this session, in order: its name, the inputs
 it was given, whether it worked (or was stopped for taking too long), when, how long it took,
 and the pricing snapshot behind any figure. For comparisons the summary names the regions, the
-products priced (by SKU) and the result. Your decisions on proposals (accept, reject, undo,
-redo) are listed too, as yours.
+products priced (by SKU) and the result. For a proposal it lists every change: what was
+added, changed or removed, each service with its SKU, and for a change the values before and
+after ("quantity 500 → 1000 GB a day; pricing_term on_demand → reserved_1yr"). Your decisions on
+proposals (accept, reject, undo, redo) are listed too, as yours.
 
 ## Access and limits
 

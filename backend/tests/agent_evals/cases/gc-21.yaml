@@ -8,7 +8,9 @@ expect:
   operations: [find_products, propose_new_architecture]
   max_questions: 3
   proposal: {kind: create, at_least: {add: 4}}
-  contains: ["default", "1 instance", "1 TB", ["on demand", "on-demand"]]
+  # The defaults are stated (sizes named), whichever ones the model picks (T068: Haiku chose two
+  # instances a tier and no storage, and said so).
+  contains: ["default", "vCPU", ["GiB", "GB"], ["on demand", "on-demand"]]
   not_contains: ["[figure removed]", "I saved"]
 script:
   - text: ["How many web servers and what size? Which database engine and size? How much file

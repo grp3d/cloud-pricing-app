@@ -7,13 +7,14 @@ architecture:
 messages:
   - Change this architecture to include replication to another region.
   - us-west-2. Copy the load balancer, the web servers and the database at full size.
-  - Make the standby's web servers and database half the size.
+  # "the standby's" was ambiguous: the architecture already has a us-west-2 standby (T069).
+  - Make the copied web servers and database in the proposal half the size.
 expect:
   operations: [describe_open_architecture, find_region_equivalents, propose_changes]
   max_questions: 3
   proposal: {kind: change, none_of: [remove],
              adds_services: {region: us-west-2, codes: [AWSELB, AWSELB, AmazonEC2, AmazonRDS, AmazonRDS]}}
-  contains: ["us-west-2", ["on demand", "on-demand"], "accept", ["driver", "largest"], ["half", "halved"]]
+  contains: ["us-west-2", ["on demand", "on-demand"], "accept", ["driver", "largest", "biggest"], ["half", "halved"]]
   not_contains: ["[figure removed]", "[figure unavailable]", "I saved", "I've replicated"]
 script:
   - text: ["Which region should the replica be in? Which components should I copy? How large
