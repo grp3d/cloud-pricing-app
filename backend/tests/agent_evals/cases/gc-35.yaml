@@ -1,0 +1,28 @@
+id: GC-35
+title: "026 GC-4: the source uses reserved pricing: the agent states the term it assumes on the target and why"
+pricing: combined
+architecture: {provider: aws, name: Active-Standby Multi-Region Web Application, reserved: true}
+messages:
+  - Build this on Azure in East US and West US 2.
+  - Use your defaults.
+expect:
+  operations: [find_translation, propose_translation]
+  proposal: {kind: translate}
+  translation: {partial: true}
+  contains: [["on demand", "on-demand"], "reserved", ["don't carry over", "doesn't carry over",
+             "do not carry over"]]
+  not_contains: ["[figure removed]"]
+script:
+  - tool_calls: [{name: find_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus, us-west-2: westus2}}}]
+  - text: ["The original uses reserved 1-year pricing, which doesn't carry over, so I'd use on
+      demand. The load balancers have only a partial match; I'd leave them out. Use these
+      defaults?"]
+  - tool_calls: [{name: find_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus, us-west-2: westus2}}}]
+  - tool_calls: [{name: propose_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus, us-west-2: westus2}}}]
+  - text: ["The original's web servers use reserved 1-year pricing. Reserved terms don't carry
+      over between providers, so I priced Azure on demand; I can use one of Azure's reservations
+      instead if you like. On the matched services it costs [[F4]] for 1 month (31 days). The LCU
+      figures have no equivalent and are left out. Nothing is created until you accept."]

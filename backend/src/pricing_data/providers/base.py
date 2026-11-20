@@ -202,6 +202,10 @@ class PricingProvider(Protocol):
     def service_key(self, item: CatalogItem) -> str:
         ...
 
+    def product_key(self, item: CatalogItem) -> str:
+        """The same key for this kind of product in every region (026, research R2)."""
+        ...
+
     # The tables `write_comparable_prices` reads (the backfill fetches only these).
     comparable_tables: tuple[str, ...]
 

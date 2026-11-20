@@ -433,6 +433,13 @@ class ProposalActionError(Exception):
         self.detail = detail
 
 
+STALE_TRANSLATION = ("The original or the pricing data changed since this translation. Ask me "
+                     "to translate it again.")
+
+# Kinds that create a new architecture on accept (undo soft-deletes it; redo restores it).
+CREATING_KINDS = ("create", "import", "translate")
+
+
 async def db_clock(session) -> datetime:
     """The database's local time, as the `created_at` server defaults use, so new rows sort
     after existing ones."""
@@ -443,7 +450,8 @@ async def create_proposal(session, agent_session, message, *, kind: str, title: 
                           base: ArchitectureState | None, target: ArchitectureState,
                           items: list[ChangeItem], cost: dict, assumptions: list[dict],
                           architecture_id: uuid.UUID | None,
-                          source_architecture_id: uuid.UUID | None = None) -> AgentProposal:
+                          source_architecture_id: uuid.UUID | None = None,
+                          translation: dict | None = None) -> AgentProposal:
     """Save a pending proposal; any pending one in the session is superseded (one pending per
     session, research R6). Nothing is written to architectures."""
     now = datetime.now(UTC)
@@ -461,7 +469,7 @@ async def create_proposal(session, agent_session, message, *, kind: str, title: 
         base_state=None if base is None else base.model_dump(mode="json"),
         target_state=target.model_dump(mode="json"),
         base_fingerprint=None if base is None else fingerprint(base),
-        cost=cost, assumptions=assumptions,
+        cost=cost, assumptions=assumptions, translation=translation,
     )
     session.add(proposal)
     await session.flush()
@@ -499,7 +507,7 @@ async def undo_view(session, user, proposal: AgentProposal,
         else:
             _arch, state = await _owned_state(session, user, proposal.architecture_id)
             current = None if state is None else fingerprint(state)
-            created = proposal.kind in ("create", "import")
+            created = proposal.kind in CREATING_KINDS
             if proposal.undo_status == "available":
                 if current is None:
                     reason = "deleted"
@@ -520,11 +528,39 @@ async def undo_view(session, user, proposal: AgentProposal,
                            can_redo=proposal.undo_status == "undone")
 
 
+async def translation_stale(session, proposal: AgentProposal) -> bool:
+    """A pending translation is stale when its source, the seed mappings or either provider's
+    pricing snapshot changed since it was made (026, research R9)."""
+    from src.agent.matching.mappings import seed_version
+    from src.pricing_data.active_snapshot import get_active_snapshot
+
+    if proposal.kind != "translate" or proposal.status != "pending" or not proposal.translation:
+        return False
+    record = proposal.translation
+    source = await session.get(Architecture, proposal.source_architecture_id)
+    if source is None or source.deleted_at is not None:
+        return True
+    if fingerprint(await read_state(session, source.id)) != record.get("source_fingerprint"):
+        return True
+    version = record.get("mapping_version") or {}
+    if await seed_version(session) != version.get("seed"):
+        return True
+    for provider, made in (version.get("snapshots") or {}).items():
+        try:
+            current = str(get_active_snapshot(provider).snapshot_date)
+        except Exception:  # noqa: BLE001 - no data for the provider now: can't be accepted
+            return True
+        if current != made:
+            return True
+    return False
+
+
 async def to_out(session, user, proposal: AgentProposal,
                  latest: AgentProposal | None = None) -> AgentProposalOut:
     architecture, state = await _owned_state(session, user, proposal.architecture_id)
     stale = (proposal.status == "pending" and proposal.kind == "change"
              and (state is None or fingerprint(state) != proposal.base_fingerprint))
+    stale = stale or await translation_stale(session, proposal)
     name = architecture.name if architecture is not None else (
         proposal.target_state.get("name") if proposal.kind != "change" else None)
     return AgentProposalOut(
@@ -534,8 +570,30 @@ async def to_out(session, user, proposal: AgentProposal,
         items=[{k: v for k, v in i.items() if k != "id"} for i in proposal.items],
         cost=proposal.cost, assumptions=proposal.assumptions,
         undo=await undo_view(session, user, proposal, latest),
+        translation=proposal.translation,
         created_at=proposal.created_at, decided_at=proposal.decided_at,
     )
+
+
+def _translation_log(proposal: AgentProposal) -> dict:
+    """A translation's mapping version and both snapshots, for the activity log (FR-017)."""
+    if not proposal.translation:
+        return {}
+    return {"mapping_version": proposal.translation.get("mapping_version")}
+
+
+def _log_snapshot(proposal: AgentProposal) -> dict | None:
+    if proposal.translation:
+        meta = proposal.translation.get("snapshot_meta")
+        if meta:
+            return meta
+        snapshots = (proposal.translation.get("mapping_version") or {}).get("snapshots") or {}
+        return {p: {"date": d, "revision": 0} for p, d in snapshots.items()} or None
+    snapshot = proposal.cost.get("snapshot")
+    if not snapshot:
+        return None
+    return {snapshot.get("provider", "?"): {k: v for k, v in snapshot.items()
+                                            if k != "provider"}}
 
 
 async def _log(session, proposal: AgentProposal, name: str, summary: dict) -> None:
@@ -546,10 +604,9 @@ async def _log(session, proposal: AgentProposal, name: str, summary: dict) -> No
         name=name, inputs={"proposal_id": str(proposal.id),
                            "architecture_id": str(proposal.architecture_id)
                            if proposal.architecture_id else None},
-        outcome="ok", summary={"title": proposal.title, "items": len(proposal.items), **summary},
-        snapshot={proposal.cost.get("snapshot", {}).get("provider", "?"):
-                  {k: v for k, v in proposal.cost.get("snapshot", {}).items()
-                   if k != "provider"}} if proposal.cost.get("snapshot") else None,
+        outcome="ok", summary={"title": proposal.title, "items": len(proposal.items),
+                               **_translation_log(proposal), **summary},
+        snapshot=_log_snapshot(proposal),
         started_at=datetime.now(UTC), duration_ms=0,
     ))
 
@@ -593,6 +650,13 @@ async def accept(session, user, agent_session, proposal_id: uuid.UUID,
         raise ProposalActionError(409, "This proposal isn't waiting for a decision.")
     items = [ChangeItem.from_json(i) for i in proposal.items]
     target = ArchitectureState.model_validate(proposal.target_state)
+    if await translation_stale(session, proposal):
+        # 026 (research R9): matches can't be re-checked inside accept; translate again.
+        proposal.status = "expired"
+        _decided(proposal)
+        await session.commit()
+        raise ProposalActionError(409, {"error": "stale_translation",
+                                        "message": STALE_TRANSLATION})
     if proposal.kind == "change":
         architecture, current = await _owned_state(session, user, proposal.architecture_id)
         if current is None:

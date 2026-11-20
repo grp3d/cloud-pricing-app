@@ -316,6 +316,12 @@ class AzureProvider(ComparableMixin):
         finally:
             con.close()
 
+    def product_key(self, item: CatalogItem) -> str:
+        """The region-independent key of this kind of product (026, research R2)."""
+        from src.pricing_data.providers.keys import azure_key
+
+        return azure_key(item)
+
     def service_key(self, item: CatalogItem) -> str:
         """`service_family|service_name` (research R9)."""
         return service_key(item.attributes.get("service_family"), item.service_name)

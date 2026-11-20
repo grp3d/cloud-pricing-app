@@ -40,8 +40,28 @@ function changes(count: number): string {
   return `${count} ${count === 1 ? "change" : "changes"}`;
 }
 
+export const PROVIDER_TEXT: Record<string, string> = { aws: "AWS", gcp: "GCP", azure: "Azure" };
+
+/** 026: "Prod Web → Azure · on 14 matched services -$412.10 (-18.2%) · 2 left out". */
+function translationSummary(proposal: AgentProposal): string {
+  const t = proposal.translation!;
+  const target = PROVIDER_TEXT[t.target_provider] ?? t.target_provider;
+  const c = t.summary.compared;
+  const parts = [`${t.source_name} → ${target}`];
+  if (c.diff != null) {
+    const diff = formatMoney(c.diff);
+    const signed = diff.startsWith("-") || diff === "$0.00" ? diff : `+${diff}`;
+    const pct = c.diff_pct != null ? ` (${formatPercent(c.diff_pct)})` : "";
+    parts.push(`on ${c.rows} matched services ${signed}${pct}`);
+  }
+  const left = t.rows.filter((r) => r.match == null).length;
+  if (left) parts.push(`${left} left out`);
+  return parts.join(" · ");
+}
+
 /** "Prod Web · 6 changes · +$722.18 (+45.5%)", or the total for a new architecture. */
 export function cardSummary(proposal: AgentProposal): string {
+  if (proposal.kind === "translate" && proposal.translation) return translationSummary(proposal);
   const name =
     proposal.kind === "change"
       ? (proposal.architecture_name ?? "Architecture")
@@ -113,6 +133,8 @@ export function actionErrorText(error: unknown): string {
   if (error instanceof ApiStatusError) {
     if (error.detail === "busy") return "Wait until the agent has finished answering.";
     if (typeof error.detail === "string") return error.detail;
+    const message = (error.detail as { message?: unknown } | null)?.message;
+    if (typeof message === "string") return message;
   }
   return "That didn't work. Try again.";
 }

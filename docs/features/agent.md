@@ -20,8 +20,10 @@ itself: every change is a proposal you accept or reject.
   GCP in us-central1"); add collections, services and connectors; scale quantities, sizes and
   pricing terms; replicate components to another region; remove components as part of a change;
   import a public architecture as your own private copy.
+- Translate an AWS architecture to GCP or Azure (see [Translation](#translation)): "Build the
+  equivalent of Prod Web in Azure."
 
-Asked for anything else (a cost alert, a budget, translating to another provider), it says it
+Asked for anything else (a cost alert, a budget, translating from GCP or Azure), it says it
 can't and lists what it can do. Asked something outside the app (the time, general knowledge), it says it can't help with
 that here and what it can help with, rather than answering something else. Asked what it can do,
 it lists the above with an example question for each. It sees only what you can see in the app, and treats names and other text inside
@@ -166,6 +168,51 @@ so names from imported architectures can't run as formulas.
   work after a limit is reached. They wait while the agent is answering. They appear in the
   activity log as your actions.
 
+## Translation
+
+"Build the equivalent of this on Azure" proposes a **new architecture on the target provider**
+with the original's collections, nesting and connectors, each service replaced by its match.
+From AWS to GCP and from AWS to Azure, one target at a time; the original is never changed.
+
+- **Questions first.** The agent asks only for the target regions (offering the app's nearest
+  guesses, said to be guesses), the pricing term, a choice where a service has several valid
+  equivalents, and whether to use a partial match: at most three questions, then its defaults.
+  The target is priced on demand unless you choose one of its terms; reserved terms don't carry
+  over between providers, and the agent says so.
+- **Where each match comes from.** Every match is the app's, never the model's:
+  - **Seeded**: the matches the GCP and Azure standard architectures were built with (022),
+    kept as mappings from one kind of AWS product to its equivalent, valid in every region.
+    A seeded match that is only partial is offered like any partial match (see Chosen by you).
+    Translating a standard architecture to the regions 022 used, choosing its partial matches,
+    gives exactly 022's version.
+  - **Automatic**: otherwise the app's catalog search and match-quality rules (as in
+    [Comparisons](#comparisons)). Exact and close matches are used without asking; when several
+    qualify, you choose, or the default is the best match, then the lowest price.
+  - **Chosen by you**: a service whose only candidates are partial matches (seeded or found by
+    the app) is left out unless
+    you choose one after the agent offers it (never in the same answer). It applies to that
+    proposal only and is named in every cost answer.
+  - Otherwise **no equivalent**, with the reason, and the service is left out.
+  A product listed for both the region and a wider geography uses the region's own row; when
+  several products still match ("data transfer from Americas to …"), none is used and the row
+  says why.
+- **The mapping table** in the Results pane has one row per original service: the match, its
+  quality, where it came from, the differences, and each side's cost. Below it, both totals
+  (partial when anything is missing), the difference **on the matched services** with its
+  percentage, what was left out, the three biggest drivers and both pricing snapshot dates. The
+  card under the answer reads "Prod Web → Azure · on 14 matched services -$412.10 (-18.2%) · 2
+  left out".
+- **Which is cheaper?** The agent answers from the two totals and every caveat that applies:
+  services left out, partial totals, matches that aren't exact, guessed regions, the term. It
+  never presents the difference on the matched services as the whole saving.
+- **Accept, Reject, Undo, Redo** work as for a new architecture: Accept creates it, private and
+  yours, under the target provider, with the original's name, and opens it. Asking for another
+  option ("use Data Lake Storage for both buckets") replaces the pending translation.
+- **Stale.** If the original, the seed mappings or either provider's pricing data changes before
+  you accept, the translation is marked stale and can't be accepted: ask the agent to translate
+  it again.
+- A translation holds at most 100 items; a larger architecture is declined with its size.
+
 ## The Agent tab
 
 - The agent is the **Agent** tab beside **Canvas** in the centre column. The two tabs merge,
@@ -247,12 +294,14 @@ Every automated test uses a scripted model. Checking real models is a separate r
 
 ## Not built yet
 
-Building or saving a comparison as an architecture on another provider (cross-cloud
-translation); reviewed cross-provider mappings (until then the app's candidates and quality rules decide); download
-formats other than CSV; an agent for users with no architecture open.
+Translation from GCP or Azure, or to several providers at once; an Admin review of mappings
+(beyond 022's seeds, the app's candidates and quality rules decide, and you choose partial
+matches yourself); download formats other than CSV; an agent for users with no architecture
+open.
 
 ## Specs
 
 [023](../../specs/023-agent-foundation/spec.md),
 [024](../../specs/024-agent-pricing-questions/spec.md),
-[025](../../specs/025-agent-architecture-changes/spec.md)
+[025](../../specs/025-agent-architecture-changes/spec.md),
+[026](../../specs/026-agent-cross-cloud-translation/spec.md)

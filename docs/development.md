@@ -181,6 +181,20 @@ uv run python scripts/build_provider_fixtures.py --source-uri file:///path/to/DA
 The AWS seed was generated from the 2026-09-24 snapshot; to re-run it unchanged, pin
 `ACTIVE_SNAPSHOT_DATE=2026-09-24`.
 
+**Seed mappings (026).** Translation uses the same rules as mappings from each kind of AWS
+product to its GCP or Azure equivalent: `src/db/seed/service_mappings_gcp.json` and
+`service_mappings_azure.json`, inserted by migration `0013_service_mappings`. They're generated,
+never edited by hand:
+
+```bash
+uv run python scripts/resolve_standard_architectures.py --provider gcp --mappings   # or azure
+```
+
+`--mappings` pairs the AWS rules with the provider's at the snapshots the seeds were made from
+(read from the reports' headers), so it writes only the mapping file and leaves the seeds and
+reports unchanged; re-running it is byte-identical. A changed mapping needs a new migration
+with a higher `version`, which marks pending translations stale.
+
 ## The agent
 
 The [agent](features/agent.md) is off by default. To try it locally with a free local model:

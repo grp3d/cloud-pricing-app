@@ -1,0 +1,30 @@
+id: GC-38
+title: "026 GC-7: a service has only a partial match: offered, left out by default; the user chooses it and it's marked 'chosen by you'"
+pricing: combined
+seeds: false
+architecture: {provider: aws, name: Serverless Microservices Back-End}
+messages:
+  - Translate this to Azure in West Europe, on demand.
+  - Yes, use the partial match for the Lambda compute.
+expect:
+  operations: [find_translation, propose_translation]
+  max_questions: 3
+  proposal: {kind: translate}
+  translation: {rows: {chosen_by_user: 1}, origins: [chosen_by_user, automatic]}
+  contains: ["partial", "chosen by you"]
+  not_contains: ["[figure removed]", "I've created"]
+script:
+  - tool_calls: [{name: find_translation, arguments: {provider: azure,
+      regions: {eu-west-1: westeurope}}}]
+  - tool_calls: [{name: propose_translation, arguments: {provider: azure,
+      regions: {eu-west-1: westeurope}}}]
+  - text: ["It's proposed on Azure in West Europe, on demand. The Lambda compute has only a
+      partial match (Azure Functions, billed differently), so I left it out and the totals are
+      partial. Do you want me to use the partial match anyway?"]
+  - tool_calls: [{name: find_translation, arguments: {provider: azure,
+      regions: {eu-west-1: westeurope}}}]
+  - tool_calls: [{name: propose_translation, arguments: {provider: azure,
+      regions: {eu-west-1: westeurope}, picks: [{source: S4, candidate: C2}]}}]
+  - text: ["Done: the Lambda compute now uses the partial match, marked chosen by you, not
+      checked as equivalent. On the matched services it costs [[F4]] for 1 month (31 days)
+      against [[F3]] on AWS. Nothing is created until you accept."]

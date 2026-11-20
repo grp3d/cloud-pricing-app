@@ -1125,7 +1125,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "change" | "create" | "import";
+            kind: "change" | "create" | "import" | "translate";
             /** Architecture Id */
             architecture_id?: string | null;
             /** Architecture Name */
@@ -1151,6 +1151,7 @@ export interface components {
              */
             assumptions: components["schemas"]["ProposalAssumption"][];
             undo?: components["schemas"]["ProposalUndoOut"] | null;
+            translation?: components["schemas"]["TranslationOut"] | null;
             /**
              * Created At
              * Format: date-time
@@ -1949,6 +1950,22 @@ export interface components {
             /** Region */
             region?: string | null;
         };
+        /** ComparedOut */
+        ComparedOut: {
+            /** Original */
+            original?: string | null;
+            /** Translation */
+            translation?: string | null;
+            /** Diff */
+            diff?: string | null;
+            /** Diff Pct */
+            diff_pct?: string | null;
+            /**
+             * Rows
+             * @default 0
+             */
+            rows: number;
+        };
         /** ConnectorDefinition */
         ConnectorDefinition: {
             /** From Ref */
@@ -1967,6 +1984,44 @@ export interface components {
              */
             arrow_reversed: boolean;
             sku_selection?: components["schemas"]["SKUSelectionDefinition"] | null;
+        };
+        /** CostDifferenceOut */
+        CostDifferenceOut: {
+            duration: components["schemas"]["CalculationDuration"];
+            original_total: components["schemas"]["TranslationTotalOut"];
+            translation_total: components["schemas"]["TranslationTotalOut"];
+            compared: components["schemas"]["ComparedOut"];
+            /**
+             * Left Out
+             * @default []
+             */
+            left_out: string[];
+            /**
+             * Drivers
+             * @default []
+             */
+            drivers: components["schemas"]["CostDriverOut"][];
+            /**
+             * Not Exact
+             * @default []
+             */
+            not_exact: string[];
+            /**
+             * Snapshots
+             * @default {}
+             */
+            snapshots: {
+                [key: string]: string;
+            };
+        };
+        /** CostDriverOut */
+        CostDriverOut: {
+            /** Where */
+            where: string;
+            /** Label */
+            label: string;
+            /** Diff */
+            diff: string;
         };
         /** CurrentUserOut */
         CurrentUserOut: {
@@ -2250,6 +2305,66 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+        };
+        /** MappingRowOut */
+        MappingRowOut: {
+            /** Where */
+            where: string;
+            source: components["schemas"]["MappingSideOut"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "matched" | "no_equivalent" | "partial_only" | "not_sold_in_region" | "unpriceable";
+            match?: components["schemas"]["MappingSideOut"] | null;
+            /** Quality */
+            quality?: ("exact" | "close" | "partial") | null;
+            /** Origin */
+            origin?: ("seeded" | "automatic" | "chosen_by_user") | null;
+            /**
+             * Differences
+             * @default []
+             */
+            differences: string[];
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Assumptions
+             * @default []
+             */
+            assumptions: string[];
+            /**
+             * Alternatives
+             * @default 0
+             */
+            alternatives: number;
+        };
+        /** MappingSideOut */
+        MappingSideOut: {
+            /** Label */
+            label: string;
+            /** Region */
+            region: string;
+            /** Quantity */
+            quantity?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Size */
+            size?: string | null;
+            /** Amount */
+            amount?: string | null;
+        };
+        /** MappingVersionOut */
+        MappingVersionOut: {
+            /** Seed */
+            seed?: number | null;
+            /**
+             * Snapshots
+             * @default {}
+             */
+            snapshots: {
+                [key: string]: string;
+            };
         };
         /** MoverOut */
         MoverOut: {
@@ -2784,6 +2899,62 @@ export interface components {
             quantity: string;
             /** Cost */
             cost: string;
+        };
+        /** TranslationOut */
+        TranslationOut: {
+            /**
+             * Source Architecture Id
+             * Format: uuid
+             */
+            source_architecture_id: string;
+            /** Source Name */
+            source_name: string;
+            /** Source Provider */
+            source_provider: string;
+            /** Target Provider */
+            target_provider: string;
+            /**
+             * Regions
+             * @default []
+             */
+            regions: components["schemas"]["TranslationRegionOut"][];
+            term: components["schemas"]["TranslationTermOut"];
+            mapping_version: components["schemas"]["MappingVersionOut"];
+            /**
+             * Rows
+             * @default []
+             */
+            rows: components["schemas"]["MappingRowOut"][];
+            summary: components["schemas"]["CostDifferenceOut"];
+        };
+        /** TranslationRegionOut */
+        TranslationRegionOut: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /**
+             * Guessed
+             * @default false
+             */
+            guessed: boolean;
+        };
+        /** TranslationTermOut */
+        TranslationTermOut: {
+            /** Used */
+            used: string;
+            /** Why */
+            why?: string | null;
+        };
+        /** TranslationTotalOut */
+        TranslationTotalOut: {
+            /** Amount */
+            amount?: string | null;
+            /**
+             * Partial
+             * @default false
+             */
+            partial: boolean;
         };
         /** TrendSeriesOut */
         TrendSeriesOut: {

@@ -74,7 +74,8 @@ def test_plain_numbers_and_words_pass_through(plain):
 @pytest.mark.parametrize(
     "quantity",
     ["1,000 GB-Month", "1000.00 GB-Mo", "744.00 Hrs", "1,488 LCU-Hrs", "2.50 GiBy.mo",
-     "1,000,000 Requests", "12.50 vCPU-Hours", "730.00 h"],
+     "1,000,000 Requests", "12.50 vCPU-Hours", "730.00 h", "15,000,000 executions",
+     "2,000 messages", "500,000 invocations"],
 )
 def test_usage_quantities_with_a_unit_pass_through(quantity):
     """025 (GC-24): quantities from the architecture aren't money."""

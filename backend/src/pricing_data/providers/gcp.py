@@ -225,6 +225,12 @@ class GcpProvider(ComparableMixin):
         finally:
             con.close()
 
+    def product_key(self, item: CatalogItem) -> str:
+        """The region-independent key of this kind of product (026, research R2)."""
+        from src.pricing_data.providers.keys import gcp_key
+
+        return gcp_key(item)
+
     def service_key(self, item: CatalogItem) -> str:
         """Taxonomy levels 1 and 2 after `GCP` (research R9)."""
         levels = (item.product_family or "").split(" > ")

@@ -19,7 +19,9 @@ import {
   undoEndedText,
 } from "../../lib/agentProposals";
 import { DURATION_TEXT, formatMoney, formatPercent } from "../../lib/agentResults";
+import { PROVIDER_TEXT } from "../../lib/agentProposals";
 import { Button } from "../ui/button";
+import { TranslationTable } from "./TranslationTable";
 
 export type AgentProposalViewProps = {
   proposal: AgentProposal;
@@ -57,6 +59,9 @@ export function AgentProposalView({
   const status = statusOf(proposal);
   const cost = proposal.cost;
   const isChange = proposal.kind === "change";
+  // 026: a translation shows its mapping table; a stale one must be made again.
+  const translation = proposal.kind === "translate" ? proposal.translation : null;
+  const staleTranslation = Boolean(translation) && status === "stale";
   const groups = groupItems(proposal.items);
   const ended = undoEndedText(proposal);
   const notOpen = isChange && proposal.architecture_id !== openArchitectureId;
@@ -94,8 +99,7 @@ export function AgentProposalView({
     }
   }
 
-  const accept = () =>
-    run(() => api.acceptProposal(proposal.id, openArchitectureId, repriced));
+  const accept = () => run(() => api.acceptProposal(proposal.id, openArchitectureId, repriced));
 
   return (
     <section aria-label="Proposal" className="flex h-full min-h-0 flex-col text-xs">
@@ -148,9 +152,16 @@ export function AgentProposalView({
               ? proposal.architecture_name
               : proposal.kind === "import"
                 ? `Import as ${proposal.architecture_name}`
-                : `New architecture: ${proposal.architecture_name}`}
+                : translation
+                  ? `New architecture on ${PROVIDER_TEXT[translation.target_provider] ?? translation.target_provider}: ${proposal.architecture_name}`
+                  : `New architecture: ${proposal.architecture_name}`}
           </p>
-          {status === "stale" && !repriced && (
+          {staleTranslation && (
+            <p className="text-muted-foreground">
+              The original or the pricing data changed. Ask the agent to translate it again.
+            </p>
+          )}
+          {status === "stale" && !repriced && !translation && (
             <p className="text-muted-foreground">
               {proposal.architecture_name} changed after this proposal was made. Accept checks it
               again first.
@@ -162,153 +173,166 @@ export function AgentProposalView({
             </p>
           )}
           {repriced && (
-            <p role="status">The figures were updated for the latest version. Check them, then accept.</p>
+            <p role="status">
+              The figures were updated for the latest version. Check them, then accept.
+            </p>
           )}
         </div>
 
-        {(["add", "change", "remove"] as const).map((op) =>
-          groups[op].length ? (
-            <div key={op}>
-              <p className="font-medium">{OP_TITLE[op]}</p>
-              <ul className="list-disc pl-4">
-                {groups[op].map((item) => (
-                  <li key={item.ref}>
-                    {item.label}
-                    {op === "change" && changeText(item) && (
-                      <span className="block text-muted-foreground">{changeText(item)}</span>
+        {translation && <TranslationTable translation={translation} />}
+
+        {!translation &&
+          (["add", "change", "remove"] as const).map((op) =>
+            groups[op].length ? (
+              <div key={op}>
+                <p className="font-medium">{OP_TITLE[op]}</p>
+                <ul className="list-disc pl-4">
+                  {groups[op].map((item) => (
+                    <li key={item.ref}>
+                      {item.label}
+                      {op === "change" && changeText(item) && (
+                        <span className="block text-muted-foreground">{changeText(item)}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null,
+          )}
+
+        {!translation && (
+          <>
+            <table className="w-full border-collapse">
+              <caption className="sr-only">Cost</caption>
+              <thead>
+                <tr className="border-y border-border text-left">
+                  <th scope="col" className="px-1 py-1 font-medium">
+                    Service
+                  </th>
+                  {isChange && (
+                    <th scope="col" className="px-1 py-1 text-right font-medium">
+                      Before
+                    </th>
+                  )}
+                  <th scope="col" className="px-1 py-1 text-right font-medium">
+                    {isChange ? "After" : "Cost"}
+                  </th>
+                  {isChange && (
+                    <th scope="col" className="px-1 py-1 text-right font-medium">
+                      Difference
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {cost.by_service.map((row, i) => (
+                  <tr key={`${row.label}-${i}`} className="border-b border-border align-top">
+                    <th scope="row" className="px-1 py-1 text-left font-normal">
+                      {row.label}
+                    </th>
+                    {isChange && (
+                      <td className="px-1 py-1 text-right tabular-nums">
+                        {formatMoney(row.before)}
+                      </td>
                     )}
+                    <td className="px-1 py-1 text-right tabular-nums">{formatMoney(row.after)}</td>
+                    {isChange && (
+                      <td className="px-1 py-1 text-right tabular-nums">
+                        {signed(formatMoney(row.difference))}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-b border-border font-medium">
+                  <th scope="row" className="px-1 py-1 text-left">
+                    {cost.after.partial || cost.before?.partial ? "Total (partial)" : "Total"}
+                  </th>
+                  {isChange && (
+                    <td className="px-1 py-1 text-right tabular-nums">
+                      {formatMoney(cost.before?.total)}
+                    </td>
+                  )}
+                  <td className="px-1 py-1 text-right tabular-nums">
+                    {formatMoney(cost.after.total)}
+                  </td>
+                  {isChange && (
+                    <td className="px-1 py-1 text-right tabular-nums">
+                      {signed(formatMoney(cost.difference))}
+                      {cost.percent != null && (
+                        <span className="block text-muted-foreground">
+                          {formatPercent(cost.percent)}
+                        </span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              </tfoot>
+            </table>
+
+            <div>
+              <p className="font-medium">By region</p>
+              <ul className="pl-0">
+                {cost.by_region.map((row) => (
+                  <li key={row.label} className="flex justify-between tabular-nums">
+                    <span>{row.label}</span>
+                    <span>
+                      {isChange ? `${formatMoney(row.before)} → ` : ""}
+                      {formatMoney(row.after)}
+                    </span>
                   </li>
                 ))}
               </ul>
             </div>
-          ) : null,
+
+            {cost.contributions.length > 1 && (
+              <div>
+                <p className="font-medium">Each change&apos;s share, in order</p>
+                <ul className="pl-0">
+                  {cost.contributions.map((c) => (
+                    <li key={c.group} className="flex justify-between tabular-nums">
+                      <span>{c.group}</span>
+                      <span>{signed(formatMoney(c.difference))}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {cost.unpriceable.length > 0 && (
+              <div>
+                <p className="font-medium">Not priced</p>
+                <ul className="list-disc pl-4">
+                  {cost.unpriceable.map((u) => (
+                    <li key={u.label}>
+                      {u.label}: {u.reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {proposal.assumptions.length > 0 && (
+              <div>
+                <p className="font-medium">Assumptions</p>
+                <ul className="list-disc pl-4">
+                  {proposal.assumptions.map((a) => (
+                    <li key={a.text}>
+                      {a.text}
+                      {a.guessed ? " (guess)" : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p className="text-[10px] text-muted-foreground">
+              {DURATION_TEXT[cost.duration] ?? cost.duration} · USD · prices from{" "}
+              {String(cost.snapshot.date ?? "")}. Nothing is saved until you accept.
+            </p>
+          </>
         )}
-
-        <table className="w-full border-collapse">
-          <caption className="sr-only">Cost</caption>
-          <thead>
-            <tr className="border-y border-border text-left">
-              <th scope="col" className="px-1 py-1 font-medium">
-                Service
-              </th>
-              {isChange && (
-                <th scope="col" className="px-1 py-1 text-right font-medium">
-                  Before
-                </th>
-              )}
-              <th scope="col" className="px-1 py-1 text-right font-medium">
-                {isChange ? "After" : "Cost"}
-              </th>
-              {isChange && (
-                <th scope="col" className="px-1 py-1 text-right font-medium">
-                  Difference
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {cost.by_service.map((row, i) => (
-              <tr key={`${row.label}-${i}`} className="border-b border-border align-top">
-                <th scope="row" className="px-1 py-1 text-left font-normal">
-                  {row.label}
-                </th>
-                {isChange && (
-                  <td className="px-1 py-1 text-right tabular-nums">{formatMoney(row.before)}</td>
-                )}
-                <td className="px-1 py-1 text-right tabular-nums">{formatMoney(row.after)}</td>
-                {isChange && (
-                  <td className="px-1 py-1 text-right tabular-nums">
-                    {signed(formatMoney(row.difference))}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="border-b border-border font-medium">
-              <th scope="row" className="px-1 py-1 text-left">
-                {cost.after.partial || cost.before?.partial ? "Total (partial)" : "Total"}
-              </th>
-              {isChange && (
-                <td className="px-1 py-1 text-right tabular-nums">
-                  {formatMoney(cost.before?.total)}
-                </td>
-              )}
-              <td className="px-1 py-1 text-right tabular-nums">{formatMoney(cost.after.total)}</td>
-              {isChange && (
-                <td className="px-1 py-1 text-right tabular-nums">
-                  {signed(formatMoney(cost.difference))}
-                  {cost.percent != null && (
-                    <span className="block text-muted-foreground">
-                      {formatPercent(cost.percent)}
-                    </span>
-                  )}
-                </td>
-              )}
-            </tr>
-          </tfoot>
-        </table>
-
-        <div>
-          <p className="font-medium">By region</p>
-          <ul className="pl-0">
-            {cost.by_region.map((row) => (
-              <li key={row.label} className="flex justify-between tabular-nums">
-                <span>{row.label}</span>
-                <span>
-                  {isChange ? `${formatMoney(row.before)} → ` : ""}
-                  {formatMoney(row.after)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {cost.contributions.length > 1 && (
-          <div>
-            <p className="font-medium">Each change&apos;s share, in order</p>
-            <ul className="pl-0">
-              {cost.contributions.map((c) => (
-                <li key={c.group} className="flex justify-between tabular-nums">
-                  <span>{c.group}</span>
-                  <span>{signed(formatMoney(c.difference))}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {cost.unpriceable.length > 0 && (
-          <div>
-            <p className="font-medium">Not priced</p>
-            <ul className="list-disc pl-4">
-              {cost.unpriceable.map((u) => (
-                <li key={u.label}>
-                  {u.label}: {u.reason}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {proposal.assumptions.length > 0 && (
-          <div>
-            <p className="font-medium">Assumptions</p>
-            <ul className="list-disc pl-4">
-              {proposal.assumptions.map((a) => (
-                <li key={a.text}>
-                  {a.text}
-                  {a.guessed ? " (guess)" : ""}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <p className="text-[10px] text-muted-foreground">
-          {DURATION_TEXT[cost.duration] ?? cost.duration} · USD · prices from {String(cost.snapshot.date ?? "")}.
-          Nothing is saved until you accept.
-        </p>
       </div>
 
       <footer className="shrink-0 space-y-1 border-t border-border px-2 py-1.5">
@@ -317,7 +341,7 @@ export function AgentProposalView({
             {error}
           </p>
         )}
-        {proposal.status === "pending" && (
+        {proposal.status === "pending" && !staleTranslation && (
           <>
             {blocked && <p className="text-muted-foreground">{blocked}</p>}
             <div className="flex gap-1">

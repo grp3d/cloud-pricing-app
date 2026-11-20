@@ -1,0 +1,21 @@
+id: GC-34
+title: "026 GC-3: a service with no equivalent is flagged, left out, and the total is partial"
+pricing: combined
+architecture: {provider: aws, name: Active-Standby Multi-Region Web Application}
+messages:
+  - Translate this architecture to GCP in us-east1 and us-west1, on demand.
+expect:
+  operations: [find_translation, propose_translation]
+  proposal: {kind: translate}
+  translation: {rows: {left_out: 2}, partial: true}
+  contains: [["no equivalent", "left out"], "LCU", "partial"]
+  not_contains: ["[figure removed]", "I've created"]
+script:
+  - tool_calls: [{name: find_translation, arguments: {provider: gcp,
+      regions: {us-east-1: us-east1, us-west-2: us-west1}}}]
+  - tool_calls: [{name: propose_translation, arguments: {provider: gcp,
+      regions: {us-east-1: us-east1, us-west-2: us-west1}}}]
+  - text: ["I've proposed it on GCP in us-east1 and us-west1, on demand. The two load balancer
+      LCU figures have no equivalent (GCP has no LCU-hour unit), so they're left out and both
+      totals are partial. On the matched services it costs [[F4]] for 1 month (31 days) against
+      [[F3]] on AWS. Nothing is created until you accept."]

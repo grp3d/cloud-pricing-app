@@ -88,15 +88,18 @@ async def architecture_sources(detail, *, category: str | None = None) -> list[S
     names = {c.id: c.name for c in detail.collections}
     regions = {c.id: c.region for c in detail.collections}
     entries = []  # (selection, where, region)
+    owners: dict = {}  # selection id -> ("collection" | "connector", id)
     for collection in detail.collections:
         for selection in collection.sku_selections:
             entries.append((selection, collection.name, collection.region))
+            owners[selection.id] = ("collection", collection.id)
     for connector in detail.connectors:
         if connector.sku_selection is not None:
             where = (f"connector {names.get(connector.from_collection_id, '?')} → "
                      f"{names.get(connector.to_collection_id, '?')}")
             entries.append((connector.sku_selection, where,
                             regions.get(connector.from_collection_id)))
+            owners[connector.sku_selection.id] = ("connector", connector.id)
     by_region: dict[str, list] = defaultdict(list)
     for entry in entries:
         by_region[entry[2]].append(entry)
@@ -111,6 +114,9 @@ async def architecture_sources(detail, *, category: str | None = None) -> list[S
             unit = units.get((selection.sku, selection.pricing_term.value,
                               selection.purchase_option.value))
             described[(region, selection.service_code, selection.sku)] = (item, unit)
+    from src.pricing_data.providers.registry import get_provider
+
+    adapter = get_provider(provider)
     sources: list[SourceProduct] = []
     for selection, where, region in entries:
         item, unit = described[(region, selection.service_code, selection.sku)]
@@ -141,6 +147,8 @@ async def architecture_sources(detail, *, category: str | None = None) -> list[S
             pricing_term=selection.pricing_term.value,
             purchase_option=selection.purchase_option.value, profile=source_profile,
             provider_options=options,
+            product_key=adapter.product_key(item) if item is not None else None,
+            selection_id=selection.id, owner=owners.get(selection.id),
         ))
     return sources
 

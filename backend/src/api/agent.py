@@ -142,7 +142,8 @@ async def get_agent_session(session: DbSession, user: CurrentUser) -> AgentSessi
 _ACTION_RESPONSES = {
     404: {"description": "Not the caller's proposal."},
     409: {"description": "Not possible now: not pending, busy, the architecture isn't open, "
-                         "undo has ended, or (accept) stale: accept again to confirm."},
+                         "undo has ended, or (accept) stale: accept again to confirm; a stale "
+                         "translation (`stale_translation`) must be made again."},
     422: {"description": "The proposal no longer passes the edit rules."},
 }
 

@@ -9,6 +9,7 @@ run (research.md §6) rather than seeding an entry that would silently show as u
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -524,3 +525,90 @@ def render_report(
             for o in omitted:
                 lines.append(f"| {o.rule.component_id} | {o.rule.figure} | {o.reason} |")
     return "\n".join(lines) + "\n"
+
+
+# --- 026: seed mappings ---------------------------------------------------------------------------
+# 026-agent-cross-cloud-translation, research R4: the AWS rules and one provider's rules, paired by
+# (architecture, component, figure), become mappings from the AWS product's key to the provider
+# product's key. `key_of(provider, service_code, sku, region)` gives a product key (research R2).
+
+SERVICE_MAPPINGS_FORMAT = "cloud-pricing-service-mappings"
+SERVICE_MAPPINGS_VERSION = 1
+
+KeyOf = Callable[[str, str, str, str], str]
+
+
+def _figure(rule: AnyRule) -> tuple[str, str, str]:
+    return (rule.architecture_id, rule.component_id, rule.figure)
+
+
+def _factor(target: Decimal, source: Decimal) -> str | None:
+    """Target ÷ source at full precision: the source's 4-decimal quantity × factor, rounded to 4
+    decimals, gives back the seed's quantity."""
+    if not source:
+        return None
+    return f"{(target / source).normalize():f}"
+
+
+def _target_options(match: Match, key_of: KeyOf) -> dict[str, Any] | None:
+    """The match's options without region-bound SKUs: a GCP machine's RAM SKU becomes its key."""
+    options = dict(match.provider_options or {})
+    if not options:
+        return None
+    ram_sku = options.pop("ram_sku", None)
+    if ram_sku:
+        options["ram_key"] = key_of("gcp", match.service_code, ram_sku, match.rule.region)
+    return options
+
+
+def to_service_mappings(aws: Resolution, target: Resolution, *, target_provider: str,
+                        key_of: KeyOf, version: int = SERVICE_MAPPINGS_VERSION) -> dict[str, Any]:
+    """The seed mapping file for one target provider (data-model.md §1). Sorted and stable."""
+    sources = {_figure(m.rule): m for m in aws.matches}
+    parts: dict[tuple[str, str, str], list[Match]] = {}
+    for m in target.matches:
+        parts.setdefault(_figure(m.rule), []).append(m)
+    omitted = {_figure(o.rule): o.reason for o in target.omissions}
+    # An alternative is told apart by its target keys, factors and options; the region-bound SKU
+    # and the note of its first occurrence go with it.
+    alternatives: dict[str, list[tuple]] = {}
+    extras: dict[tuple[str, tuple], list[tuple[str, str | None]]] = {}
+    for figure, source in sources.items():
+        source_key = key_of("aws", source.service_code, source.sku, source.rule.region)
+        if figure in parts:
+            lines = tuple(
+                (key_of(target_provider, m.service_code, m.sku, m.rule.region), m.service_code,
+                 json.dumps(_target_options(m, key_of), sort_keys=True),
+                 _factor(m.rule.quantity, source.rule.quantity))
+                for m in parts[figure])
+            alternative: tuple = ("match", lines)
+            extra = [(m.sku, getattr(m.rule, "note", None) or getattr(m.rule, "size_note", None))
+                     for m in parts[figure]]
+        elif figure in omitted:
+            alternative, extra = ("omit", omitted[figure]), []
+        else:
+            continue
+        seen = alternatives.setdefault(source_key, [])
+        if alternative not in seen:
+            seen.append(alternative)
+            extras[(source_key, alternative)] = extra
+    rows: list[dict[str, Any]] = []
+    for source_key in sorted(alternatives):
+        for number, (kind, value) in enumerate(alternatives[source_key], start=1):
+            if kind == "omit":
+                rows.append({"source_key": source_key, "alternative": number, "part": 1,
+                             "target_key": None, "target_service_code": None,
+                             "target_sku": None, "target_options": None,
+                             "quantity_factor": None, "note": None, "omit_reason": value})
+                continue
+            extra = extras[(source_key, (kind, value))]
+            for part, ((key, service_code, options, factor), (sku, note)) in enumerate(
+                    zip(value, extra, strict=True), 1):
+                rows.append({"source_key": source_key, "alternative": number, "part": part,
+                             "target_key": key, "target_service_code": service_code,
+                             "target_sku": sku, "target_options": json.loads(options),
+                             "quantity_factor": factor, "note": note, "omit_reason": None})
+    return {"format": SERVICE_MAPPINGS_FORMAT, "version": version, "source_provider": "aws",
+            "target_provider": target_provider,
+            "snapshots": {"aws": aws.snapshot_date, target_provider: target.snapshot_date},
+            "mappings": rows}

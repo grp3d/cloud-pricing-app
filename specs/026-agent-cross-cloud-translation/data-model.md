@@ -22,6 +22,7 @@ replaced only by a migration with a new version.
 | `part` | smallint, not null | 1, 2…: lines of one target (Glue → vCPU and RAM) |
 | `target_key` | varchar(400), null | null means "no equivalent" |
 | `target_service_code` | varchar(100), null | the target's service, to search within it |
+| `target_sku` | varchar(200), null | 022's own SKU, tried first in the target region (a stable identifier); otherwise the key decides |
 | `target_options` | jsonb, null | e.g. a GCP machine shape `{kind: gcp_machine, vcpus, memory_gib}` |
 | `quantity_factor` | numeric(20,10), null | target quantity = source quantity × factor (R4) |
 | `note` | text, null | 022's note ("Aurora's single writer instance: a zonal Cloud SQL instance") |
@@ -49,6 +50,7 @@ Constraints: unique (`version`, `source_provider`, `source_key`, `target_provide
 | `term` | the pricing term used on the target, and why (GC-4) |
 | `source_fingerprint` | 025's fingerprint of the source state at proposal time (R9) |
 | `mapping_version` | `{seed: int, snapshots: {aws: date, gcp\|azure: date}}` (FR-001) |
+| `snapshot_meta` | `{provider: {date, revision}}`, behind the figures and the answer footer |
 | `rows` | Mapping Table Rows (§3), in canvas order |
 | `summary` | Cost Difference Summary (§4) |
 | `choices` | the user's picks: `[{source_key, where, picked, chosen_by_user}]` |

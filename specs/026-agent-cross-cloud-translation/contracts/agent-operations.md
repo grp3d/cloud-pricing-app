@@ -1,7 +1,7 @@
 # Contract: Translation Operations (model-facing)
 
 **Feature**: 026 | Registered in `src/agent/operations_translate.py` with 023's operation
-registry. The model sends references only (`A…`, `I…`, `S…`, `C…`, `R…`), never ids or SKUs
+registry. The model sends references only (`M…`, `I…`, `S…`, `C…`), never ids or SKUs
 (Principle VII). Errors are `ToolError` text the model can act on.
 
 ## `find_translation`
@@ -13,7 +13,7 @@ registry. The model sends references only (`A…`, `I…`, `S…`, `C…`, `R…
 
 | Field | Type | Notes |
 |---|---|---|
-| `architecture` | string, optional | `A…` (own) or `I…` (public); omitted = the open one |
+| `architecture` | string, optional | `M…` (own, from `list_my_architectures`) or `I…` (public); omitted = the open one |
 | `provider` | `gcp` \| `azure` | the target |
 | `regions` | `{source region: target region}`, optional | missing entries are guessed |
 | `term` | string, optional | a target term the user chose; default on demand |
@@ -29,7 +29,7 @@ guess).
 ```text
 {
   source: {name, provider, items},
-  regions: [{ref: "R1", source: "us-east-1", target: "eastus", guessed: true}],
+  regions: [{source: "us-east-1", target: "eastus", guessed: true}],
   term: {used: "on demand", why: "the original uses reserved 1-year; terms don't carry over"},
   services: [
     {ref: "S1", where: "Web tier", label: "EC2 t4g.xlarge", usage: "730 h a day",

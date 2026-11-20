@@ -1,0 +1,30 @@
+id: GC-33
+title: "026 GC-2: a service with several valid equivalents: the agent presents them with their differences and the user chooses"
+pricing: combined
+architecture: {provider: aws, name: Modern Data Lake & ETL Analytics Pipeline}
+messages:
+  - Translate this to Azure in East US, on demand.
+  - Use Data Lake Storage for both buckets, and leave out the other partial matches.
+expect:
+  operations: [find_translation, propose_translation]
+  max_questions: 3
+  proposal: {kind: translate}
+  translation: {rows: {matched: 3, left_out: 7}, origins: [seeded], partial: true}
+  contains: ["Blob", "Data Lake", ["close", "partial"]]
+  not_contains: ["[figure removed]", "I've created"]
+script:
+  - tool_calls: [{name: find_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus}}}]
+  - text: ["Two of the S3 buckets have two valid equivalents on Azure: Blob Storage (hot LRS, a
+      close match) or Data Lake Storage Gen2 (hot LRS with a hierarchical namespace, a partial
+      match). Kinesis shards, Glue DPU hours and the archive bucket have only partial matches;
+      I'd leave them out. Which do you want for the two buckets?"]
+  - tool_calls: [{name: find_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus}}}]
+  - tool_calls: [{name: propose_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus}, picks: [{source: S6, candidate: C4},
+      {source: S7, candidate: C6}]}}]
+  - text: ["Done as a proposal: both buckets use Data Lake Storage Gen2, a partial match
+      (hierarchical namespace). On the matched services it costs [[F4]] for 1 month (31 days)
+      against [[F3]] on AWS. Seven services are left out (no equivalent, or only partial matches), so the totals
+      are partial. Nothing is created until you accept."]

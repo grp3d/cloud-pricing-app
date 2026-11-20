@@ -1,0 +1,31 @@
+id: GC-36
+title: "026 GC-5: 'so which is cheaper?' answers from the totals with every caveat"
+pricing: combined
+architecture: {provider: aws, name: Active-Standby Multi-Region Web Application}
+messages:
+  - Translate this to Azure in East US and West US 2, on demand.
+  - Use your defaults.
+  - So which is cheaper?
+expect:
+  operations: [find_translation, propose_translation, describe_translation]
+  contains: [["matched services", "matched"], ["left out", "no equivalent"], "partial",
+             ["close", "partial match", "not exact"]]
+  not_contains: ["[figure removed]", "is cheaper overall", "is the cheapest"]
+script:
+  - tool_calls: [{name: find_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus, us-west-2: westus2}}}]
+  - text: ["The two load balancers have only a partial match on Azure; I'd leave them out. Use
+      that default?"]
+  - tool_calls: [{name: find_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus, us-west-2: westus2}}}]
+  - tool_calls: [{name: propose_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus, us-west-2: westus2}}}]
+  - text: ["It's proposed beside me: [[F4]] on Azure against [[F3]] on AWS for the matched
+      services, for 1 month (31 days). Nothing is created until you accept."]
+  - tool_calls: [{name: describe_translation, arguments: {}}]
+  - text: ["On the matched services, Azure comes to [[F4]] and AWS to [[F3]] for 1 month (31
+      days), a difference of [[F5]] ([[F6]]). That isn't the whole picture: the two load
+      balancers (only partial) and their LCU figures (no equivalent) are left out,
+      so both totals are partial, several
+      matches are close or partial rather than exact (for example the web servers' processor
+      architecture), and the regions are guesses."]

@@ -51,3 +51,17 @@ def test_proposal_routes_and_events_are_documented():
     for name in ("AgentProposalEvent", "AgentOpenArchitectureEvent", "AgentProposalOut",
                  "ProposalCostOut", "ProposalUndoOut"):
         assert name in components, name
+
+
+def test_translation_schemas_are_documented():
+    """026 (contracts/agent-api.md): a translation proposal carries its mapping table and cost
+    difference."""
+    components = app.openapi()["components"]["schemas"]
+    for name in ("TranslationOut", "MappingRowOut", "CostDifferenceOut"):
+        assert name in components, name
+    assert "translation" in components["AgentProposalOut"]["properties"]
+    assert "translate" in components["AgentProposalOut"]["properties"]["kind"]["enum"]
+    row = components["MappingRowOut"]["properties"]
+    for field in ("where", "source", "status", "match", "quality", "origin", "differences",
+                  "reason", "assumptions", "alternatives"):
+        assert field in row, field

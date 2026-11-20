@@ -1,0 +1,32 @@
+id: GC-32
+title: "026 GC-1: 'build the equivalent of Prod Web in Azure' asks for regions and term, then proposes with the mapping and the difference"
+pricing: combined
+architecture: {provider: aws, name: Active-Standby Multi-Region Web Application, rename: Prod Web}
+messages:
+  - Build the equivalent of 'Prod Web' in Azure.
+  - Use your guesses for the regions, on demand.
+expect:
+  operations: [find_translation, propose_translation]
+  max_questions: 3
+  proposal: {kind: translate, name: Prod Web}
+  translation: {rows: {matched: 12, left_out: 4, chosen_by_user: 0}, origins: [seeded],
+                partial: true}
+  contains: ["guess", ["on demand", "on-demand"], ["left out", "no equivalent"],
+             ["matched services", "matched", "compared"]]
+  not_contains: ["[figure removed]", "I've created", "I created", "I saved", "I've saved"]
+actions: [accept]
+script:
+  - tool_calls: [{name: find_translation, arguments: {provider: azure}}]
+  - text: ["I can build Prod Web on Azure. I'd use East US for us-east-1 and West US 2 for
+      us-west-2, both guesses nearest to the originals, priced on demand. The two application
+      load balancers have only a partial match (Azure's Standard Load Balancer, a network load
+      balancer), so I'd leave them out unless you want it. Should I go ahead with those?"]
+  - tool_calls: [{name: find_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus, us-west-2: westus2}}}]
+  - tool_calls: [{name: propose_translation, arguments: {provider: azure,
+      regions: {us-east-1: eastus, us-west-2: westus2}}}]
+  - text: ["Here's Prod Web on Azure, in East US and West US 2 (guesses), on demand. On the 12
+      matched services it costs [[F4]] for 1 month (31 days) against [[F3]] on AWS, a difference
+      of [[F5]] ([[F6]]). The two load balancers are left out (only a partial match) and so are
+      their capacity figures (Azure has no LCU-hour unit), so both totals are partial. It's beside me; nothing is
+      created until you accept."]

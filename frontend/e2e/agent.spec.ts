@@ -243,9 +243,9 @@ test("propose, accept, undo, redo and reject a change", async ({ page }) => {
   await page.reload();
   await page.getByRole("tab", { name: "Agent" }).click();
   await expect(
-    panel(page).getByText(
-      "Your latest edit means the agent's previous change can no longer be undone.",
-    ).first(),
+    panel(page)
+      .getByText("Your latest edit means the agent's previous change can no longer be undone.")
+      .first(),
   ).toBeVisible();
   await expect(panel(page).getByRole("button", { name: "Undo" })).toHaveCount(0);
 
@@ -255,4 +255,50 @@ test("propose, accept, undo, redo and reject a change", async ({ page }) => {
   await proposal.getByRole("button", { name: "Reject" }).click();
   await expect(proposal.getByText("Rejected")).toBeVisible();
   expect(await quantity()).toBe(30);
+});
+
+/**
+ * 026 (US1, US2, US4): a translation is a proposal with its mapping table and cost difference;
+ * Accept creates the user's own architecture on the target provider and Undo removes it; the
+ * original never changes.
+ */
+test("translate an architecture to Azure, accept, undo and redo", async ({ page }) => {
+  const admin = await adminApi();
+  await admin.call("PUT", "/admin/agent/settings", SETTINGS);
+  const created = await admin.call<{ id: string }>("POST", "/admin/users", {
+    username: `translate-${randomUUID().slice(0, 8)}`,
+  });
+  await admin.call("PATCH", `/admin/users/${created.id}/agent`, { agent_enabled_for_user: true });
+  const user = new Api(created.id);
+  const { architectureId } = await user.architecture("aws", "eu-west-1", [AWS_EU_WEST_1]);
+  const azureArchitectures = async () =>
+    (
+      await user.call<{ id: string; provider: string }[]>("GET", "/architectures?provider=azure")
+    ).filter((a) => a.provider === "azure").length;
+  expect(await azureArchitectures()).toBe(0);
+
+  await openArchitecture(page, user, architectureId);
+  await page.getByRole("tab", { name: "Agent" }).click();
+  await panel(page).getByRole("button", { name: "New agent session" }).click();
+  await expect(panel(page).getByText(/^Closes /)).toBeVisible();
+  await panel(page).getByLabel("Message the agent").fill("Translate this architecture to Azure.");
+  await panel(page).getByLabel("Message the agent").press("Enter");
+
+  const proposal = page.getByRole("region", { name: "Proposal" });
+  await expect(proposal).toBeVisible();
+  await expect(proposal.getByText(/^New architecture on Azure: /)).toBeVisible();
+  await expect(proposal.getByRole("table", { name: "Mapping" })).toBeVisible();
+  await expect(proposal.getByRole("region", { name: "Cost difference" })).toBeVisible();
+  await expect(panel(page).getByText(/nothing is created until you accept/)).toBeVisible();
+  expect(await azureArchitectures()).toBe(0); // nothing created yet
+
+  await proposal.getByRole("button", { name: "Accept" }).click();
+  await expect(proposal.getByText("Accepted")).toBeVisible();
+  await expect.poll(azureArchitectures).toBe(1);
+  await proposal.getByRole("button", { name: "Undo" }).click();
+  await expect(proposal.getByRole("button", { name: "Redo" })).toBeVisible();
+  await expect.poll(azureArchitectures).toBe(0);
+  await proposal.getByRole("button", { name: "Redo" }).click();
+  await expect(proposal.getByRole("button", { name: "Undo" })).toBeVisible();
+  await expect.poll(azureArchitectures).toBe(1);
 });

@@ -8,7 +8,7 @@ from src.agent.prompt import PROMPT_VERSION, SYSTEM_PROMPT
 
 
 def test_version():
-    assert PROMPT_VERSION == "025.3"
+    assert PROMPT_VERSION == "026.3"
 
 
 def test_names_every_comparison_operation_and_they_exist():
@@ -46,4 +46,19 @@ def test_keeps_the_change_rules():
                  "Copies keep the original's pricing term", "say the term",
                  "say you're opening it", "offer to import a copy first",
                  "won't be saved unless", "your assumptions", "list what you can do"):
+        assert rule in SYSTEM_PROMPT, rule
+
+
+TRANSLATION_OPERATIONS = ("find_translation", "propose_translation", "describe_translation")
+
+
+def test_names_every_translation_operation_and_keeps_its_rules():
+    """026: the translation operations exist, and the rules the golden conversations rely on are
+    stated."""
+    for name in TRANSLATION_OPERATIONS:
+        assert name in SYSTEM_PROMPT, name
+        assert name in registry.names(), name
+    for rule in ("unless the user chose it", "chosen by you",
+                 "difference on the matched services", "reserved terms, say they don't carry",
+                 "every caveat", "AWS to GCP or Azure"):
         assert rule in SYSTEM_PROMPT, rule

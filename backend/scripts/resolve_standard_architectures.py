@@ -34,7 +34,9 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import re
 import sys
+from datetime import date
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parent.parent
@@ -47,6 +49,7 @@ from scripts.standard_architectures.resolver import (  # noqa: E402
     render_report,
     resolve,
     to_export_file,
+    to_service_mappings,
 )
 from src.config import settings  # noqa: E402
 from src.pricing_data.active_snapshot import select_snapshot  # noqa: E402
@@ -80,13 +83,15 @@ def _without_empty_options(seed: dict) -> dict:
     return seed
 
 
-def _snapshot(data_uri: str, provider: str) -> ActiveSnapshot:
-    """The snapshot `latest.json` names (or, for AWS, `ACTIVE_SNAPSHOT_DATE`'s), read in place."""
+def _snapshot(data_uri: str, provider: str, pinned: date | None = None) -> ActiveSnapshot:
+    """The snapshot `latest.json` names (or, for AWS, `ACTIVE_SNAPSHOT_DATE`'s; or `pinned`),
+    read in place."""
     settings.pricing_data_uri = data_uri
     store = open_store(settings)
     if not isinstance(store, LocalStore):
         raise SystemExit("--data-uri must be a local pipeline storage root")
-    pinned = settings.active_snapshot_date if provider == "aws" else None
+    if pinned is None:
+        pinned = settings.active_snapshot_date if provider == "aws" else None
     selection = select_snapshot(store, provider, pinned, at_startup=True)
     if selection.manifest is None:
         reason = selection.reason or (selection.rejected.reason if selection.rejected else "")
@@ -103,9 +108,16 @@ def main() -> int:
         default=settings.pricing_data_uri,
         help="local pipeline storage root (default: PRICING_DATA_URI)",
     )
+    parser.add_argument(
+        "--mappings", action="store_true",
+        help="026: write only service_mappings_<provider>.json, from the snapshots the seeds "
+             "were made from",
+    )
     args = parser.parse_args()
     if not args.data_uri:
         raise SystemExit("set PRICING_DATA_URI or pass --data-uri")
+    if args.mappings:
+        return write_mappings(args.provider, args.data_uri)
 
     source = json.loads(args.source.read_text())
     rules = importlib.import_module(RULE_MODULES[args.provider])
@@ -149,6 +161,56 @@ def main() -> int:
         f"{len(resolution.matches)} entries matched, "
         f"{len(resolution.omissions)} figures left out -> {SEED_DIR}"
     )
+    return 0
+
+
+def _report_date(provider: str) -> date:
+    """The snapshot date a provider's seed was made from (its report's header)."""
+    text = _outputs(provider)[1].read_text()
+    found = re.search(r"Pricing snapshot: `(\d{4}-\d{2}-\d{2})`", text)
+    if not found:
+        raise SystemExit(f"no snapshot date in the {provider} report")
+    return date.fromisoformat(found.group(1))
+
+
+def _resolve_at(provider: str, data_uri: str):
+    rules = importlib.import_module(RULE_MODULES[provider])
+    snapshot = _snapshot(data_uri, provider, _report_date(provider))
+    resolution = resolve(rules.RULES, files=snapshot.files,
+                         snapshot_date=snapshot.snapshot_date, provider=provider)
+    return snapshot, resolution
+
+
+def write_mappings(provider: str, data_uri: str) -> int:
+    """026 research R4: pair the AWS rules with `provider`'s, at the snapshots both seeds were
+    made from (so the mapping names exactly the seeds' SKUs), and write
+    `service_mappings_<provider>.json`. The seeds and reports are not touched."""
+    from src.pricing_data.providers.registry import get_provider
+
+    if provider == "aws":
+        raise SystemExit("--mappings needs --provider gcp or azure")
+    aws_snapshot, aws = _resolve_at("aws", data_uri)
+    target_snapshot, target = _resolve_at(provider, data_uri)
+    snapshots = {"aws": aws_snapshot, provider: target_snapshot}
+    cache: dict[tuple[str, str, str, str], str] = {}
+
+    def key_of(code: str, service_code: str, sku: str, region: str) -> str:
+        wanted = (code, service_code, sku, region)
+        if wanted not in cache:
+            adapter = get_provider(code)
+            found = adapter.describe(snapshots[code], [(service_code, sku)], region=region)
+            if (service_code, sku) not in found:
+                raise SystemExit(f"{code} {service_code} {sku} not found in {region}")
+            item = found[(service_code, sku)]
+            if code == "gcp" and not item.summary:
+                raise SystemExit(f"gcp {sku} has no display name")
+            cache[wanted] = adapter.product_key(item)
+        return cache[wanted]
+
+    mappings = to_service_mappings(aws, target, target_provider=provider, key_of=key_of)
+    path = SEED_DIR / f"service_mappings_{provider}.json"
+    path.write_text(json.dumps(mappings, indent=2, ensure_ascii=False) + "\n")
+    print(f"{provider}: {len(mappings['mappings'])} mapping rows -> {path}")
     return 0
 
 

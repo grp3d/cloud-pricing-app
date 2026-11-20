@@ -107,12 +107,15 @@ async def _setup(db, case: dict) -> tuple[User, Architecture | None]:
     if not arch_spec:
         await db.commit()
         return user, None
-    architecture = await build_standard(db, user, arch_spec["provider"], arch_spec["name"])
+    architecture = await build_standard(db, user, arch_spec["provider"], arch_spec["name"],
+                                        rename=arch_spec.get("rename"))
     collections = (await db.execute(
         select(Collection).where(Collection.architecture_id == architecture.id)
         .order_by(Collection.created_at))).scalars().all()
     if arch_spec.get("rename_first_collection"):
         collections[0].name = arch_spec["rename_first_collection"]
+    if arch_spec.get("reserved"):
+        await _reserve_instances(db, collections)
     if arch_spec.get("add_unpriceable"):
         bad = arch_spec["add_unpriceable"]
         db.add(SKUSelection(collection_id=collections[0].id, service_code=bad["service_code"],
@@ -120,6 +123,26 @@ async def _setup(db, case: dict) -> tuple[User, Architecture | None]:
                             purchase_option="not_applicable", usage_quantity=Decimal(1)))
     await db.commit()
     return user, architecture
+
+
+async def _reserve_instances(db, collections) -> None:
+    """026 GC-4: put the architecture's EC2 instances on reserved 1-year, no upfront."""
+    from src.pricing_data.active_snapshot import get_active_snapshot
+    from src.pricing_data.providers.registry import get_provider
+
+    adapter = get_provider("aws")
+    for collection in collections:
+        selections = (await db.execute(select(SKUSelection).where(
+            SKUSelection.collection_id == collection.id,
+            SKUSelection.service_code == "AmazonEC2"))).scalars().all()
+        items = adapter.describe(get_active_snapshot("aws"),
+                                 [(s.service_code, s.sku) for s in selections],
+                                 region=collection.region)
+        for selection in selections:
+            item = items.get((selection.service_code, selection.sku))
+            if item is not None and item.product_family == "Compute Instance":
+                selection.pricing_term = "reserved_1yr"
+                selection.purchase_option = "no_upfront"
 
 
 async def _engine(db, architecture: Architecture, duration: str):
@@ -216,6 +239,22 @@ def _result_checks(expect: dict, results: list, text: str,
 
 
 async def run_case(db, case: dict, client) -> CaseResult:
+    """026: `seeds: false` runs the case without the seed mappings, so automatic matching (and
+    partial-only services) can be exercised on the standard architectures."""
+    if case.get("seeds") is False:
+        from unittest import mock
+
+        from src.agent.matching import mappings
+
+        async def no_seeds(*_args, **_kwargs):
+            return []
+
+        with mock.patch.object(mappings, "seed_mappings", no_seeds):
+            return await _run_case(db, case, client)
+    return await _run_case(db, case, client)
+
+
+async def _run_case(db, case: dict, client) -> CaseResult:
     out = CaseResult(case["id"], case["title"])
     user, architecture = await _setup(db, case)
     now = datetime.now(UTC)
@@ -287,8 +326,15 @@ async def run_case(db, case: dict, client) -> CaseResult:
                                 now_state is not None
                                 and fingerprint(now_state) == fingerprint(start_state)))
     out.checks.extend(proposal_checks(expect, found))
+    out.checks.extend(translation_checks(expect, found))
     if case.get("actions") and not out.error:
         out.checks.extend(await run_actions(db, user, agent_session, found, case["actions"]))
+    if (architecture is not None and start_state is not None and found
+            and found[-1].kind == "translate"):
+        # 026 (SC-004): the original never changes, whatever the user did.
+        now_state = await read_state(db, architecture.id)
+        out.checks.append(Check("the original is unchanged",
+                                fingerprint(now_state) == fingerprint(start_state)))
     if "refused" in expect:
         declined = any(w in lower for w in DECLINE_WORDS)
         out.checks.append(Check("declines" if expect["refused"] else "doesn't decline",
@@ -420,6 +466,41 @@ def proposal_checks(expect: dict, found: list) -> list[Check]:
         checks.append(Check("contributions add up",
                             total == Decimal(latest.cost["difference"]),
                             f"{total} vs {latest.cost['difference']}"))
+    return checks
+
+
+# --- 026: translations ---------------------------------------------------------------------------
+
+
+def translation_checks(expect: dict, found: list) -> list[Check]:
+    """Checks on the latest translation: row counts (matched, left out, chosen by the user), where
+    matches came from, the partial label, and both totals equal to the engine's."""
+    wanted = expect.get("translation")
+    if not wanted:
+        return []
+    latest = next((p for p in reversed(found) if p.kind == "translate"), None)
+    checks = [Check("makes a translation", latest is not None)]
+    if latest is None:
+        return checks
+    record = latest.translation
+    rows = record["rows"]
+    counts = {"matched": sum(1 for r in rows if r["status"] == "matched"),
+              "left_out": sum(1 for r in rows if r["match"] is None),
+              "chosen_by_user": sum(1 for r in rows if r["origin"] == "chosen_by_user")}
+    for key, value in (wanted.get("rows") or {}).items():
+        checks.append(Check(f"{value} {key}", counts[key] == value, f"{counts[key]}"))
+    for origin in wanted.get("origins") or []:
+        checks.append(Check(f"has a {origin} match", any(r["origin"] == origin for r in rows)))
+    if wanted.get("partial") is not None:
+        partial = record["summary"]["translation_total"]["partial"]
+        checks.append(Check("translation total labelled partial" if wanted["partial"]
+                            else "translation total complete", partial == wanted["partial"]))
+    duration = record["summary"]["duration"]
+    target = proposals.price_state(ArchitectureState.model_validate(latest.target_state),
+                                   duration).total
+    shown = record["summary"]["translation_total"]["amount"]
+    checks.append(Check("translation total is the engine's", Decimal(shown) == target,
+                        f"{shown} vs {target}"))
     return checks
 
 

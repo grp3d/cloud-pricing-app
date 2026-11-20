@@ -18,7 +18,9 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Numeric,
+    SmallInteger,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -482,7 +484,8 @@ class AgentProposal(Base):
     __tablename__ = "agent_proposals"
     __table_args__ = (
         UniqueConstraint("session_id", "seq", name="uq_agent_proposal_seq"),
-        CheckConstraint("kind IN ('change', 'create', 'import')", name="ck_agent_proposal_kind"),
+        CheckConstraint("kind IN ('change', 'create', 'import', 'translate')",
+                        name="ck_agent_proposal_kind"),
         CheckConstraint(
             "status IN ('pending', 'accepted', 'rejected', 'superseded', 'expired')",
             name="ck_agent_proposal_status"),
@@ -515,6 +518,9 @@ class AgentProposal(Base):
     base_fingerprint: Mapped[str | None] = mapped_column(String(64), default=None)
     cost: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     assumptions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # 026: a translation's record (data-model.md §2): mapping table, cost difference, regions,
+    # choices, mapping version and the source's fingerprint. Null for other kinds.
+    translation: Mapped[dict | None] = mapped_column(JSONB, default=None)
     before_fingerprint: Mapped[str | None] = mapped_column(String(64), default=None)
     after_fingerprint: Mapped[str | None] = mapped_column(String(64), default=None)
     undo_status: Mapped[str | None] = mapped_column(String(10), default=None)
@@ -523,3 +529,37 @@ class AgentProposal(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
+class ServiceMapping(Base):
+    """A seed mapping (026, data-model.md §1): one kind of AWS product → its equivalent on GCP or
+    Azure, in every region, generated from 022's rules and inserted by migration 0013. Linking
+    data by product keys (research R2), never labels or prices (Principle II). Read-only at run
+    time."""
+
+    __tablename__ = "service_mappings"
+    __table_args__ = (
+        UniqueConstraint("version", "source_provider", "source_key", "target_provider",
+                         "alternative", "part", name="uq_service_mapping"),
+        CheckConstraint("(target_key IS NULL) <> (omit_reason IS NULL)",
+                        name="ck_service_mapping_target"),
+        CheckConstraint("source_provider <> target_provider",
+                        name="ck_service_mapping_providers"),
+        Index("ix_service_mappings_source", "source_provider", "source_key", "target_provider"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    version: Mapped[int] = mapped_column(nullable=False)
+    source_provider: Mapped[str] = mapped_column(String(10), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(400), nullable=False)
+    target_provider: Mapped[str] = mapped_column(String(10), nullable=False)
+    alternative: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    part: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    target_key: Mapped[str | None] = mapped_column(String(400), default=None)
+    target_service_code: Mapped[str | None] = mapped_column(String(100), default=None)
+    target_sku: Mapped[str | None] = mapped_column(String(200), default=None)
+    target_options: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    quantity_factor: Mapped[Decimal | None] = mapped_column(Numeric, default=None)
+    note: Mapped[str | None] = mapped_column(Text, default=None)
+    omit_reason: Mapped[str | None] = mapped_column(Text, default=None)
+    origin: Mapped[str] = mapped_column(String(20), nullable=False)

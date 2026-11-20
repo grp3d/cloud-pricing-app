@@ -46,6 +46,8 @@ class OperationContext:
     proposals: list = field(default_factory=list)
     opened: list = field(default_factory=list)
     rows: dict = field(default_factory=dict)
+    # 026: this message's `find_translation` result (src.agent.translation.Found).
+    translation: Any = None
 
 
 def _match_book():
@@ -440,3 +442,4 @@ async def list_importable_architectures(ctx: OperationContext,
 
 # 024 and 025: the comparison and change operations register themselves in the same registry.
 from src.agent import operations_change, operations_compare  # noqa: E402,F401,I001
+from src.agent import operations_translate  # noqa: E402,F401,I001

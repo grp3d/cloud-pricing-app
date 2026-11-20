@@ -117,6 +117,12 @@ class AwsProvider(ComparableMixin):
             return None
         return PriceQuote(unit=None, tiers=tiers)
 
+    def product_key(self, item: CatalogItem) -> str:
+        """The region-independent key of this kind of product (026, research R2)."""
+        from src.pricing_data.providers.keys import aws_key
+
+        return aws_key(item)
+
     def service_key(self, item: CatalogItem) -> str:
         """`service_code|product_family` (research R9)."""
         return service_key(item.service_code, item.product_family)

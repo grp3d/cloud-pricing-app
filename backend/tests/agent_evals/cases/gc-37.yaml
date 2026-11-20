@@ -1,0 +1,27 @@
+id: GC-37
+title: "026 GC-6: the user rejects the translation: nothing is created and the original is unchanged"
+pricing: combined
+architecture: {provider: aws, name: Serverless Microservices Back-End}
+messages:
+  - Translate this to GCP in europe-west1, on demand.
+  - Use the partial matches.
+expect:
+  operations: [find_translation, propose_translation]
+  proposal: {kind: translate}
+  translation: {origins: [chosen_by_user], rows: {chosen_by_user: 6}}
+  not_contains: ["[figure removed]", "I've created"]
+actions: [reject]
+script:
+  - tool_calls: [{name: find_translation, arguments: {provider: gcp,
+      regions: {eu-west-1: europe-west1}}}]
+  - text: ["On GCP in europe-west1, six services have only partial matches (Cognito, Lambda and
+      DynamoDB) and three have no equivalent. Should I use the partial matches?"]
+  - tool_calls: [{name: find_translation, arguments: {provider: gcp,
+      regions: {eu-west-1: europe-west1}}}]
+  - tool_calls: [{name: propose_translation, arguments: {provider: gcp,
+      regions: {eu-west-1: europe-west1}, picks: [{source: S1, candidate: C1},
+      {source: S3, candidate: C2}, {source: S4, candidate: C3}, {source: S5, candidate: C4},
+      {source: S6, candidate: C5}, {source: S7, candidate: C6}]}}]
+  - text: ["It's proposed on GCP in europe-west1, on demand: [[F4]] for 1 month (31 days) on the
+      matched services against [[F3]] on AWS. The six partial matches are chosen by you; three
+      services have no equivalent and are left out. Nothing is created until you accept."]

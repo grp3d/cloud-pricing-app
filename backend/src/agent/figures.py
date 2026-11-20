@@ -51,6 +51,7 @@ _UNIT_STEMS = (
     "hr", "hour", "second", "minute", "lcu", "rpu", "dpu", "vcpu", "cpu", "core",
     "request", "putrequest", "readrequest", "writerequest", "quer", "object", "obj-",
     "mau", "shard", "update", "instance", "node", "iops", "lambda-gb",
+    "execution", "invocation", "message", "operation", "event", "call",
 )
 _UNIT_EXACT = frozenset({"h", "s", "io", "ios"})
 

@@ -1108,7 +1108,7 @@ class AgentResultOut(ORMBase):
 
 # 025 (contracts/agent-api.md, data-model.md §2–§4): proposals.
 
-ProposalKind = Literal["change", "create", "import"]
+ProposalKind = Literal["change", "create", "import", "translate"]
 ProposalStatus = Literal["pending", "accepted", "rejected", "superseded", "expired"]
 
 
@@ -1172,6 +1172,92 @@ class ProposalUndoOut(BaseModel):
     end_reason: Literal["edited", "superseded", "session_ended", "deleted"] | None = None
 
 
+# 026 (contracts/agent-api.md, data-model.md §2–§4): a translation's record.
+
+MappingStatus = Literal["matched", "no_equivalent", "partial_only", "not_sold_in_region",
+                        "unpriceable"]
+
+
+class TranslationRegionOut(BaseModel):
+    source: str
+    target: str
+    guessed: bool = False
+
+
+class TranslationTermOut(BaseModel):
+    used: str
+    why: str | None = None
+
+
+class MappingVersionOut(BaseModel):
+    seed: int | None = None
+    snapshots: dict[str, str] = {}
+
+
+class MappingSideOut(BaseModel):
+    label: str
+    region: str
+    quantity: Decimal | None = None
+    unit: str | None = None
+    size: str | None = None
+    amount: Decimal | None = None
+
+
+class MappingRowOut(BaseModel):
+    where: str
+    source: MappingSideOut
+    status: MappingStatus
+    match: MappingSideOut | None = None
+    quality: Literal["exact", "close", "partial"] | None = None
+    origin: Literal["seeded", "automatic", "chosen_by_user"] | None = None
+    differences: list[str] = []
+    reason: str | None = None
+    assumptions: list[str] = []
+    alternatives: int = 0
+
+
+class TranslationTotalOut(BaseModel):
+    amount: Decimal | None = None
+    partial: bool = False
+
+
+class ComparedOut(BaseModel):
+    original: Decimal | None = None
+    translation: Decimal | None = None
+    diff: Decimal | None = None
+    diff_pct: Decimal | None = None
+    rows: int = 0
+
+
+class CostDriverOut(BaseModel):
+    where: str
+    label: str
+    diff: Decimal
+
+
+class CostDifferenceOut(BaseModel):
+    duration: CalculationDuration
+    original_total: TranslationTotalOut
+    translation_total: TranslationTotalOut
+    compared: ComparedOut
+    left_out: list[str] = []
+    drivers: list[CostDriverOut] = []
+    not_exact: list[str] = []
+    snapshots: dict[str, str] = {}
+
+
+class TranslationOut(BaseModel):
+    source_architecture_id: uuid.UUID
+    source_name: str
+    source_provider: str
+    target_provider: str
+    regions: list[TranslationRegionOut] = []
+    term: TranslationTermOut
+    mapping_version: MappingVersionOut
+    rows: list[MappingRowOut] = []
+    summary: CostDifferenceOut
+
+
 class AgentProposalOut(BaseModel):
     id: uuid.UUID
     message_id: uuid.UUID
@@ -1186,6 +1272,7 @@ class AgentProposalOut(BaseModel):
     cost: ProposalCostOut
     assumptions: list[ProposalAssumption] = []
     undo: ProposalUndoOut | None = None
+    translation: TranslationOut | None = None
     created_at: datetime
     decided_at: datetime | None = None
 

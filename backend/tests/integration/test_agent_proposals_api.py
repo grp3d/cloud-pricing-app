@@ -26,7 +26,7 @@ from src.models.orm import (
     Architecture,
     User,
 )
-from src.services.architecture_state import ArchitectureState, read_state
+from src.services.architecture_state import ArchitectureState, fingerprint, read_state
 from tests.helpers.agent import build_standard
 from tests.helpers.architectures import assert_state_equal
 
@@ -252,3 +252,46 @@ async def test_accepting_a_new_architecture_creates_it_private_and_returns_it(cl
     assert (created.user_id, created.is_public, created.name) == (user.id, False, "Fresh")
     assert_state_equal(await read_state(db, new_id), target)
     assert response.json()["proposal"]["undo"]["can_undo"] is True
+
+
+async def test_a_translate_proposal_accepts_undoes_and_redoes_like_a_create(client, world):
+    """026 (research R1): a translation is saved, undone and redone as a created architecture,
+    and its record comes back with the proposal."""
+    db, user, agent_session, message, source_id = world
+    base = await read_state(db, source_id)
+    draft = Draft(ArchitectureState(name="Prod Web", provider="aws"), await db_clock(db))
+    vpc = draft.add_collection("new1", type="vpc", name="Web", region="us-east-1",
+                               parent_id=None, group=None)
+    s = base.services[0]
+    draft.add_service(ServiceSpec(s.service_code, s.sku, s.pricing_term, s.purchase_option,
+                                  s.usage_quantity, None, "Copy"), collection_id=vpc, group=None,
+                      where="Web")
+    target = draft.state
+    record = {"source_architecture_id": str(source_id), "source_name": "Prod Web",
+              "source_provider": "aws", "target_provider": "aws", "regions": [],
+              "term": {"used": "on demand", "why": None},
+              "source_fingerprint": fingerprint(base),
+              "mapping_version": {"seed": 1, "snapshots": {}}, "rows": [],
+              "summary": {"duration": "1_month", "original_total": {"amount": None},
+                          "translation_total": {"amount": None}, "compared": {}}}
+    proposal = await create_proposal(
+        db, agent_session, message, kind="translate", title="Prod Web → AWS", base=None,
+        target=target, items=draft.items, cost=cost_summary(None, draft.items, target, "1_month"),
+        assumptions=[], architecture_id=None, source_architecture_id=source_id,
+        translation=record)
+    await db.commit()
+    session_detail = await client.get("/api/v1/agent/session", headers=_headers(user))
+    shown = next(p for p in session_detail.json()["proposals"] if p["id"] == str(proposal.id))
+    assert shown["kind"] == "translate" and shown["translation"]["source_name"] == "Prod Web"
+    response = await client.post(_url(proposal.id, "accept"), headers=_headers(user),
+                                 json={"architecture_id": None})
+    assert response.status_code == 200, response.text
+    new_id = uuid.UUID(response.json()["open_architecture_id"])
+    assert_state_equal(await read_state(db, new_id), target)
+    assert (await client.post(_url(proposal.id, "undo"), headers=_headers(user))).status_code == 200
+    await db.refresh(await db.get(Architecture, new_id))
+    assert (await db.get(Architecture, new_id)).deleted_at is not None
+    assert (await client.post(_url(proposal.id, "redo"), headers=_headers(user))).status_code == 200
+    await db.refresh(await db.get(Architecture, new_id))
+    assert (await db.get(Architecture, new_id)).deleted_at is None
+    assert_state_equal(await read_state(db, source_id), base)  # the original never changes

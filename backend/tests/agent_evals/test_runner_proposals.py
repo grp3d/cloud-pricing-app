@@ -102,3 +102,29 @@ def test_the_question_limit_is_per_answer():
     assert check.passed and check.detail == "2, 0, 3 asked"
     answers[2] += " And the term?"
     assert not _result_checks({"max_questions": 3}, [], "".join(answers), answers)[0].passed
+
+
+async def test_translation_checks(db_session, use_pricing_root):
+    """026: the runner's translation expectations pass for a real translation and fail for a
+    wrong one."""
+    from src.agent.operations import registry
+    from tests.agent_evals.runner import translation_checks
+    from tests.helpers.agent import combined_pricing_root
+    from tests.helpers.translation import context, make_world
+
+    use_pricing_root(combined_pricing_root())
+    world = await make_world(db_session)
+    architecture = await build_standard(db_session, world[1], "aws", WEB_APP)
+    ctx = context(world, architecture.id)
+    await registry.run(ctx, "find_translation", {"provider": "gcp"})
+    await registry.run(ctx, "propose_translation", {"provider": "gcp"})
+    good = translation_checks({"translation": {
+        "rows": {"matched": 14, "left_out": 2, "chosen_by_user": 0},
+        "origins": ["seeded"], "partial": True}}, ctx.proposals)
+    assert good and all(c.passed for c in good), [c.name for c in good if not c.passed]
+    bad = translation_checks({"translation": {"rows": {"left_out": 0},
+                                              "origins": ["chosen_by_user"],
+                                              "partial": False}}, ctx.proposals)
+    assert sorted(c.name for c in bad if not c.passed) == [
+        "0 left_out", "has a chosen_by_user match", "translation total complete"]
+    assert translation_checks({"translation": {"rows": {}}}, [])[0].passed is False

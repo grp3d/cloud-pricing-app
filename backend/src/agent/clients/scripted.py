@@ -52,9 +52,10 @@ class ScriptedModelClient:
 
     @classmethod
     def demo(cls) -> ScriptedModelClient:
-        """The e2e model. A question that names Azure compares the open architecture with Azure
-        in eastus (024); one that says "double" proposes doubling its first service (025);
-        anything else prices the open architecture for 1 month (023)."""
+        """The e2e model. A question that says "translate" proposes the open architecture on
+        Azure in eastus (026); one that names Azure compares it with Azure in eastus (024); one
+        that says "double" proposes doubling its first service (025); anything else prices the
+        open architecture for 1 month (023)."""
         return _DemoClient()
 
     async def stream(
@@ -87,7 +88,8 @@ class _DemoClient(ScriptedModelClient):
             self._chosen = True
             question = next((m.text for m in reversed(messages) if m.role == "user"), "")
             lowered = question.lower()
-            self._turns = (_COMPARE() if "azure" in lowered else
+            self._turns = (_TRANSLATE() if "translate" in lowered else
+                           _COMPARE() if "azure" in lowered else
                            _PROPOSE() if "double" in lowered else _PRICE())
         async for event in super().stream(system, messages, tools):
             yield event
@@ -128,3 +130,18 @@ def _PROPOSE() -> list[Turn]:
              usage=Usage(200, 40)),
     ]
 
+
+
+def _TRANSLATE() -> list[Turn]:
+    regions = {"eu-west-1": "eastus", "us-east-1": "eastus"}
+    return [
+        Turn(tool_calls=[ToolCall("demo-1", "find_translation",
+                                  {"provider": "azure", "regions": regions})],
+             usage=Usage(100, 20)),
+        Turn(tool_calls=[ToolCall("demo-2", "propose_translation",
+                                  {"provider": "azure", "regions": regions})],
+             usage=Usage(150, 30)),
+        Turn(text=["On Azure (eastus) the matched services come to [[F4]] against [[F3]] on AWS. ",
+                   "The mapping is beside me; nothing is created until you accept."],
+             usage=Usage(200, 40)),
+    ]

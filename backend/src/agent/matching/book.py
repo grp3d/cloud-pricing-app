@@ -28,6 +28,11 @@ class SourceProduct:
     profile: ProductProfile
     provider_options: dict | None = None
     ref: str = ""
+    # 026: the product key (research R2), the selection it came from, and its owner
+    # (("collection" | "connector", id)), for translation.
+    product_key: str | None = None
+    selection_id: object = None
+    owner: tuple | None = None
 
 
 @dataclass
