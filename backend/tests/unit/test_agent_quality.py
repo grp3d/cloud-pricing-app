@@ -90,3 +90,39 @@ def test_the_agent_may_lower_a_label_with_a_reason_but_never_raise_it():
         lower("partial", "exact", "looks the same")
     with pytest.raises(ToolError, match="reason"):
         lower("exact", "close", None)
+
+
+def lb(**specs) -> ProductProfile:
+    return ProductProfile("load_balancer", "networking", "hour", specs)
+
+
+def test_application_gateway_editions_for_an_application_load_balancer():
+    alb = lb(lb_layer="application", lb_edition="standard")
+    assert quality(alb, lb(lb_layer="application", lb_edition="standard")) == ("exact", [])
+    assert quality(alb, lb(lb_layer="application", lb_edition="waf")) == (
+        "close", ["with a web application firewall"])
+    assert quality(alb, lb(lb_layer="application", lb_edition="basic"))[0] == "close"
+    # A product with no edition (a GCP forwarding rule) isn't marked down for it.
+    assert quality(alb, lb(lb_layer="application")) == ("exact", [])
+    assert quality(alb, lb(lb_layer="network")) == (
+        "partial", ["network load balancer vs application"])
+
+
+def transfer(**specs) -> ProductProfile:
+    return ProductProfile("data_transfer", "networking", "gb", {"transfer": "inter_region",
+                                                                **specs})
+
+
+def test_a_transfer_price_must_be_for_the_destination():
+    # us-east-1 to us-west-2 (Oregon), against GCP prices from Virginia.
+    source = transfer(dest_geo="north_america", dest_place="Oregon")
+    assert quality(source, transfer(dest_geo="americas")) == ("exact", [])
+    assert quality(source, transfer(dest_place="Oregon")) == ("exact", [])
+    assert quality(source, transfer(dest_place="Columbus")) == (
+        "partial", ["priced only for transfer to Columbus"])
+    assert quality(source, transfer(dest_geo="emea")) == (
+        "partial", ["priced only for transfer to EMEA"])
+    # A place may be named more or less fully; a price with no destination isn't marked down.
+    assert quality(transfer(dest_place="Northern Virginia"),
+                   transfer(dest_place="Virginia"))[0] == "exact"
+    assert quality(source, transfer()) == ("exact", [])

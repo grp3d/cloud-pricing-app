@@ -24,6 +24,17 @@ other budget rules (under $0.50 per change unless agreed, only affected cases, o
 runs per change, no repeat runs for stability) are in
 [docs/development.md](docs/development.md#the-agent).
 
+## Tests
+
+- Run the full test suite before reporting a task done, and say what passed and what didn't.
+- Never hand off a check you could automate: a manual step is only for what a person must judge
+  (constitution, Principle V).
+- Tests use the scripted model and the pricing fixtures. Live-model evaluations are opt-in and
+  paid (see Paid API usage above).
+
+The commands for each suite, what they need, where the tests and pricing fixtures live, and how
+to run the app with the scripted model are in [docs/development.md](docs/development.md#tests).
+
 ## Documentation
 
 - The README is a fixed orientation page. Don't append feature notes to it; change it only when

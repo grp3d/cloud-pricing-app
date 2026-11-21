@@ -231,3 +231,42 @@ def test_azure_blob_rows_that_arent_data_stored_are_other():
                       product_name="General Block Blob v2", sku_name="Hot LRS",
                       meter_name="Hot LRS Data Retrieval"))
     assert p.function == "other"
+
+
+@pytest.mark.parametrize(("product", "meter", "function", "edition"), [
+    ("Application Gateway Standard v2", "Standard Fixed Cost", "load_balancer", "standard"),
+    ("Application Gateway Standard v2", "Standard Capacity Units", "load_balancer_capacity",
+     "standard"),
+    ("Application Gateway WAF v2", "Standard Fixed Cost", "load_balancer", "waf"),
+    ("Application Gateway Basic v2", "Basic Fixed Cost", "load_balancer", "basic"),
+    ("Application Gateway Standard v2", "Confidential Compute Fixed Cost", "load_balancer",
+     "confidential"),
+    # Not an Application Load Balancer equivalent: v1 (being retired), the Kubernetes ingress
+    # product, a discounted offer, and WAF captcha sessions.
+    ("Basic Application Gateway", "Small Gateway", "other", None),
+    ("Application Gateway for Containers", "Standard AGC", "other", None),
+    ("Application Gateway WAF v2 - Discounted", "Standard Fixed Cost", "other", None),
+    ("Application Gateway WAF v2", "Standard Captcha Sessions", "other", None),
+])
+def test_application_gateway_v2_editions(product, meter, function, edition):
+    got = profile(azure(None, "Application Gateway", "1/Hour", product_name=product,
+                        meter_name=meter))
+    assert (got.function, got.specs.get("lb_edition")) == (function, edition)
+
+
+def test_an_application_load_balancer_is_the_standard_edition_and_a_network_one_has_none():
+    alb = profile(aws("AWSELB", "Load Balancer-Application", usagetype="LoadBalancerUsage"))
+    nlb = profile(aws("AWSELB", "Load Balancer-Network", usagetype="LoadBalancerUsage"))
+    assert (alb.specs.get("lb_edition"), nlb.specs.get("lb_edition")) == ("standard", None)
+
+
+def test_transfer_between_regions_has_its_destination():
+    aws_row = profile(aws("AWSDataTransfer", "Data Transfer", usagetype="USE1-USW2-AWS-Out-Bytes",
+                          toRegionCode="us-west-2"))
+    assert (aws_row.specs["dest_geo"], aws_row.specs["dest_place"]) == ("north_america", "Oregon")
+    group = profile(gcp("data_transfer", "Network",
+                        "Network Inter Region Data Transfer Out from Virginia to Americas", "GiBy"))
+    place = profile(gcp("data_transfer", "Network",
+                        "Network Inter Region Data Transfer Out from Virginia to Columbus", "GiBy"))
+    assert group.specs.get("dest_geo") == "americas" and "dest_place" not in group.specs
+    assert place.specs.get("dest_place") == "Columbus" and "dest_geo" not in place.specs

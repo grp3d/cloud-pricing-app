@@ -236,11 +236,15 @@ def _aws(item: CatalogItem) -> tuple[str, dict]:
         usage = a.get("usagetype", "")
         specs["transfer"] = ("inter_region" if re.search(r"AWS-(Out|In)-Bytes", usage)
                              else "internet" if "DataTransfer-Out-Bytes" in usage else "other")
+        if specs["transfer"] == "inter_region":
+            specs.update(_aws_destination(a.get("toRegionCode")))
         return "data_transfer", specs
     if family.startswith("Load Balancer"):
         usage = a.get("usagetype", "")
         layer = family.removeprefix("Load Balancer").strip("-").lower() or "classic"
         specs["lb_layer"] = layer
+        if layer == "application":
+            specs["lb_edition"] = "standard"
         return ("load_balancer_capacity" if "LCU" in usage else "load_balancer"), specs
     if code == "AmazonRoute53" and family == "DNS Query":
         specs["visibility"] = "public"
@@ -372,9 +376,18 @@ def _azure(item: CatalogItem) -> tuple[str, dict]:
         return ("load_balancer_capacity" if "data processed" in meter.lower()
                 else "load_balancer"), specs
     if service == "application gateway":
+        lower_product, lower_meter = product.lower(), meter.lower()
+        # Only the v2 gateways: v1 is being retired, "for Containers" is a separate Kubernetes
+        # ingress product, and a "Discounted" product is a price offer, not an edition.
+        if ("v2" not in lower_product or "for containers" in lower_product
+                or "discounted" in lower_product or "captcha" in lower_meter):
+            return "other", specs
         specs["lb_layer"] = "application"
-        return ("load_balancer_capacity" if "capacity unit" in meter.lower()
-                or "data processed" in meter.lower() else "load_balancer"), specs
+        specs["lb_edition"] = ("waf" if "waf" in lower_product else
+                               "basic" if "basic" in lower_product else
+                               "confidential" if "confidential" in lower_meter else "standard")
+        return ("load_balancer_capacity" if "capacity unit" in lower_meter
+                or "data processed" in lower_meter else "load_balancer"), specs
     if service == "azure dns" and "queries" in meter.lower():
         specs["visibility"] = "private" if "private" in meter.lower() else "public"
         return "dns_queries", specs
@@ -449,6 +462,8 @@ def _gcp(item: CatalogItem) -> tuple[str, dict]:
         lower = summary.lower()
         specs["transfer"] = ("inter_region" if re.search(r"inter[- ]region", lower)
                              else "internet" if "internet" in lower else "other")
+        if specs["transfer"] == "inter_region":
+            specs.update(_gcp_destination(summary))
         return "data_transfer", specs
     if "Forwarding Rule" in summary or "Cloud Load Balancing" in taxonomy:
         lower = summary.lower()
@@ -508,3 +523,56 @@ def product_label(item: CatalogItem) -> str:
             bits.append(meter)
         return " · ".join(b for b in bits if b)
     return item.summary or item.product_family or item.sku
+
+
+# --- Where a transfer between regions goes -------------------------------------------------------
+# A price for transfer between regions is for one destination: a part of the world (GCP's "to
+# Americas") or one place (GCP's "to Columbus"; AWS's destination region). `dest_geo` is the
+# destination's geography, or a group of them; `dest_place` is the one place, where there is one.
+
+DESTINATION_GROUPS = {
+    "americas": ("north_america", "south_america"),
+    "north america": ("north_america",),
+    "northern america": ("north_america",),
+    "south america": ("south_america",),
+    "latin america": ("south_america",),
+    "europe": ("europe",),
+    "emea": ("europe", "middle_east", "africa"),
+    "apac": ("asia_pacific",),
+    "asia": ("asia_pacific",),
+    "asia pacific": ("asia_pacific",),
+    "oceania": ("asia_pacific",),
+    "middle east": ("middle_east",),
+    "africa": ("africa",),
+}
+
+
+def _aws_destination(region_code: str | None) -> dict:
+    from src.agent.matching.regions import locations
+
+    where = locations().get("aws", {}).get(region_code or "")
+    if where is None:
+        return {}
+    return {"dest_geo": where["geography"], "dest_place": where["city"]}
+
+
+def _gcp_destination(summary: str) -> dict:
+    match = re.search(r" to (.+?)\s*$", summary)
+    if not match:
+        return {}
+    name = match.group(1).strip()
+    if name.lower() in DESTINATION_GROUPS:
+        return {"dest_geo": name.lower()}
+    return {"dest_place": name}
+
+
+def destination_covers(target_geo: str, source_geo: str) -> bool:
+    """Whether a price for transfer to `target_geo` (a geography or a group) applies to transfer
+    to a region in `source_geo`."""
+    return source_geo in DESTINATION_GROUPS.get(target_geo, (target_geo,))
+
+
+def same_place(target: str, source: str) -> bool:
+    """Whether two place names are the same place ("Virginia" and "Northern Virginia" are)."""
+    a, b = target.lower().strip(), source.lower().strip()
+    return a == b or a.endswith(f" {b}") or b.endswith(f" {a}")

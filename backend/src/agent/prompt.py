@@ -6,7 +6,7 @@ appears here: it reaches the model only inside tool results, as data (FR-008, Pr
 
 from __future__ import annotations
 
-PROMPT_VERSION = "026.3"
+PROMPT_VERSION = "026.4"
 
 SYSTEM_PROMPT = """\
 You are the assistant inside Cloud Pricing, an app for assembling cloud architectures \
@@ -77,6 +77,8 @@ matches C…, and what needs the user.
 the target regions (say each guessed one is a guess), a choice where a service has several \
 valid equivalents (name them and their differences), and whether to use the partial \
 matches. If the user says to use defaults, propose with them and state them.
+- When you list the services that need the user, give each service S… its own line (never \
+two in one line), so any count you give equals the lines listed.
 - The pricing term is on demand unless the user chooses one; if the original uses reserved \
 terms, say they don't carry over.
 - Never pick a partial match unless the user chose it: offer it, say why it's partial, and \

@@ -200,7 +200,8 @@ both totals and names every left-out service and every match that isn't exact.
 - [X] T042 Run the whole backend suite, the frontend unit tests, type-check and lint on touched files, and the e2e suite; record the results in this file
 - [X] T043 Measure quickstart step 9 (find and price a standard architecture's translation in under 10 s) and record it here
 - [X] T044 Give the user the paid-run estimate for GC-32 to GC-38 plus 025's GC-20 and GC-21B on Claude Haiku 5.5 (from 025's T068 and T069 reports), and stop until it is approved; then run only those cases at the approved amount, and record pass/fail, calls and cost here (SC-005)
-- [ ] T045 Run the quickstart manual walk-through with the user (steps 1–8), recording what was checked
+- [X] T045 Run the quickstart manual walk-through with the user (section 3, the [MANUAL] items; it was steps 1–8 before 2026-11-20), recording what was checked
+  - 2026-11-21, with the user: items 1 (Prod Web to Azure), 2 (Serverless to GCP) and 3 (accept and undo) done. In item 2 the answer said "Six services have only partial matches" but listed five lines (DynamoDB read and write units merged into one). Fixed in the prompt (026.4): one line per service S…, so a count matches the list; not re-checked on a live model (paid). The europe-west2 guess for eu-west-1 is the nearest region and was accepted as correct.
 
 ---
 
@@ -261,6 +262,46 @@ Task: "T016 operation tests in backend/tests/integration/test_agent_translate_op
 4. + US5, US6: refinement and the honest "which is cheaper".
 5. Polish, then the one approved paid run.
 
+## Coverage
+
+Added 2026-11-20 under constitution 1.3.0 (Principle V). Each acceptance scenario and success
+criterion maps to a test, or is `[MANUAL]` in quickstart.md section 3. Backend test files are
+under `backend/tests/`, frontend ones under `frontend/`.
+
+| Scenario or criterion | Covered by |
+|---|---|
+| US1-1 translate: questions, then a proposal | GC-32; `integration/test_agent_translate_operations.py::test_the_proposal_keeps_collections_nesting_and_connectors` |
+| US1-2 a guessed region is offered and said | GC-32; `::test_regions_are_guessed_one_per_source_region_in_one_result` |
+| US1-3 several valid equivalents: a choice | GC-33; `::test_several_valid_equivalents_are_a_choice_with_the_best_first` |
+| US1-4 keeps collections, nesting and connectors | `::test_the_proposal_keeps_collections_nesting_and_connectors` |
+| US1-5 a public architecture gives the user's own proposal | `::test_a_public_architecture_gives_the_users_own_proposal` |
+| US2-1 one row per service, with match, quality, origin and costs | `unit/TranslationTable.test.tsx`; `integration/test_seed_mappings.py` (round trip) |
+| US2-2 both totals and the difference on matched services | `unit/test_translation.py::test_the_difference_is_over_rows_priced_on_both_sides`; `::test_every_amount_equals_the_engine`; `TranslationTable.test.tsx` |
+| US3-1 no candidate: flagged, left out, total partial | GC-34; `::test_no_equivalent_is_left_out_and_the_total_partial` |
+| US3-2 only partial candidates: offered, left out | GC-37, GC-38; `::test_only_partial_candidates_are_offered_with_no_default` |
+| US3-3 a chosen partial match is "chosen by you" | GC-37, GC-38; `::test_a_partial_match_needs_an_earlier_offer`; `unit/test_translation.py::test_not_exact_names_close_and_chosen_partial_matches` |
+| US3-4 unpriceable in the original: flagged, never a saving | `unit/test_translation.py::test_the_difference_is_over_rows_priced_on_both_sides` |
+| US4-1 reject creates nothing | GC-37; `integration/test_agent_translation_api.py::test_reject_creates_nothing` |
+| US4-2 accept creates a private architecture on the target | `test_agent_translation_api.py::test_accept_undo_redo_and_the_original_never_changes`; `e2e/agent.spec.ts` "translate an architecture to Azure…" |
+| US4-3 undo and redo | the same API test and browser test |
+| US5-1 another valid option replaces the pending translation | GC-33; `::test_a_second_proposal_supersedes_and_a_foreign_pick_is_refused` |
+| US5-2 an option that isn't a candidate is refused | `::test_a_second_proposal_supersedes_and_a_foreign_pick_is_refused` |
+| US6-1 complete translation: totals and difference | `unit/test_translation.py::test_a_complete_exact_translation_has_no_caveats`; `::test_describe_translation_reads_the_record_in_a_later_message` |
+| US6-2 partial translation: caveats, not a whole saving | GC-36, GC-38 (last answer); `unit/test_translation.py::test_caveats_name_everything_a_cost_answer_must_say` |
+| FR-002 a seed with no exact or close match doesn't hide a better automatic one (2026-11-20) | `::test_a_better_automatic_match_replaces_a_seeded_partial_one`; `::test_a_seeded_partial_match_stands_when_nothing_better_is_found`; Application Gateway editions: `unit/test_agent_profiles.py::test_application_gateway_v2_editions`, `unit/test_agent_quality.py::test_application_gateway_editions_for_an_application_load_balancer` |
+| FR-011 other directions declined | GC-39; `::test_refusals` |
+| FR-012 stale translation refused | `test_agent_translation_api.py` (three stale tests); `e2e/agent.spec.ts` "a translation can't be accepted after the original changes"; `unit/translationProposal.test.tsx` |
+| SC-001, SC-002 | the US2 and US3 rows above |
+| SC-003 amounts equal the engine's | `::test_every_amount_equals_the_engine`; eval translation checks |
+| SC-004 the original is unchanged | `test_agent_translation_api.py::test_accept_undo_redo_and_the_original_never_changes`; eval runner's "original is unchanged" check |
+| SC-005 golden conversations on Haiku 5.5 | opt-in live run (T044), not a completion gate |
+| SC-006 standard architectures reproduce 022 | `integration/test_seed_mappings.py::test_translating_a_standard_architecture_reproduces_022` |
+| SC-007 at most 3 messages and under 5 minutes | messages: GC-32 (asks, then proposes in its second message); time: `[MANUAL]` quickstart step 1 |
+| plan.md: under 10 s | `::test_a_standard_architecture_is_found_and_priced_in_under_10_seconds` |
+| Real snapshots, real model, readability | `[MANUAL]` quickstart section 3 |
+
+`::name` with no file before it means `integration/test_agent_translate_operations.py::name`.
+
 ## Results (2026-11-19)
 
 - T033: in `frontend/e2e/agent.spec.ts` (the agent project runs serially), passing.
@@ -298,6 +339,33 @@ Task: "T016 operation tests in backend/tests/integration/test_agent_translate_op
     balancers before proposing, and the case went straight to "So which is cheaper?". GC-36
     now says "Use your defaults." first; this change was checked with the scripted model only.
   - Total paid: $0.239 over 3 runs.
+- Fix after the manual walk-through (2026-11-20, user-approved): step 1 offered Azure Load
+  Balancer (022's seed, partial: a network load balancer) for the Application Load Balancer and
+  never Application Gateway.
+  - A seed with no exact or close match no longer hides automatic matching (FR-002 amended,
+    spec clarification 2026-11-20, research R5). The seed's other figures for the same service
+    follow, so the capacity-unit row no longer carries 022's "Azure Load Balancer" reason.
+  - Application Gateway candidates: v2 only (no v1, "for Containers", "Discounted" or WAF
+    captcha rows); Standard v2 is exact for an Application Load Balancer, and WAF v2, Basic v2
+    and Confidential are close (a new optional `lb_edition` spec).
+  - Bug fix: the region-word check matched "apac" inside "capacity"; words now match whole.
+  - On the real 2026-11-16 data, two other rows changed by the same rule: Serverless Lambda
+    duration → Flex Consumption (exact) and Data Lake Glacier Instant Retrieval → Blob Cold
+    ZRS (exact), in place of 022's partial seeds. The test pricing data has no Application
+    Gateway, so the round trip (SC-006) still reproduces 022 there.
+  - Checked with the scripted model and fixtures only; no paid run.
+- Fix after walk-through step 2 (2026-11-20, user-approved; run on the web application to GCP
+  with us-east4): transfer between regions (us-east-1 → us-west-2) was a choice of five "exact"
+  GCP prices, to Americas, Columbus, Berlin, Bangkok and Kuala Lumpur. A transfer price now has
+  a destination (AWS: the destination region; GCP: "to Americas" or one place), and a price
+  for another destination is partial ("priced only for transfer to Columbus"). The row is now
+  matched to "Virginia to Americas", with no question. Azure's inter-region price names no
+  destination and is unchanged. Tests: `unit/test_agent_profiles.py::
+  test_transfer_between_regions_has_its_destination`, `unit/test_agent_quality.py::
+  test_a_transfer_price_must_be_for_the_destination`, `unit/test_agent_candidate_rules.py::
+  test_only_a_transfer_price_for_the_destination_qualifies`. The same run's answer also
+  invented an internet transfer the architecture doesn't have: a model error, left to the
+  manual judgement (no prompt change).
 
 ## Progress note (paused 2026-11-19)
 

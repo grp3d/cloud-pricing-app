@@ -13,6 +13,7 @@ candidate, label and quantity.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable
 from decimal import Decimal
 
@@ -125,9 +126,10 @@ def geography_penalty(label: str, provider: str, region: str) -> Decimal:
     home = locations().get(provider, {}).get(region, {}).get("geography")
     if home is None:
         return Decimal(0)
-    text = f" {label.lower()} "
-    foreign = any(word in text for geo, words in GEOGRAPHY_WORDS.items() if geo != home
-                  for word in words)
+    text = label.lower()
+    # Whole words only ("apac" is not in "capacity").
+    foreign = any(re.search(rf"(?<![a-z]){re.escape(word.strip())}(?![a-z])", text)
+                  for geo, words in GEOGRAPHY_WORDS.items() if geo != home for word in words)
     return Decimal("0.75") if foreign else Decimal(0)
 
 

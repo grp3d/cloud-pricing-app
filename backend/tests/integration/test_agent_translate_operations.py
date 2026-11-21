@@ -70,6 +70,46 @@ async def test_seed_mappings_come_first_and_say_so(world):
     assert "LCU-hour" in lcu["reason"]
 
 
+async def test_a_seeded_partial_match_stands_when_nothing_better_is_found(world):
+    ctx = context(world, (await _arch(world)).id)
+    found = await registry.run(ctx, "find_translation", {"provider": "azure"})
+    alb = [s for s in found.data["services"] if "Load Balancer-Application" in s["label"]
+           and s["usage"].endswith(" Hrs a day")]
+    assert alb and all(s["status"] == "partial_only" for s in alb)
+    assert alb and all(s["candidates"][0]["origin"] == "seeded" for s in alb)
+
+
+async def test_a_better_automatic_match_replaces_a_seeded_partial_one(world, monkeypatch):
+    # The fixture has no Application Gateway, so an exact automatic match for the Application
+    # Load Balancer is simulated: the seed (Azure Load Balancer, a network load balancer) is
+    # partial, so the automatic match is used, and the seed's reason for leaving out the
+    # load balancer's capacity units (about Azure Load Balancer) no longer applies.
+    from src.agent import translation
+
+    real = translation.find_candidates
+
+    async def with_an_application_gateway(book, sources, targets, **kwargs):
+        found = await real(book, sources, targets, **kwargs)
+        for source in sources:
+            if source.profile.function == "load_balancer":
+                for candidate in found.get(source.ref, {}).get("azure", []):
+                    candidate.quality, candidate.differences = "exact", []
+        return found
+
+    monkeypatch.setattr(translation, "find_candidates", with_an_application_gateway)
+    ctx = context(world, (await _arch(world)).id)
+    found = await registry.run(ctx, "find_translation", {"provider": "azure"})
+    services = found.data["services"]
+    alb = [s for s in services if "Load Balancer-Application" in s["label"]]
+    hours = [s for s in alb if s["usage"].endswith(" Hrs a day")]
+    assert hours and all(s["status"] in ("matched", "choose")
+                         and s["candidates"][0]["origin"] == "automatic" for s in hours)
+    lcu = [s for s in alb if "LCU" in s["usage"]]
+    assert lcu and not any("Azure Load Balancer" in (s.get("reason") or "") for s in lcu)
+    # Other services keep their seeds.
+    assert any(s["candidates"] and s["candidates"][0]["origin"] == "seeded" for s in services)
+
+
 async def test_without_a_seed_exact_and_close_are_automatic(world, no_seeds):
     ctx = context(world, (await _arch(world)).id)
     found = await registry.run(ctx, "find_translation", {"provider": "gcp"})
@@ -338,3 +378,22 @@ async def test_describe_translation_reads_the_record_in_a_later_message(world, m
     assert figure.amount == Decimal(record["summary"]["compared"]["diff"])
     with pytest.raises(ToolError, match="unknown translation"):
         await registry.run(later, "describe_translation", {"proposal": "Q99"})
+
+
+# --- Performance (T043, plan.md's 10 s goal) -------------------------------------------------
+
+
+@pytest.mark.parametrize("provider", ["gcp", "azure"])
+@pytest.mark.parametrize("name", [WEB_APP, LAKE, EKS])
+async def test_a_standard_architecture_is_found_and_priced_in_under_10_seconds(world, name,
+                                                                             provider):
+    """Finding and proposing a translation (matching, pricing both sides, the record) takes well
+    under 10 s on the fixtures; this fails before a slowdown reaches users."""
+    import time
+
+    arch = await _arch(world, name)
+    ctx = context(world, arch.id)
+    started = time.perf_counter()
+    await registry.run(ctx, "find_translation", {"provider": provider})
+    await registry.run(ctx, "propose_translation", {"provider": provider})
+    assert time.perf_counter() - started < 10

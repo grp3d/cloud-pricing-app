@@ -5,8 +5,8 @@ The app sets the highest label a match may carry, from the two products' profile
 | Label | Rule |
 |---|---|
 | exact | same function, same billing unit kind, every spec the source has is equal |
-| close | as exact, but only minor differences: memory larger by up to 2×, a different processor architecture, burstable or steady CPU, high availability or redundancy, or a spec this product doesn't publish |
-| partial | same category, but a different function, billing unit, or a major spec difference (vCPU, less memory or over 2×, machine type, operating system, engine, storage access tier, kind of data transfer, DNS zone type, load balancer type) |
+| close | as exact, but only minor differences: memory larger by up to 2×, a different processor architecture, burstable or steady CPU, high availability or redundancy, another load balancer edition (with a firewall, Basic), or a spec this product doesn't publish |
+| partial | same category, but a different function, billing unit, or a major spec difference (vCPU, less memory or over 2×, machine type, operating system, engine, storage access tier, kind of data transfer, a price for transfer to another destination, DNS zone type, load balancer type) |
 | no equivalent | no product in the same category |
 
 `differences` are short app-written facts, "this product vs the original". The agent may lower a
@@ -17,7 +17,12 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from src.agent.matching.profiles import FUNCTION_LABELS, ProductProfile
+from src.agent.matching.profiles import (
+    FUNCTION_LABELS,
+    ProductProfile,
+    destination_covers,
+    same_place,
+)
 
 LABELS = ("exact", "close", "partial", "no_equivalent")
 _RANK = {label: rank for rank, label in enumerate(LABELS)}
@@ -36,13 +41,25 @@ _SPEC_NAMES = {
     "transfer": "kind of transfer",
     "visibility": "DNS zone type",
     "lb_layer": "load balancer type",
+    "lb_edition": "load balancer edition",
+    "dest_geo": "destination",
+    "dest_place": "destination",
 }
+
+# Specs compared only when both products publish them (most products have no edition).
+_OPTIONAL_SPECS = {"lb_edition", "dest_geo", "dest_place"}
 
 
 def _fmt(value: object) -> str:
     if isinstance(value, Decimal):
         return f"{value.normalize():f}"
     return str(value)
+
+
+def _place_name(value: object) -> str:
+    text = str(value)
+    return {"apac": "APAC", "emea": "EMEA"}.get(text, text.replace("_", " ").title()
+                                                if "_" in text or text.islower() else text)
 
 
 def _spec_difference(key: str, source: object, target: object) -> tuple[str, bool]:
@@ -77,6 +94,12 @@ def _spec_difference(key: str, source: object, target: object) -> tuple[str, boo
         return f"{target} DNS vs {source}", True
     if key == "lb_layer":
         return f"{target} load balancer vs {source}", True
+    if key in ("dest_geo", "dest_place"):
+        return f"priced only for transfer to {_place_name(target)}", True
+    if key == "lb_edition":
+        names = {"waf": "with a web application firewall", "basic": "Basic edition (lower limits)",
+                 "confidential": "confidential computing edition", "standard": "standard edition"}
+        return names.get(str(target), f"{target} edition"), False
     return f"{_SPEC_NAMES.get(key, key)} {target} vs {source}", False
 
 
@@ -100,10 +123,16 @@ def quality(source: ProductProfile,
         if key not in _SPEC_NAMES:
             continue
         if key not in target.specs:
+            if key in _OPTIONAL_SPECS:
+                continue
             differences.append(f"{_SPEC_NAMES[key]} not published for this product")
             continue
         other = target.specs[key]
         if other == value:
+            continue
+        if key == "dest_geo" and destination_covers(str(other), str(value)):
+            continue
+        if key == "dest_place" and same_place(str(other), str(value)):
             continue
         text, is_major = _spec_difference(key, value, other)
         differences.append(text)

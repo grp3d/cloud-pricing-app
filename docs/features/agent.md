@@ -58,10 +58,12 @@ another), USD, and that provider's pricing snapshot date.
   - **exact**: same kind of product, billing unit and key specifications (vCPU, memory, tier,
     redundancy);
   - **close**: small differences, such as more memory (up to twice), another processor
-    architecture, or another redundancy;
+    architecture, another redundancy, or another load balancer edition (Application Gateway
+    WAF v2 or Basic v2 for an Application Load Balancer);
   - **partial**: another kind of product, another billing model, fewer resources, a
     different tier, or a different machine type (general purpose vs memory-optimized, GPU,
-    confidential), kind of data transfer (internet vs between regions), DNS zone (public vs
+    confidential), kind of data transfer (internet vs between regions), a transfer price for
+    another destination (to Columbus, or to Europe, for transfer to Oregon), DNS zone (public vs
     private) or load balancer type (application vs network);
   - **no equivalent**: nothing comparable in the category.
 
@@ -177,14 +179,19 @@ From AWS to GCP and from AWS to Azure, one target at a time; the original is nev
 - **Questions first.** The agent asks only for the target regions (offering the app's nearest
   guesses, said to be guesses), the pricing term, a choice where a service has several valid
   equivalents, and whether to use a partial match: at most three questions, then its defaults.
+  Each service that needs you is on its own line.
   The target is priced on demand unless you choose one of its terms; reserved terms don't carry
   over between providers, and the agent says so.
 - **Where each match comes from.** Every match is the app's, never the model's:
   - **Seeded**: the matches the GCP and Azure standard architectures were built with (022),
     kept as mappings from one kind of AWS product to its equivalent, valid in every region.
-    A seeded match that is only partial is offered like any partial match (see Chosen by you).
-    Translating a standard architecture to the regions 022 used, choosing its partial matches,
-    gives exactly 022's version.
+    Where a seed has no exact or close match (it is partial or leaves the service out), the
+    automatic match below is tried as well and used if it is exact or close; the seed's other
+    figures for that service follow it. So an Application Load Balancer becomes Azure
+    Application Gateway, not 022's Azure Load Balancer. Otherwise a seeded partial match is
+    offered like any partial match (see Chosen by you). Translating a standard architecture to
+    the regions 022 used, choosing its partial matches, gives 022's version, except where an
+    automatic match replaced a seed.
   - **Automatic**: otherwise the app's catalog search and match-quality rules (as in
     [Comparisons](#comparisons)). Exact and close matches are used without asking; when several
     qualify, you choose, or the default is the best match, then the lowest price.

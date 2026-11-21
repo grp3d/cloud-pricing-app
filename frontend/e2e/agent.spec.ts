@@ -302,3 +302,42 @@ test("translate an architecture to Azure, accept, undo and redo", async ({ page 
   await expect(proposal.getByRole("button", { name: "Undo" })).toBeVisible();
   await expect.poll(azureArchitectures).toBe(1);
 });
+
+/**
+ * 026 (FR-012): a translation whose original changed after it was proposed can't be accepted.
+ */
+test("a translation can't be accepted after the original changes", async ({ page }) => {
+  const admin = await adminApi();
+  await admin.call("PUT", "/admin/agent/settings", SETTINGS);
+  const created = await admin.call<{ id: string }>("POST", "/admin/users", {
+    username: `translate-stale-${randomUUID().slice(0, 8)}`,
+  });
+  await admin.call("PATCH", `/admin/users/${created.id}/agent`, { agent_enabled_for_user: true });
+  const user = new Api(created.id);
+  const { architectureId, selectionIds } = await user.architecture("aws", "eu-west-1", [
+    AWS_EU_WEST_1,
+  ]);
+  const azureArchitectures = async () =>
+    (
+      await user.call<{ id: string; provider: string }[]>("GET", "/architectures?provider=azure")
+    ).filter((a) => a.provider === "azure").length;
+
+  await openArchitecture(page, user, architectureId);
+  await page.getByRole("tab", { name: "Agent" }).click();
+  await panel(page).getByRole("button", { name: "New agent session" }).click();
+  await expect(panel(page).getByText(/^Closes /)).toBeVisible();
+  await panel(page).getByLabel("Message the agent").fill("Translate this architecture to Azure.");
+  await panel(page).getByLabel("Message the agent").press("Enter");
+  const proposal = page.getByRole("region", { name: "Proposal" });
+  await expect(proposal.getByRole("table", { name: "Mapping" })).toBeVisible();
+
+  // The original changes after the translation was proposed.
+  await user.call("PATCH", `/sku-selections/${selectionIds[0]}`, { usage_quantity: "30" });
+  await proposal.getByRole("button", { name: "Accept" }).click();
+  await expect(
+    page.getByText("The original or the pricing data changed since this translation.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  expect(await azureArchitectures()).toBe(0);
+});

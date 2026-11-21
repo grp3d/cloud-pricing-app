@@ -103,6 +103,15 @@ npm run check-api-types      # fails if the checked-in types are out of date (a 
 - **End-to-end:** Playwright runs the real app in headless Chromium against its own backend
   (port 8100), a fresh database and the pricing fixture (`frontend/e2e/start-backend.sh`). It
   leaves a running dev setup alone.
+- **The app with the scripted model** (free, no model needed): start the backend with
+  `AGENT_ALLOW_SCRIPTED_PROVIDER=1 AGENT_ENABLED=true AGENT_PROVIDER=scripted
+  AGENT_MODEL=scripted`. Saved Agent settings override these, and the Admin page doesn't offer
+  **Scripted**; if settings were saved, set the provider through `PUT /admin/agent/settings` as
+  `frontend/e2e/agent.spec.ts` does. It gives canned answers chosen by the question: "translate"
+  proposes the open architecture on Azure, a question naming Azure compares it with Azure, one
+  with "double" proposes doubling its first service, and anything else prices the open
+  architecture. The end-to-end tests use it the same way (`frontend/e2e/start-backend.sh`).
+  Never set this outside local development.
 - Don't run a formatter over whole folders: many files predate `ruff format`, and it would
   rewrap unrelated lines. Format only what you change.
 

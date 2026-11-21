@@ -1,0 +1,16 @@
+id: GC-39
+title: "026 FR-011: translating from GCP to AWS isn't offered: the agent says so and what it can do"
+pricing: combined
+architecture: {provider: gcp, name: Active-Standby Multi-Region Web Application}
+messages:
+  - Translate this GCP architecture to AWS.
+expect:
+  refused: true
+  no_proposal: true
+  contains: [["AWS to GCP", "AWS to Azure", "from AWS", "AWS architecture to"],
+             ["compare", "price", "propose"]]
+  not_contains: ["[figure removed]", "I've created"]
+script:
+  - text: ["I can't translate from GCP yet: I can translate an AWS architecture to GCP or to
+      Azure, one target at a time. For this architecture I can price it, compare it with AWS or
+      Azure, or propose changes to it."]

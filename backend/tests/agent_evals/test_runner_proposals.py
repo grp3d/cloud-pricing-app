@@ -104,6 +104,15 @@ def test_the_question_limit_is_per_answer():
     assert not _result_checks({"max_questions": 3}, [], "".join(answers), answers)[0].passed
 
 
+def test_last_contains_checks_only_the_last_answer():
+    """026: a follow-up must state the caveat itself; an earlier answer saying it doesn't count."""
+    from tests.agent_evals.runner import last_answer_checks
+
+    expect = {"last_contains": [["chosen by you", "you chose"]]}
+    assert not last_answer_checks(expect, ["It's chosen by you.", "Azure is lower."])[0].passed
+    assert last_answer_checks(expect, ["Proposed.", "The partial match you chose…"])[0].passed
+
+
 async def test_translation_checks(db_session, use_pricing_root):
     """026: the runner's translation expectations pass for a real translation and fail for a
     wrong one."""

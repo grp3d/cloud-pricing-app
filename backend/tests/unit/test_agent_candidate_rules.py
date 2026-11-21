@@ -74,6 +74,9 @@ def test_products_naming_another_part_of_the_world_rank_later():
     assert geography_penalty("Network Inter Region Data Transfer Out from Northern Virginia",
                              "gcp", "us-east4") == 0
     assert geography_penalty("Standard Storage", "gcp", "unknown-region") == 0
+    # Whole words only: "capacity" doesn't name Asia-Pacific ("apac").
+    assert geography_penalty("Application Gateway Standard v2 · Standard Capacity Units",
+                             "azure", "eastus") == 0
 
 
 @pytest.mark.parametrize(("vcpu", "memory", "shape"), [
@@ -84,3 +87,31 @@ def test_products_naming_another_part_of_the_world_rank_later():
 ])
 def test_gcp_shapes_are_the_smallest_standard_size_at_least_as_large(vcpu, memory, shape):
     assert gcp_predefined_shape(vcpu, memory) == shape
+
+
+async def test_only_a_transfer_price_for_the_destination_qualifies():
+    # Found in the 026 walk-through: us-east-1 → us-west-2 transfer was offered GCP prices to
+    # Columbus, Berlin, Bangkok and Kuala Lumpur as exact matches.
+    from src.agent.matching.book import SourceProduct
+    from src.agent.matching.candidates import _candidates_for
+    from src.agent.matching.profiles import profile
+    from src.pricing_data.providers.base import CatalogItem
+
+    source_item = CatalogItem(provider="aws", service_code="AWSDataTransfer", service_name=None,
+                              product_family="Data Transfer", sku="AWS", summary="",
+                              attributes={"usagetype": "USE1-USW2-AWS-Out-Bytes",
+                                          "toRegionCode": "us-west-2"}, unit="GB")
+    source = SourceProduct(provider="aws", region="us-east-1", service_code="AWSDataTransfer",
+                           sku="AWS", label="transfer", where=None,
+                           usage_quantity=Decimal(8), unit="GB", pricing_term="on_demand",
+                           purchase_option="not_applicable",
+                           profile=profile(source_item, unit="GB"), ref="S1")
+    rows = [CatalogItem(provider="gcp", service_code="NET", service_name="Networking",
+                        product_family="Network", sku=f"SKU-{place}", attributes={},
+                        summary=f"Network Inter Region Data Transfer Out from Virginia to {place}",
+                        unit="GiBy", kind="data_transfer")
+            for place in ("Columbus", "Berlin", "Americas", "Kuala Lumpur")]
+    found = await _candidates_for(source, "gcp", "us-east4", rows, {}, {})
+    qualifying = [c.label for c in found if c.quality in ("exact", "close")]
+    assert qualifying == ["Network Inter Region Data Transfer Out from Virginia to Americas"]
+    assert all(c.quality == "partial" for c in found if c.label not in qualifying)

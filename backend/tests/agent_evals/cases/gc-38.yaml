@@ -6,12 +6,15 @@ architecture: {provider: aws, name: Serverless Microservices Back-End}
 messages:
   - Translate this to Azure in West Europe, on demand.
   - Yes, use the partial match for the Lambda compute.
+  - So which is cheaper?
 expect:
-  operations: [find_translation, propose_translation]
+  operations: [find_translation, propose_translation, describe_translation]
   max_questions: 3
   proposal: {kind: translate}
   translation: {rows: {chosen_by_user: 1}, origins: [chosen_by_user, automatic]}
   contains: ["partial", "chosen by you"]
+  last_contains: [["chosen by you", "you chose"], ["left out", "no equivalent"],
+                  ["matched services", "matched", "compared"]]
   not_contains: ["[figure removed]", "I've created"]
 script:
   - tool_calls: [{name: find_translation, arguments: {provider: azure,
@@ -28,3 +31,8 @@ script:
   - text: ["Done: the Lambda compute now uses the partial match, marked chosen by you, not
       checked as equivalent. On the matched services it costs [[F4]] for 1 month (31 days)
       against [[F3]] on AWS. Nothing is created until you accept."]
+  - tool_calls: [{name: describe_translation, arguments: {}}]
+  - text: ["On the matched services Azure comes to [[F4]] against [[F3]] on AWS for 1 month (31
+      days), but that isn't the whole picture: the Lambda compute uses a partial match chosen by
+      you, and seven services have no equivalent and are left out, so both totals are
+      partial."]

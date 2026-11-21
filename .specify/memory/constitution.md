@@ -1,25 +1,22 @@
 <!--
 Sync Impact Report
-- Version change: 1.1.0 → 1.2.0
-- Bump rationale: MINOR. The AI agent features (agent-01 to agent-04) move into scope. Two
-  principles are added and two are extended; none is removed or redefined.
+- Version change: 1.2.0 → 1.3.0
+- Bump rationale: MINOR. Principle V gains a coverage rule: every acceptance scenario and
+  measurable success criterion maps to an automated test or is marked [MANUAL: reason]. No
+  principle is removed or redefined.
 - Modified principles:
-  - I. Pricing Data Integrity: every monetary figure the agent shows comes from the app's
-    pricing operations; USD to 2 decimal places, totals summed from unrounded values.
-  - V. Test-First Development: automated tests use a deterministic, scripted model; real-model
-    evaluations are a separate opt-in run; agent specs include golden conversations.
-  - VI. Simplicity & YAGNI: "LLM agent integrations" removed from the examples of future
-    state, since they are now in scope; further providers remain the example.
-- Added principles:
-  - VII. The Agent Acts as the User, and the User Decides.
-  - VIII. Replaceable Models, Bounded Cost, Protected Secrets.
+  - V. Test-First Development: acceptance coverage by automated tests or [MANUAL] marks; a
+    feature is complete only when those tests pass; live-model evaluations are reported
+    separately and are not a completion gate; the end-of-phase manual checklist holds only
+    [MANUAL] items; checks needing real pricing snapshots or a real model are [MANUAL] or
+    opt-in runs.
+- Added principles: none
 - Added sections: none
 - Removed sections: none
-- Technology Stack & Architecture Constraints: adds the AI agent's model provider, chosen by
-  settings (Principle VIII).
-- Development Workflow & Quality Gates: adds review checks for Principles VII and VIII and for
-  agent tests that never call live models.
-- Source: ../speckit-inputs/agent-00-constitution-additions.md (revised 2026-11-11).
+- Development Workflow & Quality Gates: /speckit-analyze flags any acceptance scenario or
+  success criterion with neither a mapped test nor a [MANUAL] mark.
+- Source: feature 026's manual walk-through, which repeated checks already automated.
+- Applies to specs written from this version on; existing specs/0NN records are not rewritten.
 - Templates requiring follow-up: none. Dependent templates and commands read this file at
   runtime and are not modified by this command.
 - Deferred placeholders: none.
@@ -123,9 +120,18 @@ report per model. Each AI agent feature's spec MUST include golden conversations
 messages, the follow-up questions the agent should ask, and the expected outcome); together
 they form the shared evaluation set.
 
+Every acceptance scenario and measurable success criterion in a spec MUST map to an automated
+test (unit, API, end-to-end, or a scripted-model evaluation case), or be marked
+`[MANUAL: reason]` in the spec. A feature is complete only when those automated tests pass;
+opt-in live-model evaluations are reported separately and are not a completion gate. The
+end-of-phase manual checklist contains only `[MANUAL]` items. Automated tests use the scripted
+model and fixed pricing fixtures; checks that need real pricing snapshots or a real model are
+`[MANUAL]` or opt-in runs.
+
 Rationale: Correctness of pricing output is the product's core value proposition; the
 cost of a testing discipline is far lower than the cost of a wrong price shown to a user.
-Tests must be free, fast and repeatable, while real-model quality still needs measuring.
+Tests must be free, fast and repeatable, while real-model quality still needs measuring. A
+manual check is kept for what only a person can judge, not repeated for what a test proves.
 
 ### VI. Simplicity & YAGNI
 Prefer the simplest design that satisfies the current requirement. Shared multi-provider
@@ -209,6 +215,8 @@ inside a feature branch.
   (Principle VIII).
 - Every change touching the AI agent MUST keep its automated tests on a deterministic,
   scripted model (Principle V); no test in the default run may call a live model.
+- `/speckit-analyze` MUST flag any acceptance scenario or success criterion with neither a
+  mapped test nor a `[MANUAL]` mark (Principle V).
 - Feature specs and plans produced by Spec Kit commands MUST be checked against this
   constitution during `/speckit-analyze`; unresolved conflicts block `/speckit-implement`.
 
@@ -228,4 +236,4 @@ be flagged and simplified per Principle VI. Runtime development guidance for AI 
 working in this repository (Spec Kit commands, templates) reads this file as the source of
 truth for these principles.
 
-**Version**: 1.2.0 | **Ratified**: 2026-09-02 | **Last Amended**: 2026-11-12
+**Version**: 1.3.0 | **Ratified**: 2026-09-02 | **Last Amended**: 2026-11-20

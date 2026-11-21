@@ -101,6 +101,10 @@ mappings (a second copy of the same judgments that can drift).
 1. A seed mapping for its product key → "seeded": resolve the target key in the chosen target
    region (R2). Not sold there → flagged and left out (FR-001). Several alternatives → the
    choice of FR-008. A seed "no equivalent" → flagged with 022's reason.
+   *Amended 2026-11-20 (spec clarification):* where no seeded alternative is exact or close
+   (partial, not sold, or no equivalent), step 2 runs as well. Its exact or close candidates are
+   used instead, and the seed's other figures for the same service (same owner, service and
+   category) are matched by step 2 too; otherwise the seed's result stands.
 2. Otherwise 024's `find_candidates` in the target region → "automatic": exact and close
    candidates qualify; several qualifying → FR-008's default is the best quality, then the lowest
    price for the source's usage (each qualifying candidate is priced through the engine; the

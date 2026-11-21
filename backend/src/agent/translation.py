@@ -198,6 +198,12 @@ def _cheapest_first(choices: list[Choice], provider: str, region: str) -> list[C
     return [c for _n, c in ranked] + rest
 
 
+def _service_key(source: SourceProduct) -> tuple:
+    """The figures of one service: the same owner, service and category (a load balancer's
+    hours and capacity units; not an instance and its disk)."""
+    return (source.owner, source.service_code, source.profile.category)
+
+
 async def match_sources(session, sources: list[SourceProduct], provider: str,
                         regions: dict[str, str], *, book: MatchBook | None = None
                         ) -> list[SourceMatch]:
@@ -210,6 +216,9 @@ async def match_sources(session, sources: list[SourceProduct], provider: str,
     book = book or MatchBook()
     out: dict[int, SourceMatch] = {}
     automatic: list[tuple[int, SourceProduct]] = []
+    # A seed with no exact or close match doesn't hide a better automatic one: the source is
+    # matched automatically too, and the seed's result is kept for when nothing qualifies.
+    fallback: dict[int, SourceMatch] = {}
     for index, source in enumerate(sources):
         region = regions[source.region]
         alternatives = (await mappings.seed_mappings(session, source.provider,
@@ -228,23 +237,26 @@ async def match_sources(session, sources: list[SourceProduct], provider: str,
                 choices.append(choice)
             else:
                 misses.append(choice)
-        if choices and not any(c.quality in QUALIFYING for c in choices):
-            # A seeded partial match is offered like any other: used only if the user chooses it.
-            out[index] = SourceMatch(source, region, "partial_only", choices[:PARTIAL_SHOWN])
-        elif choices:
+        if any(c.quality in QUALIFYING for c in choices):
             ordered = await asyncio.to_thread(_cheapest_first, choices, provider, region) \
                 if len(choices) > 1 else choices
             out[index] = SourceMatch(source, region, "choose" if len(ordered) > 1 else "matched",
                                      ordered, ordered[0])
+            continue
+        if choices:
+            # A seeded partial match is offered like any other: used only if the user chooses it.
+            fallback[index] = SourceMatch(source, region, "partial_only", choices[:PARTIAL_SHOWN])
         elif usable:
             name = {"gcp": "GCP", "azure": "Azure", "aws": "AWS"}.get(provider, provider)
             reason = (f"several {name} products match in {region} and nothing tells them "
                       "apart, so none is used" if keys.AMBIGUOUS in misses
                       else f"the matching {name} product isn't sold in {region}")
-            out[index] = SourceMatch(source, region, "not_sold_in_region", reason=reason)
+            fallback[index] = SourceMatch(source, region, "not_sold_in_region", reason=reason)
         else:
-            out[index] = SourceMatch(source, region, "no_equivalent",
-                                     reason=alternatives[0].omit_reason)
+            fallback[index] = SourceMatch(source, region, "no_equivalent",
+                                          reason=alternatives[0].omit_reason)
+        automatic.append((index, source))
+    found_by_index: dict[int, list[Choice]] = {}
     for region in sorted({regions[s.region] for _i, s in automatic}):
         group = [(i, s) for i, s in automatic if regions[s.region] == region]
         for _i, s in group:
@@ -252,22 +264,38 @@ async def match_sources(session, sources: list[SourceProduct], provider: str,
                 book.add_source(s)
         found = await find_candidates(book, [s for _i, s in group], {provider: region})
         for index, source in group:
-            candidates = [_candidate_choice(c) for c in found.get(source.ref, {}).get(provider, [])]
-            qualifying = [c for c in candidates if c.quality in QUALIFYING]
-            if qualifying:
-                ordered = await asyncio.to_thread(_cheapest_first, qualifying, provider, region) \
-                    if len(qualifying) > 1 else qualifying
-                out[index] = SourceMatch(source, region,
-                                         "choose" if len(ordered) > 1 else "matched",
-                                         ordered, ordered[0])
-            elif candidates:
-                out[index] = SourceMatch(source, region, "partial_only",
-                                         candidates[:PARTIAL_SHOWN])
-            else:
-                out[index] = SourceMatch(
-                    source, region, "no_equivalent",
-                    reason=book.unmatched.get((source.ref, provider),
-                                              "no product in the same category"))
+            found_by_index[index] = [_candidate_choice(c) for c in
+                                     found.get(source.ref, {}).get(provider, [])]
+    # Where a better automatic match replaces a seed, the seed's other figures for the same
+    # service (say, a load balancer's capacity units next to its hours) are matched
+    # automatically too: the seed's reasons were about the product it chose.
+    replaced = {_service_key(sources[i]) for i in fallback
+                if any(c.quality in QUALIFYING for c in found_by_index.get(i, []))}
+    for index, source in automatic:
+        region = regions[source.region]
+        candidates = found_by_index.get(index, [])
+        qualifying = [c for c in candidates if c.quality in QUALIFYING]
+        seeded = fallback.get(index)
+        if seeded is not None and _service_key(source) in replaced:
+            seeded = None
+        if qualifying:
+            ordered = await asyncio.to_thread(_cheapest_first, qualifying, provider, region) \
+                if len(qualifying) > 1 else qualifying
+            out[index] = SourceMatch(source, region,
+                                     "choose" if len(ordered) > 1 else "matched",
+                                     ordered, ordered[0])
+        elif seeded is not None:
+            # Nothing better than the seed: its result stands (022's partial match, or the
+            # reason it left the figure out).
+            out[index] = seeded
+        elif candidates:
+            out[index] = SourceMatch(source, region, "partial_only",
+                                     candidates[:PARTIAL_SHOWN])
+        else:
+            out[index] = SourceMatch(
+                source, region, "no_equivalent",
+                reason=book.unmatched.get((source.ref, provider),
+                                          "no product in the same category"))
     return [out[i] for i in range(len(sources))]
 
 

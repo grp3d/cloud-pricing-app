@@ -59,6 +59,15 @@ one request, come later.
   user decides in the conversation, for that proposal only; there is no Admin review queue and
   the shared mapping data doesn't change.
 
+### Session 2026-11-20
+
+- Q: Does a seed mapping that is only partial hide a better automatic match? (Found in the manual
+  walk-through: 022's Azure seed maps the Application Load Balancer to Azure Load Balancer, a
+  network load balancer, so Application Gateway was never offered.) → A: No. Where no seeded
+  option is exact or close, the automatic matcher runs too; its exact or close matches are used
+  instead, and the seed's other figures for that service (the load balancer's capacity units)
+  are matched automatically as well. Otherwise the seed's result stands (FR-002).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Translate an architecture to another provider (Priority: P1)
@@ -272,8 +281,11 @@ Scripted for the automated tests and run live on the evaluation model (SC-005):
   (an instance type, database class or storage class) and holds in every region; prices come from
   the chosen target region, and where the matched product isn't sold there, the service is
   flagged and left out (FR-003).
-- **FR-002**: Mappings MUST be found automatically where no seed mapping exists, from each
-  product's category and attributes in the catalog. Exact and close matches (024's match quality)
+- **FR-002**: Mappings MUST be found automatically where no seed mapping exists, or where the
+  seed mapping has no exact or close match (it is partial, or leaves the service out), from each
+  product's category and attributes in the catalog. An automatic exact or close match is then
+  used in place of the seed, and the seed's other mappings for the same service give way to
+  automatic matching too; otherwise the seed's result stands. Exact and close matches (024's match quality)
   MAY be used without asking; where several qualify, FR-008 decides which one is used.
 - **FR-003**: The agent MUST flag every service with no candidate, leave it out of the new
   architecture and its total, and label the total partial. It MUST NOT substitute an unverified

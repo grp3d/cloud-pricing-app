@@ -157,6 +157,16 @@ async def _engine(db, architecture: Architecture, duration: str):
     return calculate_architecture_price(loaded, duration=CalculationDuration(duration))
 
 
+def last_answer_checks(expect: dict, answers: list[str]) -> list[Check]:
+    last = (answers[-1] if answers else "").lower()
+    out = []
+    for phrase in expect.get("last_contains") or []:
+        options = phrase if isinstance(phrase, list) else [phrase]
+        out.append(Check(f"last answer contains {phrase!r}",
+                         any(o.lower() in last for o in options)))
+    return out
+
+
 async def _figure_checks(db, architecture, specs) -> list[Check]:
     checks = []
     for spec in specs or []:
@@ -310,6 +320,9 @@ async def _run_case(db, case: dict, client) -> CaseResult:
                                 any(o.lower() in lower for o in options)))
     for phrase in expect.get("not_contains") or []:
         out.checks.append(Check(f"does not contain {phrase!r}", phrase.lower() not in lower))
+    # 026: phrases the last answer itself must hold (a follow-up must repeat a caveat, not lean on
+    # an earlier answer having said it).
+    out.checks.extend(last_answer_checks(expect, out.answers))
     if expect.get("order"):
         positions = [lower.find(p.lower()) for p in expect["order"]]
         out.checks.append(Check(f"order {expect['order']}",
