@@ -174,7 +174,8 @@ so names from imported architectures can't run as formulas.
 
 "Build the equivalent of this on Azure" proposes a **new architecture on the target provider**
 with the original's collections, nesting and connectors, each service replaced by its match.
-From AWS to GCP and from AWS to Azure, one target at a time; the original is never changed.
+From AWS to GCP and from AWS to Azure, one target at a time (asked for both at once, the agent
+asks which one first); the original is never changed.
 
 - **Questions first.** The agent asks only for the target regions (offering the app's nearest
   guesses, said to be guesses), the pricing term, a choice where a service has several valid

@@ -8,7 +8,7 @@ from src.agent.prompt import PROMPT_VERSION, SYSTEM_PROMPT
 
 
 def test_version():
-    assert PROMPT_VERSION == "026.4"
+    assert PROMPT_VERSION == "026.5"
 
 
 def test_names_every_comparison_operation_and_they_exist():
@@ -61,5 +61,6 @@ def test_names_every_translation_operation_and_keeps_its_rules():
     for rule in ("unless the user chose it", "chosen by you",
                  "difference on the matched services", "reserved terms, say they don't carry",
                  "every caveat", "AWS to GCP or Azure",
-                 "its own line (never two in one line)"):
+                 "its own line (never two in one line)",
+                 "One target at a time"):
         assert rule in SYSTEM_PROMPT, rule

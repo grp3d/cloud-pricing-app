@@ -148,6 +148,9 @@ async def find_translation(ctx: OperationContext, args: FindTranslationInput
     from src.services.architecture_state import read_state
 
     target = args.provider.lower()
+    if ctx.translation is not None and ctx.translation.target_provider != target:
+        # FR-011: several targets in one request are declined, not translated one after another.
+        raise ToolError(f"{CANT_YET} Ask which one to translate to first; nothing is proposed.")
     architecture, detail = await _source(ctx, args.architecture)
     if detail.provider == target:
         raise ToolError(f"{detail.name} is already on {PROVIDER_NAMES[target]}: there's "

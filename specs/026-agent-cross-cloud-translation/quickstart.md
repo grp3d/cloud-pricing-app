@@ -19,7 +19,7 @@ uv run pytest tests/integration/test_seed_mappings.py \
   tests/integration/test_agent_translate_operations.py \
   tests/integration/test_agent_translation_api.py tests/integration/test_migration_0013.py
 uv run pytest tests/agent_evals -k "GC-32 or GC-33 or GC-34 or GC-35 or GC-36 or GC-37 \
-  or GC-38 or GC-39"
+  or GC-38 or GC-39 or GC-40"
 uv run pytest                                    # whole backend suite
 
 cd ../frontend
@@ -38,7 +38,7 @@ coverage table in [tasks.md](tasks.md#coverage). In short:
 - the original's saved state is identical across propose, accept, reject, undo and redo (SC-004);
 - a partial match, seeded or automatic, is refused unless offered in an earlier message (FR-004);
 - a stale translation can't be accepted, in the API and in the browser (FR-012);
-- translating from GCP or Azure is declined (FR-011, GC-39);
+- translating from GCP or Azure, or to two providers at once, is declined (FR-011, GC-39, GC-40);
 - finding and proposing a standard architecture's translation takes under 10 s.
 
 ## 2. Opt-in live evaluation (paid: ask first)

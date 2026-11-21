@@ -1,0 +1,14 @@
+id: GC-40
+title: "026 FR-011: translating to GCP and Azure in one request isn't offered: the agent asks which one first"
+pricing: combined
+architecture: {provider: aws, name: Active-Standby Multi-Region Web Application}
+messages:
+  - Translate this to GCP and Azure.
+expect:
+  refused: true
+  no_proposal: true
+  contains: [["one target at a time", "one at a time"], ["which one", "GCP or Azure"]]
+  not_contains: ["[figure removed]", "I've created", "I've proposed"]
+script:
+  - text: ["I can't translate to two providers at once yet: I can translate an AWS
+      architecture to GCP or to Azure, one target at a time. Which one first, GCP or Azure?"]

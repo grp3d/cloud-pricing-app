@@ -289,7 +289,7 @@ under `backend/tests/`, frontend ones under `frontend/`.
 | US6-1 complete translation: totals and difference | `unit/test_translation.py::test_a_complete_exact_translation_has_no_caveats`; `::test_describe_translation_reads_the_record_in_a_later_message` |
 | US6-2 partial translation: caveats, not a whole saving | GC-36, GC-38 (last answer); `unit/test_translation.py::test_caveats_name_everything_a_cost_answer_must_say` |
 | FR-002 a seed with no exact or close match doesn't hide a better automatic one (2026-11-20) | `::test_a_better_automatic_match_replaces_a_seeded_partial_one`; `::test_a_seeded_partial_match_stands_when_nothing_better_is_found`; Application Gateway editions: `unit/test_agent_profiles.py::test_application_gateway_v2_editions`, `unit/test_agent_quality.py::test_application_gateway_editions_for_an_application_load_balancer` |
-| FR-011 other directions declined | GC-39; `::test_refusals` |
+| FR-011 other directions, or several targets at once, declined | GC-39, GC-40; `::test_refusals` |
 | FR-012 stale translation refused | `test_agent_translation_api.py` (three stale tests); `e2e/agent.spec.ts` "a translation can't be accepted after the original changes"; `unit/translationProposal.test.tsx` |
 | SC-001, SC-002 | the US2 and US3 rows above |
 | SC-003 amounts equal the engine's | `::test_every_amount_equals_the_engine`; eval translation checks |
@@ -380,3 +380,7 @@ under `backend/tests/`, frontend ones under `frontend/`.
   the translation record keeps `snapshot_meta` (date and revision) for the answer footer.
 - To do: fix T033; T040–T045 (docs, full test runs, timing, the paid-run estimate, the
   walk-through); update data-model.md (`target_sku`) and the contracts (M…/I… references).
+
+## Phase 10: Convergence
+
+- [X] T046 Decline a request for several targets at once: in `backend/src/agent/operations_translate.py`, refuse a `find_translation` for a second target provider in the same message with `CANT_YET` (nothing proposed), add the rule to `backend/src/agent/prompt.py`, and cover it with an integration test in `backend/tests/integration/test_agent_translate_operations.py` and a scripted case ("Translate this to GCP and Azure.") beside GC-39 per FR-011 (partial)

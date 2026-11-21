@@ -170,6 +170,11 @@ async def test_refusals(world, monkeypatch):
     with pytest.raises(ToolError, match="no GCP pricing data for us-central1.*nearest"):
         await registry.run(context(world, aws.id), "find_translation", {
             "provider": "gcp", "regions": {"us-east-1": "us-central1"}})
+    two = context(world, aws.id)
+    await registry.run(two, "find_translation", {"provider": "gcp"})
+    with pytest.raises(ToolError, match="one target at a time"):
+        await registry.run(two, "find_translation", {"provider": "azure"})
+    assert two.translation.target_provider == "gcp"
     from src.agent import operations_translate
 
     monkeypatch.setattr(operations_translate, "MAX_ITEMS", 5)
