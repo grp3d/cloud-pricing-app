@@ -72,6 +72,7 @@ export function ArchitectureMenu({ library }: { library: ArchitectureLibrary }) 
                     else triggers.current.delete(group.provider.code);
                   }}
                   aria-label={label}
+                  data-menu-item
                   aria-expanded={open}
                   aria-controls={open ? PANEL_ID : undefined}
                   title={providerHint(group.provider)}

@@ -63,20 +63,37 @@ separate from the Import in the architecture menu.
 
 ## System Information
 
-Refreshes every minute while open, and has a **Check now** button that looks for new pricing
-data straight away.
+Refreshes every minute while open. At the top, what applies to the whole app:
 
 - **Deployment** and **Pricing data source**: where the app runs and where it reads prices from.
-- **Providers**: for each provider, its status (see
-  [provider status](providers-and-pricing-data.md#provider-status)), active snapshot, latest
-  pipeline run and any failed regions, the last refused manifest and why, and when it was last
-  checked.
-- **Cache**: the local copy of an S3 snapshot.
-- **Issues**: AWS services with no canvas icon, and regions the new active snapshot has no data
-  for that the previous one had. Reporting GCP and Azure services with no icon is planned.
+- **Last checked**, with a **Check now** button that looks for new pricing data straight away.
+- **Cache** (S3 source only): the local copy of S3 snapshots, for every provider, against the
+  one shared size limit.
 
-Not shown yet: each provider's Trends history status (weeks built, missing weeks, whether a
-build is running or failed). The server already reports it; the page doesn't display it.
+Below it are two tabs, **Providers** (open first) and **Issues**. The open tab is kept in the
+address, so a reload keeps it.
+
+- **Providers**: one row per provider:
+  - its status (see [provider status](providers-and-pricing-data.md#provider-status));
+  - its active snapshot and revision, with the pipeline run and version, and **Pinned** when
+    pinned;
+  - its regions;
+  - its **Trends history**:
+    - **Complete**, with the weeks built and when it was last built;
+    - **N weeks missing**, with the weeks built;
+    - **Building**, with the weeks built so far, or **Failed**, with the last error;
+    - **No history yet**, or **Unavailable** when the history's state can't be read.
+  - and, in Detail, anything wrong: failed regions with their reasons, a latest pipeline run that
+    didn't succeed, the last refused manifest and why, the last check's error, and how many
+    issues it has.
+- **Issues** (the tab shows how many): a filter at the top shows **All** (the default) or one
+  provider, each with its count; the list scrolls inside the tab, its header kept in view. For
+  every provider, with the provider named, services with
+  no canvas icon (new ones, not in the previous snapshot, first), and regions the new active
+  snapshot has no data for that the previous one had. For GCP and Azure only first-party services
+  are listed; GCP's Marketplace and third-party services with no icon are one line with their
+  count. The table and the canvas use the same icon maps, so they agree on which services show
+  the generic icon.
 
 ## Specs
 
@@ -84,4 +101,5 @@ build is running or failed). The server already reports it; the page doesn't dis
 [014](../../specs/014-architecture-templates-import-export/spec.md) (US2, US3),
 [016](../../specs/016-canvas-icon-layout/spec.md) (US5),
 [018](../../specs/018-app-cloud-deployment/spec.md),
-[019](../../specs/019-gcp-azure-providers-trends/spec.md) (FR-009).
+[019](../../specs/019-gcp-azure-providers-trends/spec.md) (FR-009),
+[027](../../specs/027-deferred-ui-admin-fixes/spec.md) (US4, US5: Trends history, GCP and Azure issues).

@@ -28,8 +28,21 @@ issues: AWS, then GCP, then Azure; within a provider, new services first, then b
 - A provider with no active snapshot has no icon issues (FR-016).
 - `missing_regions` issues are unchanged apart from `provider`.
 
+## `cache` (US6, added 2026-11-22)
+
+Every provider's cached snapshots (one shared size budget), each entry with `provider`, AWS
+then GCP then Azure; `total_bytes` sums them all. `null` for a local source. The other top-level
+snapshot fields stay AWS's for API compatibility; the page no longer shows them.
+
 ## Admin page
 
-- System Information's provider rows gain a **Trends history** cell (the states above).
+- The top shows only what is app-wide: deployment, pricing data source, last check with Check
+  now, and the cache.
+- Below it, two tabs kept in `?section=`: **Providers** (default) and **Issues (N)**. Issues has
+  a provider filter (All, AWS, GCP, Azure with counts; `?issues=`, All by default) and scrolls
+  within a fixed height with a sticky header; no paging.
+- Each provider row: status, active snapshot (revision, pipeline run and version, Pinned),
+  regions, **Trends history** (the states above), and Detail (failed regions, a latest run that
+  didn't succeed, the refused manifest, the last check error, the issue count).
 - The Issues table gains a **Provider** column. The `marketplace_without_icons` row shows its
   message in place of a service code and name.

@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cloud Pricing</title>
+    <script>
+      // 027 (research R3): a logged-in user's dark theme, before first paint. The cache is only
+      // a copy of the account's value (src/lib/theme.ts), kept for that user's ID only.
+      try {
+        var cached = JSON.parse(localStorage.getItem("cloud-pricing-theme") || "null");
+        var current = localStorage.getItem("cloud-pricing-current-identity-id");
+        if (cached && cached.theme === "dark" && current && cached.user_id === current) {
+          document.documentElement.classList.add("dark");
+        }
+      } catch (e) {
+        // No storage, or a broken entry: the account's theme applies once loaded.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

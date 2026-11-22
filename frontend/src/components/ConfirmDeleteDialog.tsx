@@ -24,7 +24,7 @@ export function ConfirmDeleteDialog({ itemLabel, onConfirm, onCancel }: Props) {
       aria-modal="true"
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40"
     >
-      <div className="min-w-70 rounded-lg border border-border bg-card p-6 shadow-lg">
+      <div className="min-w-70 rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg">
         <p className="text-xs">
           Delete <strong>{itemLabel}</strong>? This can&apos;t be undone from the UI.
         </p>

@@ -43,6 +43,7 @@ export type PreferencesPatch = components["schemas"]["PreferencesPatch"];
 export type WorkspacePreferences = components["schemas"]["WorkspacePreferences"];
 export type TrendsChartsPreferences = components["schemas"]["TrendsChartsPreferences"];
 export type TrendsMoversPreferences = components["schemas"]["TrendsMoversPreferences"];
+export type AppearancePreferences = components["schemas"]["AppearancePreferences"];
 export type TrendSeriesResult = components["schemas"]["TrendSeriesResult"];
 export type TrendSeries = components["schemas"]["TrendSeriesOut"];
 export type Movers = components["schemas"]["MoversOut"];
@@ -76,7 +77,7 @@ const BASE = "/api/v1";
 export class InvalidImportFileError extends Error {}
 
 /** The permanent per-browser guest identity (unchanged since 001) — the fallback every fresh
- * browser starts as (spec FR-015), and what "change user" → guest reverts to. Never
+ * browser starts as (spec FR-015), and what Log out (027) returns to. Never
  * overwritten once created. */
 function getGuestId(): string {
   const key = "cloud-pricing-guest-id";
@@ -284,6 +285,11 @@ export const api = {
     });
     setCurrentIdentityId(user.id);
     return user;
+  },
+  /** 027 (FR-009, research R5): back to this browser's guest, which was kept when logging in;
+   * a new guest if none is recorded. Nothing is sent: the account is unchanged. */
+  logOut: () => {
+    setCurrentIdentityId(getGuestId());
   },
 
   // --- Admin system information (016-canvas-icon-layout, US5) ---

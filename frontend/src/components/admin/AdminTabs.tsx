@@ -11,17 +11,30 @@ export interface AdminTab {
  * 023: the Admin page's tabs, styled like the inspector's Pricing/Service tabs. The open tab is
  * kept in the address (`?tab=users`), so a reload or a shared link opens the same one. Every
  * panel stays mounted while hidden, so unsaved edits survive switching tabs.
+ *
+ * 027 (US6): also System Information's Providers and Issues tabs, with their own address
+ * parameter (`?section=issues`), list label and ids, so the two sets of tabs don't collide.
  */
-export function AdminTabs({ tabs }: { tabs: AdminTab[] }) {
+export function AdminTabs({
+  tabs,
+  param = "tab",
+  label = "Admin sections",
+  idPrefix = "admin",
+}: {
+  tabs: AdminTab[];
+  param?: string;
+  label?: string;
+  idPrefix?: string;
+}) {
   const [params, setParams] = useSearchParams();
-  const requested = params.get("tab");
+  const requested = params.get(param);
   const current = tabs.find((t) => t.id === requested)?.id ?? tabs[0].id;
 
   function select(id: string) {
     setParams(
       (p) => {
         const next = new URLSearchParams(p);
-        next.set("tab", id);
+        next.set(param, id);
         return next;
       },
       { replace: true },
@@ -43,14 +56,14 @@ export function AdminTabs({ tabs }: { tabs: AdminTab[] }) {
     if (target === null) return;
     e.preventDefault();
     select(tabs[target].id);
-    document.getElementById(`admin-tab-${tabs[target].id}`)?.focus();
+    document.getElementById(`${idPrefix}-tab-${tabs[target].id}`)?.focus();
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div
         role="tablist"
-        aria-label="Admin sections"
+        aria-label={label}
         className="flex w-fit items-center gap-0.5 rounded-lg bg-muted p-0.5"
       >
         {tabs.map((tab, index) => {
@@ -58,11 +71,11 @@ export function AdminTabs({ tabs }: { tabs: AdminTab[] }) {
           return (
             <button
               key={tab.id}
-              id={`admin-tab-${tab.id}`}
+              id={`${idPrefix}-tab-${tab.id}`}
               type="button"
               role="tab"
               aria-selected={selected}
-              aria-controls={`admin-panel-${tab.id}`}
+              aria-controls={`${idPrefix}-panel-${tab.id}`}
               tabIndex={selected ? 0 : -1}
               className={`focus-ring h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
                 selected
@@ -80,9 +93,9 @@ export function AdminTabs({ tabs }: { tabs: AdminTab[] }) {
       {tabs.map((tab) => (
         <div
           key={tab.id}
-          id={`admin-panel-${tab.id}`}
+          id={`${idPrefix}-panel-${tab.id}`}
           role="tabpanel"
-          aria-labelledby={`admin-tab-${tab.id}`}
+          aria-labelledby={`${idPrefix}-tab-${tab.id}`}
           hidden={tab.id !== current}
           className="flex flex-col gap-4"
         >

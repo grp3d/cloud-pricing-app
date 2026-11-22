@@ -59,13 +59,15 @@ class ActiveSnapshotConfigError(RuntimeError):
 class Issue:
     """A non-blocking problem for the Admin tab's Issues table (FR-014, FR-022)."""
 
-    kind: str  # "missing_icon" | "missing_regions"
+    kind: str  # "missing_icon" | "missing_regions" | "marketplace_without_icons" (027)
     snapshot_date: str
     message: str
     service_code: str | None = None
     service_name: str | None = None
     is_new: bool | None = None
     regions: list[str] | None = None
+    provider: str | None = None  # 027: set by the Admin route from the provider's state
+    count: int | None = None  # 027: Marketplace services with no icon, for that summary line
 
 
 @dataclass(frozen=True)
@@ -298,8 +300,8 @@ STATE = MonitorState()
 _OTHER_STATES: dict[str, MonitorState] = {p: MonitorState() for p in PROVIDERS if p != PROVIDER}
 _lock = threading.Lock()
 
-# The analysis run after a check that changed the active AWS snapshot: called with the state, the
-# store and the previously active snapshot. Defaults to the icon-coverage analysis (imported
+# The analysis run after a check that changed a provider's active snapshot: called with its
+# state, the store and the previously active snapshot. Defaults to the icon-coverage analysis (imported
 # lazily — it imports this module); tests may swap it.
 AnalysisHook = Callable[[MonitorState, Store, ActiveSnapshot | None], None]
 _analysis_hook: AnalysisHook | None = None
@@ -443,14 +445,15 @@ def _cleanup_cache(store: S3Store, results: dict[str, CheckResult]) -> None:
 
 
 def _post_check(store: Store, results: dict[str, CheckResult]) -> None:
-    """Work after a check: the icon analysis on an AWS switch (AWS service icons only), then the
-    cache clean-up across providers (S3 only)."""
-    aws = results.get(PROVIDER)
-    if aws is not None and aws.analysis_needed:
+    """Work after a check: the icon analysis for each provider whose active snapshot changed
+    (027: GCP and Azure too, not only AWS), then the cache clean-up across providers (S3 only)."""
+    for code, result in results.items():
+        if not result.analysis_needed:
+            continue
         try:
-            (_analysis_hook or _default_analysis)(STATE, store, aws.previous)
+            (_analysis_hook or _default_analysis)(state_for(code), store, result.previous)
         except Exception:  # noqa: BLE001 — a failed analysis never stops pricing
-            logger.exception("icon coverage analysis failed")
+            logger.exception("icon coverage analysis failed", provider=code)
     if isinstance(store, S3Store):
         try:
             _cleanup_cache(store, results)

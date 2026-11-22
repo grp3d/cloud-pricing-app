@@ -43,6 +43,8 @@ async def patch_preferences(
         data["migrated_from_browser"] = patch.migrated_from_browser
     if "workspace" in sent:
         _replace(data, "workspace", patch.workspace)
+    if "appearance" in sent:
+        _replace(data, "appearance", patch.appearance)
     if "trends" in sent:
         if patch.trends is None:
             data.pop("trends", None)

@@ -42,8 +42,10 @@ from src.pricing_data.snapshot import PROVIDER_NAMES, PROVIDERS
 router = APIRouter(tags=["admin"])
 logger = get_logger("cloud_pricing.admin_system")
 
-# Most important first: lost regions, then icon gaps.
-_KIND_ORDER = {"missing_regions": 0, "missing_icon": 1}
+# Most important first: lost regions, then icon gaps, then the Marketplace count line (027).
+_KIND_ORDER = {"missing_regions": 0, "missing_icon": 1, "marketplace_without_icons": 2}
+# 027 (contracts/admin-system-info.md): the Issues table lists AWS, then GCP, then Azure.
+_PROVIDER_ORDER = ("aws", "gcp", "azure")
 _background: set[asyncio.Task] = set()
 # A manual check that has been accepted but may not have taken the monitor lock yet. Checked and
 # set with no await in between, so on the event loop two requests can't both see it clear.
@@ -52,6 +54,12 @@ _manual_check_pending = False
 
 def _issue_order(issue: Issue) -> tuple:
     return (_KIND_ORDER.get(issue.kind, 99), not issue.is_new, issue.service_code or "")
+
+
+def _issues_out(code: str) -> list[IssueOut]:
+    """One provider's issues, in the documented order, each naming the provider (027)."""
+    issues = sorted(active_snapshot.state_for(code).issues, key=_issue_order)
+    return [IssueOut(**{**asdict(i), "provider": code}) for i in issues]
 
 
 def _failed(regions) -> list[FailedRegionOut]:
@@ -103,14 +111,19 @@ def _provider_out(code: str) -> ProviderSystemOut:
         latest_run=_latest_out(state),
         rejected=RejectedOut(**asdict(state.rejected)) if state.rejected is not None else None,
         last_check_error=state.last_check_error,
-        issues=[IssueOut(**asdict(i)) for i in sorted(state.issues, key=_issue_order)],
+        issues=_issues_out(code),
         history=_history_out(code),
     )
 
 
-def _history_out(code: str) -> HistoryOut:
-    """019 (contracts §9): the price history's progress, from its `state.json` only."""
-    state = history_store(code).state()
+def _history_out(code: str) -> HistoryOut | None:
+    """019 (contracts §9): the price history's progress, from its `state.json` only. 027
+    (FR-013): None when that file can't be read, so the rest of the page still shows."""
+    try:
+        state = history_store(code).read_state()
+    except (OSError, ValueError) as error:
+        logger.warning("price history state unreadable", provider=code, error=str(error))
+        return None
     backfill = "running" if is_building(code) else state.get("backfill", "pending")
     return HistoryOut(
         weeks_built=int(state.get("weeks_built", 0)),
@@ -122,28 +135,38 @@ def _history_out(code: str) -> HistoryOut:
     )
 
 
+def _cache_out() -> CacheOut | None:
+    """027 (FR-017): the local copy of S3 snapshots, for every provider (one shared size
+    budget); None for a local source."""
+    entries: list[CacheEntryOut] = []
+    any_cache = False
+    for code in sorted(PROVIDERS, key=_PROVIDER_ORDER.index):
+        state = active_snapshot.state_for(code)
+        if state.cache is None:
+            continue
+        any_cache = True
+        active = state.active
+        entries += [
+            CacheEntryOut(
+                provider=code,
+                snapshot_date=e.snapshot_date,
+                revision=e.revision,
+                state="active" if active is not None and e.path == active.base_dir else "cached",
+                bytes=e.bytes,
+            )
+            for e in state.cache
+        ]
+    if not any_cache:
+        return None
+    return CacheOut(total_bytes=sum(e.bytes for e in entries),
+                    max_bytes=settings.pricing_cache_max_bytes, entries=entries)
+
+
 @router.get("/admin/system-info", response_model=SystemInfoOut)
 async def get_system_info(_admin: AdminUser) -> SystemInfoOut:
     state = active_snapshot.STATE
-    active = state.active
     active_out = _active_out(state)
-    cache_out = None
-    if state.cache is not None:
-        cache_out = CacheOut(
-            total_bytes=sum(e.bytes for e in state.cache),
-            max_bytes=settings.pricing_cache_max_bytes,
-            entries=[
-                CacheEntryOut(
-                    snapshot_date=e.snapshot_date,
-                    revision=e.revision,
-                    state=(
-                        "active" if active is not None and e.path == active.base_dir else "cached"
-                    ),
-                    bytes=e.bytes,
-                )
-                for e in state.cache
-            ],
-        )
+    cache_out = _cache_out()
     return SystemInfoOut(
         deployment=DeploymentOut(
             environment=settings.app_environment, release=settings.app_release
@@ -158,7 +181,9 @@ async def get_system_info(_admin: AdminUser) -> SystemInfoOut:
         last_check_at=state.last_check_at,
         last_check_error=state.last_check_error,
         check_interval_seconds=settings.snapshot_check_interval_seconds,
-        issues=[IssueOut(**asdict(i)) for i in sorted(state.issues, key=_issue_order)],
+        # 027 (FR-014): every provider's issues, AWS, then GCP, then Azure.
+        issues=[issue for code in sorted(PROVIDERS, key=_PROVIDER_ORDER.index)
+                for issue in _issues_out(code)],
         providers={code: _provider_out(code) for code in PROVIDERS},
     )
 

@@ -675,13 +675,17 @@ class HealthOut(BaseModel):
 
 
 class IssueOut(BaseModel):
-    kind: Literal["missing_icon", "missing_regions"]
+    # 027 (contracts/admin-system-info.md): `provider`, and one Marketplace count line per
+    # provider (`marketplace_without_icons`, with `count`).
+    provider: Literal["aws", "gcp", "azure"]
+    kind: Literal["missing_icon", "missing_regions", "marketplace_without_icons"]
     snapshot_date: str
     message: str
     service_code: str | None = None
     service_name: str | None = None
     is_new: bool | None = None
     regions: list[str] | None = None
+    count: int | None = None
 
 
 # 018-app-cloud-deployment, FR-014 (contracts/admin-api.md).
@@ -730,6 +734,7 @@ class RejectedOut(BaseModel):
 
 
 class CacheEntryOut(BaseModel):
+    provider: Literal["aws", "gcp", "azure"]  # 027 (FR-017): the cache is shared by all
     snapshot_date: str
     revision: int
     state: Literal["active", "cached"]
@@ -761,7 +766,8 @@ class SystemInfoOut(BaseModel):
     deployment: DeploymentOut
     source: SourceOut
     # The top-level snapshot fields are AWS's, unchanged (018); every provider is in
-    # `providers` (019).
+    # `providers` (019). 027: the Admin page shows only `providers`; `cache` covers every
+    # provider (one shared budget).
     active: ActiveSnapshotOut | None
     latest_run: LatestRunOut | None
     rejected: RejectedOut | None
@@ -875,10 +881,18 @@ class TrendsPreferences(_Strict):
     movers: TrendsMoversPreferences | None = None
 
 
+class AppearancePreferences(_Strict):
+    """027 (FR-005, data-model §1): the colour theme. Saved for logged-in users only; absent
+    means light."""
+
+    theme: Literal["light", "dark"]
+
+
 class Preferences(_Strict):
     migrated_from_browser: bool = False
     workspace: WorkspacePreferences | None = None
     trends: TrendsPreferences | None = None
+    appearance: AppearancePreferences | None = None
 
 
 class PreferencesOut(BaseModel):
@@ -894,6 +908,7 @@ class PreferencesPatch(_Strict):
     migrated_from_browser: bool | None = None
     workspace: WorkspacePreferences | None = None
     trends: TrendsPreferences | None = None
+    appearance: AppearancePreferences | None = None
 
 
 # --- Trends (019, contracts §8) ----------------------------------------------------------------

@@ -59,7 +59,7 @@ export function useArchitectureLibrary({ onNavigated }: { onNavigated?: () => vo
     refetch: () => void lists[i]?.refetch(),
   }));
 
-  // Same query key `IdentityMenu` uses, so this costs no extra request. Guests never get the
+  // Same query key `UserMenu` uses, so this costs no extra request. Guests never get the
   // sharing or Import actions (012, FR-022/FR-027).
   const currentUser = useQuery({ queryKey: ["currentUser"], queryFn: api.getCurrentUser });
   const isGuest = currentUser.data?.username == null;

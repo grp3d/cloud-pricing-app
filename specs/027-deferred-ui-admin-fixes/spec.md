@@ -53,6 +53,12 @@ each marked "planned" or "not shown yet" on its `docs/features/` page. This feat
 - Q: The 020 icon maps came from the 2026-11-02 snapshots; regenerating them for the backend
   reads the 2026-11-16 ones. Keep the old maps or refresh? → A: Refresh. Icons aren't stored
   with architectures, so every canvas shows the refreshed icons with no approval step.
+- Q (asked during implementation): the top of System Information (active snapshot, pipeline run,
+  regions, latest run, refused manifest, cache, last check error) shows AWS only, unlabelled,
+  and repeats the Providers table. → A: The top keeps only what is app-wide (deployment, pricing
+  data source, last check with Check now, and the cache across every provider); each provider's
+  detail moves into the Providers table. Below the top, **Providers** and **Issues** are two
+  tabs, Providers open by default.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -167,6 +173,35 @@ one building and one with no history, and see each state described.
 
 ---
 
+### User Story 6 - System Information shows app-wide information, then Providers and Issues tabs (Priority: P2)
+
+Added 2026-11-22 (clarification above).
+
+**Why this priority**: the top block looks app-wide but is AWS's only; an Admin can misread it.
+
+**Independent Test**: open System Information: the top shows only app-wide rows; the Providers
+tab is open and holds each provider's snapshot detail; the Issues tab holds the Issues table.
+
+**Acceptance Scenarios**:
+
+1. **Given** the Admin opens System Information, **Then** the top shows the deployment, the
+   pricing data source, the last check with Check now, and (for an S3 source) the cache across
+   every provider, each entry naming its provider; no provider's snapshot, run or regions.
+2. **Given** the top, **Then** below it are two tabs, **Providers** and **Issues**, with
+   **Providers** open.
+3. **Given** the Providers tab, **Then** each provider's row shows its active snapshot with its
+   revision, pipeline run and version, Pinned when pinned, its regions and failed regions with
+   reasons, its latest run when not succeeded, its last refused manifest, its last check error,
+   and its Trends history.
+4. **Given** the Issues tab, **Then** it shows the Issues table (US5), and the tab names how
+   many issues there are. A filter offers **All** (the default) and each provider with its
+   count; choosing a provider shows only its issues, or "No issues for <provider>." The table
+   scrolls inside a fixed height with its header kept in view; there is no paging.
+5. **Given** either tab, **When** the page is reloaded, **Then** the same tab is open; the tabs
+   work from the keyboard like the Admin page's own tabs.
+
+---
+
 ### User Story 5 - The Admin is told about GCP and Azure services with no icon (Priority: P3)
 
 **Why this priority**: the canvas already falls back to a generic icon, so nothing breaks; this
@@ -243,6 +278,17 @@ open the Issues table and see it listed with its provider.
 - **FR-015**: The icon check MUST use the same icon data the canvas uses, so the Issues table
   and the canvas always agree on which services get the generic icon.
 - **FR-016**: A provider with no snapshot MUST report no icon issues.
+- **FR-017**: The top of System Information MUST show only app-wide information: deployment,
+  pricing data source, last check with Check now, and the cache across every provider (one
+  shared budget), each cache entry naming its provider.
+- **FR-018**: Each provider's snapshot detail (active snapshot, revision, pipeline run and version,
+  pinned, regions, failed regions with reasons, latest run, refused manifest, last check error,
+  Trends history) MUST be in its row of the Providers table.
+- **FR-019**: Providers and Issues MUST be two tabs below the top, Providers open by default; the
+  open tab MUST survive a reload, and the tabs MUST work from the keyboard like the Admin tabs.
+- **FR-020**: The Issues tab MUST offer a provider filter (All by default, then each provider with
+  its count, kept in the address) and MUST scroll the table within a fixed height, header in
+  view, rather than page it (user, 2026-11-22: 172 issues on real data, AWS first, hid the rest).
 
 ### Key Entities *(include if feature involves data)*
 

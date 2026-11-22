@@ -14,6 +14,7 @@
 import { useSyncExternalStore } from "react";
 
 import type {
+  AppearancePreferences,
   Preferences,
   PreferencesOut,
   PreferencesPatch,
@@ -29,6 +30,7 @@ export type SectionValues = {
   workspace: WorkspacePreferences | null;
   "trends.charts": TrendsChartsPreferences | null;
   "trends.movers": TrendsMoversPreferences | null;
+  appearance: AppearancePreferences | null;
 };
 export type Section = keyof SectionValues;
 
@@ -58,6 +60,9 @@ function withSection<S extends Section>(
   } else if (section === "workspace") {
     if (value == null) delete next.workspace;
     else next.workspace = value as WorkspacePreferences;
+  } else if (section === "appearance") {
+    if (value == null) delete next.appearance;
+    else next.appearance = value as AppearancePreferences;
   } else {
     const key = section === "trends.charts" ? "charts" : "movers";
     const trends = { ...(prefs.trends ?? {}) } as NonNullable<Preferences["trends"]>;
@@ -75,6 +80,7 @@ function patchBody(pending: Map<Section, unknown>): PreferencesPatch {
   for (const [section, value] of pending) {
     if (section === "migrated_from_browser") body.migrated_from_browser = value as boolean;
     else if (section === "workspace") body.workspace = value as WorkspacePreferences | null;
+    else if (section === "appearance") body.appearance = value as AppearancePreferences | null;
     else trends[section === "trends.charts" ? "charts" : "movers"] = value;
   }
   if (Object.keys(trends).length > 0) body.trends = trends as PreferencesPatch["trends"];
@@ -118,6 +124,8 @@ export class PreferencesStore {
   private saving = false;
   private attempt = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Bumped by `reset()`, so a load or save started for the previous identity is ignored. */
+  private generation = 0;
   private readonly baseDelayMs: number;
   private readonly maxDelayMs: number;
   readonly readBrowser: () => WorkspacePreferences | null;
@@ -150,9 +158,11 @@ export class PreferencesStore {
    * (plus any changes already made) stay in use, and the next call tries again. */
   load(): Promise<Preferences> {
     if (this.loading) return this.loading;
+    const generation = this.generation;
     this.loading = this.transport
       .get()
       .then((out) => {
+        if (generation !== this.generation) return this.prefs;
         // Changes made before the record arrived win over the stored values.
         let prefs = out.data;
         for (const [section, value] of this.pending) {
@@ -164,10 +174,23 @@ export class PreferencesStore {
         return this.prefs;
       })
       .catch(() => {
-        this.loading = null;
+        if (generation === this.generation) this.loading = null;
         return this.prefs;
       });
     return this.loading;
+  }
+
+  /** 027: forget everything for the previous identity (after login or Log out): loaded values,
+   * unsaved changes and any waiting retry. The next `load()` reads the new identity's record. */
+  reset(): void {
+    this.generation += 1;
+    if (this.retryTimer !== null) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.pending.clear();
+    this.attempt = 0;
+    this.loading = null;
+    this.loaded = false;
+    this.set(DEFAULT_PREFERENCES);
   }
 
   /** Apply now, save in the background. Never throws (FR-025). */
@@ -207,15 +230,18 @@ export class PreferencesStore {
   private async flush(): Promise<void> {
     if (this.saving || this.retryTimer !== null || this.pending.size === 0) return;
     this.saving = true;
+    const generation = this.generation;
     const sending = new Map(this.pending);
     try {
       await this.transport.patch(patchBody(sending));
+      if (generation !== this.generation) return;
       // Drop what was saved, unless it changed again while saving.
       for (const [section, value] of sending) {
         if (this.pending.get(section) === value) this.pending.delete(section);
       }
       this.attempt = 0;
     } catch {
+      if (generation !== this.generation) return;
       const delay = Math.min(this.baseDelayMs * 2 ** this.attempt, this.maxDelayMs);
       this.attempt += 1;
       this.retryTimer = setTimeout(() => {

@@ -41,6 +41,14 @@ class HistoryStore:
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
+    def read_state(self) -> dict[str, Any]:
+        """027 (FR-013): like `state`, but a state file that exists and can't be read raises
+        (`OSError`, `ValueError`) instead of looking like no history yet."""
+        try:
+            return json.loads((self.dir / STATE_FILE).read_text())
+        except FileNotFoundError:
+            return {}
+
     def save_state(self, state: dict[str, Any]) -> None:
         write_json(self.dir / STATE_FILE, state)
 

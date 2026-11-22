@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { NavLink, useMatch } from "react-router-dom";
 
 import { api } from "../../api/client";
@@ -8,10 +8,10 @@ import { cn } from "cn";
 import { useArchitectureLibrary } from "../../hooks/useArchitectureLibrary";
 import { ConfirmDeleteDialog } from "../ConfirmDeleteDialog";
 import { ImportArchitectureDialog } from "../workspace/ImportArchitectureDialog";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ArchitectureMenu, NAME_FIELD_ATTR } from "./ArchitectureMenu";
+import { HeaderMenu } from "./HeaderMenu";
 import { HEADER_CONTROL, HEADER_CURRENT } from "./headerStyles";
-import { IdentityMenu } from "./IdentityMenu";
+import { UserMenu } from "./UserMenu";
 
 /**
  * Top-level tab bar (012-user-accounts-sharing, spec FR-001-003): "Cloud Pricing" (the
@@ -31,10 +31,6 @@ export function TopTabs() {
   const isAdmin = currentUser.data?.is_admin ?? false;
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const chevronRef = useRef<HTMLButtonElement>(null);
-  // Escape always returns focus to the chevron (FR-006). Radix skips that once focus has been
-  // inside the provider panel, so it's done here.
-  const closedByEscape = useRef(false);
   const library = useArchitectureLibrary({ onNavigated: () => setMenuOpen(false) });
   // Opening a dialog from the menu closes the menu first; the dialogs live outside it.
   const menuLibrary = {
@@ -57,7 +53,7 @@ export function TopTabs() {
       data-app-header
       className="flex h-12 shrink-0 items-center gap-2 border-b border-header-border bg-header px-3 text-header-foreground"
     >
-      <IdentityMenu />
+      <UserMenu />
       <nav className="flex min-w-0 items-center gap-1">
         <div className="flex items-center">
           <NavLink
@@ -69,44 +65,25 @@ export function TopTabs() {
           >
             Cloud Pricing
           </NavLink>
-          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-            <PopoverTrigger asChild>
-              <button
-                ref={chevronRef}
-                type="button"
-                aria-label="Open architecture menu"
-                className={cn(
-                  HEADER_CONTROL,
-                  "rounded-l-none px-1.5 aria-expanded:bg-header-accent",
-                )}
-              >
-                <ChevronDown className="size-4" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              aria-label="Architectures"
-              className="max-h-[min(36rem,calc(100vh-4rem))] w-auto overflow-y-auto"
-              onEscapeKeyDown={(e) => {
-                // The first Escape in a name field clears the name; only the next one closes.
-                const active = document.activeElement;
-                if (active instanceof HTMLElement && active.hasAttribute(NAME_FIELD_ATTR)) {
-                  e.preventDefault();
-                } else {
-                  closedByEscape.current = true;
-                }
-              }}
-              onCloseAutoFocus={(e) => {
-                if (closedByEscape.current) {
-                  closedByEscape.current = false;
-                  e.preventDefault();
-                  chevronRef.current?.focus();
-                }
-              }}
-            >
-              <ArchitectureMenu library={menuLibrary} />
-            </PopoverContent>
-          </Popover>
+          {/* 027 (FR-002): the same menu behaviour as the user menu. */}
+          <HeaderMenu
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+            trigger={<ChevronDown className="size-4" />}
+            triggerLabel="Open architecture menu"
+            triggerClassName="rounded-l-none px-1.5"
+            contentLabel="Architectures"
+            contentClassName="max-h-[min(36rem,calc(100vh-4rem))] w-auto overflow-y-auto"
+            onEscapeKeyDown={(e) => {
+              // The first Escape in a name field clears the name; only the next one closes.
+              const active = document.activeElement;
+              if (active instanceof HTMLElement && active.hasAttribute(NAME_FIELD_ATTR)) {
+                e.preventDefault();
+              }
+            }}
+          >
+            <ArchitectureMenu library={menuLibrary} />
+          </HeaderMenu>
         </div>
         {/* 019 (FR-010): the Trends page. */}
         <NavLink

@@ -182,3 +182,89 @@ async def test_each_provider_has_a_history_block(client, admin_headers, tmp_path
         "weeks_built": 0, "weeks_total": 0, "gaps": [], "backfill": "pending",
         "last_error": None, "last_built_at": None,
     }
+
+
+# --- 027 (FR-013): a provider whose history can't be read --------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("broken", ["not json", "a directory"])
+async def test_an_unreadable_history_is_null_and_the_rest_is_intact(
+    client, admin_headers, tmp_path, monkeypatch, broken
+):
+    from src.config import settings
+    from src.pricing_data.history.store import STATE_FILE
+    from tests.helpers.history import build_trends_history
+
+    monkeypatch.setattr(settings, "pricing_history_dir", str(tmp_path / "history"))
+    build_trends_history(tmp_path / "history")
+    state = tmp_path / "history" / "gcp" / STATE_FILE
+    state.parent.mkdir(parents=True, exist_ok=True)
+    if broken == "not json":
+        state.write_text("{not json")
+    else:
+        state.mkdir()
+    resp = await client.get("/api/v1/admin/system-info", headers=admin_headers)
+    assert resp.status_code == 200
+    providers = resp.json()["providers"]
+    assert providers["gcp"]["history"] is None
+    assert providers["aws"]["history"]["weeks_built"] == 4
+    assert providers["azure"]["history"]["backfill"] == "pending"
+
+
+# --- 027 US5 (FR-014, contracts/admin-system-info.md): every provider's issues -----------------
+
+
+@pytest.mark.asyncio
+async def test_every_providers_issues_are_listed_with_their_provider(
+    client, admin_headers, monkeypatch
+):
+    active_snapshot.get_active_snapshot()
+    monkeypatch.setattr(active_snapshot.STATE, "issues", [
+        Issue(kind="missing_icon", snapshot_date="2026-09-24", message="aws", service_code="ZZA",
+              service_name="A", is_new=False),
+    ])
+    monkeypatch.setattr(active_snapshot.state_for("gcp"), "issues", [
+        Issue(kind="marketplace_without_icons", snapshot_date="2026-11-16", count=1648,
+              message="1,648 Marketplace and third-party GCP services have no icon (not listed)."),
+        Issue(kind="missing_icon", snapshot_date="2026-11-16", message="gcp",
+              service_code="1111-2222-3333", service_name="Some Service", is_new=True),
+    ])
+    monkeypatch.setattr(active_snapshot.state_for("azure"), "issues", [
+        Issue(kind="missing_icon", snapshot_date="2026-11-16", message="azure",
+              service_code="DZH3", service_name="Other", is_new=False),
+    ])
+    body = (await client.get("/api/v1/admin/system-info", headers=admin_headers)).json()
+    assert [(i["provider"], i["kind"], i["service_code"]) for i in body["issues"]] == [
+        ("aws", "missing_icon", "ZZA"),
+        ("gcp", "missing_icon", "1111-2222-3333"),
+        ("gcp", "marketplace_without_icons", None),
+        ("azure", "missing_icon", "DZH3"),
+    ]
+    assert body["issues"][2]["count"] == 1648
+    assert [i["provider"] for i in body["providers"]["gcp"]["issues"]] == ["gcp", "gcp"]
+
+
+# --- 027 US6 (FR-017): the cache across every provider -----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_cache_lists_every_providers_snapshots(client, admin_headers, monkeypatch):
+    from pathlib import Path
+
+    from src.pricing_data.snapshot_cache import CacheEntry
+
+    active_snapshot.get_active_snapshot()
+
+    def entry(provider: str, date_: str, size: int) -> CacheEntry:
+        return CacheEntry(Path(f"/cache/{provider}/{date_}-r1"), date_, 1, size, "2026-11-16")
+
+    monkeypatch.setattr(active_snapshot.STATE, "cache", [entry("aws", "2026-11-16", 100)])
+    monkeypatch.setattr(active_snapshot.state_for("gcp"), "cache",
+                        [entry("gcp", "2026-11-16", 30), entry("gcp", "2026-11-02", 20)])
+    monkeypatch.setattr(active_snapshot.state_for("azure"), "cache", [])
+    cache = (await client.get("/api/v1/admin/system-info", headers=admin_headers)).json()["cache"]
+    assert cache["total_bytes"] == 150
+    assert [(e["provider"], e["snapshot_date"]) for e in cache["entries"]] == [
+        ("aws", "2026-11-16"), ("gcp", "2026-11-16"), ("gcp", "2026-11-02"),
+    ]

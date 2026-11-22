@@ -9,6 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page } from "@playwright/test";
 
 const BACKEND_URL = `http://localhost:${process.env.E2E_BACKEND_PORT ?? 8100}`;
@@ -278,4 +279,15 @@ export async function patchArchitectureResponse(
     }
     await route.fulfill({ response, json: body });
   });
+}
+
+/** 027 (FR-007, research R4): no WCAG AA colour-contrast violations on the page as shown. */
+export async function expectContrast(page: Page, what: string) {
+  // Let open/close animations finish, so colours are final.
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300)));
+  const { violations } = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
+  const found = violations.flatMap((v) =>
+    v.nodes.map((n) => `${n.target.join(" ")}: ${n.failureSummary?.split("\n").pop()?.trim()}`),
+  );
+  expect(found, `${what}: colour contrast`).toEqual([]);
 }

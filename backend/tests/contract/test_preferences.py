@@ -244,3 +244,44 @@ async def test_agent_results_split_is_saved_and_checked(client):
         refused = await client.patch(
             URL, json={"workspace": {"agent_results": {"split": bad}}}, headers=headers)
         assert refused.status_code == 422
+
+
+# --- 027: the colour theme, saved for logged-in users only (FR-005, contracts/preferences-api.md)
+
+
+@pytest.mark.asyncio
+async def test_a_logged_in_users_theme_is_saved_and_cleared(client, admin_headers):
+    saved = await client.patch(URL, json={"appearance": {"theme": "dark"}}, headers=admin_headers)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["data"]["appearance"] == {"theme": "dark"}
+    read = await client.get(URL, headers=admin_headers)
+    assert read.json()["data"]["appearance"] == {"theme": "dark"}
+
+    cleared = await client.patch(URL, json={"appearance": None}, headers=admin_headers)
+    assert cleared.status_code == 200
+    assert "appearance" not in cleared.json()["data"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("appearance", [{"theme": "dark"}, None])
+async def test_a_guests_theme_is_refused_and_nothing_is_saved(client, auth_headers, appearance):
+    resp = await client.patch(URL, json={"appearance": appearance, "workspace": WORKSPACE},
+                              headers=auth_headers)
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "theme_not_saved_for_guests"
+    read = await client.get(URL, headers=auth_headers)
+    assert read.json()["data"] == {"migrated_from_browser": False}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("appearance", [{"theme": "blue"}, {"theme": "dark", "x": 1}, {}])
+async def test_an_invalid_theme_is_422(client, admin_headers, appearance):
+    resp = await client.patch(URL, json={"appearance": appearance}, headers=admin_headers)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_guest_can_still_save_other_sections(client, auth_headers):
+    resp = await client.patch(URL, json={"workspace": WORKSPACE}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["data"]["workspace"] == WORKSPACE

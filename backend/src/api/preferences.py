@@ -3,7 +3,7 @@ through the existing identity: a named user or a guest."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
 from src.api.deps import CurrentUser, DbSession
 from src.models.schemas import PreferencesOut, PreferencesPatch
@@ -21,4 +21,7 @@ async def read_preferences(session: DbSession, user: CurrentUser) -> Preferences
 async def update_preferences(
     body: PreferencesPatch, session: DbSession, user: CurrentUser
 ) -> PreferencesOut:
+    if "appearance" in body.model_fields_set and user.username is None:
+        # 027 (FR-005): a guest's theme isn't saved. Nothing in this patch is saved either.
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="theme_not_saved_for_guests")
     return await patch_preferences(session, user.id, body)

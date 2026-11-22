@@ -54,6 +54,9 @@ const TEXT_PAIRS: [string, string][] = [
   ["foreground", "muted"],
   ["card-foreground", "card"],
   ["popover-foreground", "popover"],
+  // 027: the user menu's Settings heading, and an item hovered or focused inside a menu.
+  ["muted-foreground", "popover"],
+  ["popover-foreground", "accent"],
   ["muted-foreground", "background"],
   ["muted-foreground", "card"],
   ["muted-foreground", "muted"],

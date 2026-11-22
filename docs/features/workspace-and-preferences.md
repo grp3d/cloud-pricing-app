@@ -2,7 +2,7 @@
 
 The app has three pages, reached from the dark header: **Cloud Pricing** (the workspace),
 **Trends**, and **Admin** (administrators only). The person icon in the header shows who you
-are and lets you log in or change user (see [accounts and sharing](accounts-and-sharing.md)).
+are and opens the [user menu](#user-menu).
 
 ## Architecture menu
 
@@ -19,8 +19,21 @@ architecture from Trends or Admin goes to the workspace with it open.
   [accounts and sharing](accounts-and-sharing.md#importing-a-copy)).
 - Picking an architecture opens it and switches the workspace to its provider. Its provider and
   name are shown in a title row above the canvas.
-- The menu works from the keyboard: Enter, Space or ArrowRight on a provider opens its panel,
-  ArrowLeft returns to the provider, Escape closes the menu and returns focus to the chevron.
+- The menu works from the keyboard: Enter, Space or ArrowDown on the chevron opens it,
+  ArrowDown and ArrowUp move between the providers, Enter, Space or ArrowRight on a provider
+  opens its panel, ArrowLeft returns to the provider, and Escape closes the menu and returns
+  focus to the chevron.
+
+## User menu
+
+The person icon at the left of the header opens the user menu. It looks and works like the
+architecture menu, keyboard included. In order:
+
+- your username, or **Guest**;
+- **Log in** for a guest, **Log out** once logged in (see
+  [accounts and sharing](accounts-and-sharing.md#guests-and-logins));
+- **Settings**: **Colour theme: Dark** in the light theme, **Colour theme: Light** in the dark
+  theme. It switches the whole app at once.
 
 ## Layout
 
@@ -61,11 +74,10 @@ sideways, and each panel scrolls inside itself.
 
 ## Look
 
-- Zinc greys with one blue accent, and a dark header. The app shows the light theme: dark-theme
-  colours are defined and checked for contrast, but nothing switches them on yet. A theme toggle
-  in the header is planned.
+- Zinc greys with one blue accent, and a dark header, in a light and a dark theme. The app
+  opens in the light theme until you choose dark in the [user menu](#user-menu).
 - Every control has visible hover, keyboard-focus and pressed states, and an accessible name.
-  Text meets WCAG 2.1 AA contrast.
+  Text meets WCAG 2.1 AA contrast in both themes.
 - Menus, tabs and panels animate in about 150–200ms, or not at all when the system asks for
   reduced motion.
 
@@ -82,7 +94,8 @@ These follow you to any browser or device, for guests and logged-in users alike:
 - the last architecture you opened: **Cloud Pricing** opens it again when no architecture is
   named (clicking the tab, or a return visit), unless it's been deleted or you can no longer open
   it;
-- the Trends selections (see [trends](trends.md)).
+- the Trends selections (see [trends](trends.md));
+- the colour theme, for logged-in users only: a guest's choice lasts until the page is reloaded.
 
 Settings saved by older versions in the browser are moved to the account once, on first load. A
 setting that fails to save still applies for the session and is retried; it never blocks you.
@@ -99,4 +112,5 @@ zoom, and the last calculation result.
 [019](../../specs/019-gcp-azure-providers-trends/spec.md) (US4),
 [021](../../specs/021-workspace-layout-redesign/spec.md) (replaces the five-column layout of
 007–013),
-[024](../../specs/024-agent-pricing-questions/spec.md) (the Agent tab's results split).
+[024](../../specs/024-agent-pricing-questions/spec.md) (the Agent tab's results split),
+[027](../../specs/027-deferred-ui-admin-fixes/spec.md) (the user menu and the colour theme).

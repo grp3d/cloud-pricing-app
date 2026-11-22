@@ -279,3 +279,47 @@ describe("stale stored Trends values (019, data-model §1)", () => {
     expect(t.patches.flatMap((p) => Object.keys(p.trends ?? {}))).toEqual(["charts", "movers"]);
   });
 });
+
+describe("PreferencesStore.reset (027, identity changes)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("drops loaded values and pending saves, notifies, and loads again", async () => {
+    const t = transport({ migrated_from_browser: true, trends: { charts: CHARTS } });
+    const store = new PreferencesStore(t, { baseDelayMs: 100 });
+    await store.load();
+    t.failNext(5);
+    store.patchSection("trends.movers", MOVERS);
+    await settle();
+    expect(store.queued).toEqual(["trends.movers"]);
+
+    const listener = vi.fn();
+    store.subscribe(listener);
+    store.reset();
+    expect(listener).toHaveBeenCalled();
+    expect(store.isLoaded).toBe(false);
+    expect(store.current).toEqual({ migrated_from_browser: false });
+    expect(store.queued).toEqual([]);
+
+    // The retry that was waiting never fires for the old identity.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(t.patches).toEqual([]);
+
+    await store.load();
+    expect(t.get).toHaveBeenCalledTimes(2);
+    expect(store.current.trends?.charts).toEqual(CHARTS);
+  });
+
+  it("ignores a load that was in flight before the reset", async () => {
+    let resolve!: (out: PreferencesOut) => void;
+    const t = transport();
+    t.get.mockImplementationOnce(() => new Promise<PreferencesOut>((r) => (resolve = r)));
+    const store = new PreferencesStore(t);
+    const first = store.load();
+    store.reset();
+    resolve({ schema_version: 1, data: { migrated_from_browser: true, trends: { charts: CHARTS } } });
+    await first;
+    expect(store.current.trends).toBeUndefined();
+    expect(store.isLoaded).toBe(false);
+  });
+});

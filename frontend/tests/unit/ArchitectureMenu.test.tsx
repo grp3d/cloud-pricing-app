@@ -157,6 +157,25 @@ describe("ArchitectureMenu groups", () => {
     expect(gcpButton).toHaveFocus();
   });
 
+  it("opens with ArrowDown on the chevron and moves between providers with ArrowUp/ArrowDown (027)", async () => {
+    renderHeader();
+    const chevron = await screen.findByRole("button", { name: "Open architecture menu" });
+    chevron.focus();
+    fireEvent.keyDown(chevron, { key: "ArrowDown" });
+    const aws = await within(menu()).findByRole("button", { name: "AWS" });
+    const gcp = within(menu()).getByRole("button", { name: "GCP" });
+    const azure = within(menu()).getByRole("button", { name: "Azure" });
+    aws.focus();
+    fireEvent.keyDown(aws, { key: "ArrowDown" });
+    expect(gcp).toHaveFocus();
+    fireEvent.keyDown(gcp, { key: "ArrowDown" });
+    expect(azure).toHaveFocus();
+    fireEvent.keyDown(azure, { key: "ArrowDown" });
+    expect(aws).toHaveFocus();
+    fireEvent.keyDown(aws, { key: "ArrowUp" });
+    expect(azure).toHaveFocus();
+  });
+
   it("gives every group, even an empty one, New and Import", async () => {
     renderHeader();
     await openMenu();

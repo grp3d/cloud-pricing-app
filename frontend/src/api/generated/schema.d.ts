@@ -1537,6 +1537,18 @@ export interface components {
             /** Delta */
             delta: string;
         };
+        /**
+         * AppearancePreferences
+         * @description 027 (FR-005, data-model §1): the colour theme. Saved for logged-in users only; absent
+         *     means light.
+         */
+        AppearancePreferences: {
+            /**
+             * Theme
+             * @enum {string}
+             */
+            theme: "light" | "dark";
+        };
         /** ArchitectureCreate */
         ArchitectureCreate: {
             /** Name */
@@ -1712,6 +1724,11 @@ export interface components {
         };
         /** CacheEntryOut */
         CacheEntryOut: {
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
             /** Snapshot Date */
             snapshot_date: string;
             /** Revision */
@@ -2268,10 +2285,15 @@ export interface components {
         /** IssueOut */
         IssueOut: {
             /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "aws" | "gcp" | "azure";
+            /**
              * Kind
              * @enum {string}
              */
-            kind: "missing_icon" | "missing_regions";
+            kind: "missing_icon" | "missing_regions" | "marketplace_without_icons";
             /** Snapshot Date */
             snapshot_date: string;
             /** Message */
@@ -2284,6 +2306,8 @@ export interface components {
             is_new?: boolean | null;
             /** Regions */
             regions?: string[] | null;
+            /** Count */
+            count?: number | null;
         };
         /** LatestRunOut */
         LatestRunOut: {
@@ -2438,6 +2462,7 @@ export interface components {
             migrated_from_browser: boolean;
             workspace?: components["schemas"]["WorkspacePreferences"] | null;
             trends?: components["schemas"]["TrendsPreferences"] | null;
+            appearance?: components["schemas"]["AppearancePreferences"] | null;
         };
         /** PreferencesOut */
         PreferencesOut: {
@@ -2456,6 +2481,7 @@ export interface components {
             migrated_from_browser?: boolean | null;
             workspace?: components["schemas"]["WorkspacePreferences"] | null;
             trends?: components["schemas"]["TrendsPreferences"] | null;
+            appearance?: components["schemas"]["AppearancePreferences"] | null;
         };
         /**
          * PriceComponentOut
@@ -4559,7 +4585,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm. */
+            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm; a stale translation (`stale_translation`) must be made again. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4604,7 +4630,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm. */
+            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm; a stale translation (`stale_translation`) must be made again. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4815,7 +4841,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm. */
+            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm; a stale translation (`stale_translation`) must be made again. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4860,7 +4886,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm. */
+            /** @description Not possible now: not pending, busy, the architecture isn't open, undo has ended, or (accept) stale: accept again to confirm; a stale translation (`stale_translation`) must be made again. */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -11,7 +11,14 @@ import { readFile } from "node:fs/promises";
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { AWS_EU_WEST_1, Api, adminApi, openArchitecture } from "./helpers";
+import {
+  AWS_EU_WEST_1,
+  Api,
+  adminApi,
+  expectContrast,
+  openArchitecture,
+  setDarkTheme,
+} from "./helpers";
 
 const SETTINGS = {
   agent_enabled: true,
@@ -340,4 +347,53 @@ test("a translation can't be accepted after the original changes", async ({ page
     }),
   ).toBeVisible();
   expect(await azureArchitectures()).toBe(0);
+});
+
+/**
+ * 027 (FR-007, SC-002): the Agent tab with a comparison in the Results pane and a pending
+ * proposal meets AA contrast in both themes. Then (spec edge case, FR-010) Log out leaves the
+ * pending proposal with the user, shows the guest's inactive Agent tab, and saves nothing.
+ */
+test("the Agent tab meets AA contrast, and Log out keeps a pending proposal", async ({ page }) => {
+  const admin = await adminApi();
+  await admin.call("PUT", "/admin/agent/settings", SETTINGS);
+  const username = `logout-${randomUUID().slice(0, 8)}`;
+  const created = await admin.call<{ id: string }>("POST", "/admin/users", { username });
+  await admin.call("PATCH", `/admin/users/${created.id}/agent`, { agent_enabled_for_user: true });
+  const user = new Api(created.id);
+  const { architectureId } = await user.architecture("aws", "eu-west-1", [AWS_EU_WEST_1]);
+  const before = await user.call("GET", `/architectures/${architectureId}`);
+
+  await openArchitecture(page, user, architectureId);
+  await page.getByRole("tab", { name: "Agent" }).click();
+  await panel(page).getByRole("button", { name: "New agent session" }).click();
+  await expect(panel(page).getByText(/^Closes /)).toBeVisible();
+  const ask = async (question: string) => {
+    await panel(page).getByLabel("Message the agent").fill(question);
+    await panel(page).getByLabel("Message the agent").press("Enter");
+  };
+  await ask("What would this cost on Azure?");
+  await expect(page.getByRole("region", { name: "Results" }).getByRole("table")).toBeVisible();
+  await ask("Double the first service.");
+  const proposal = page.getByRole("region", { name: "Proposal" });
+  await expect(proposal.getByText("Pending")).toBeVisible();
+  for (const dark of [false, true]) {
+    await setDarkTheme(page, dark);
+    await expectContrast(page, `Agent tab with a proposal (${dark ? "dark" : "light"})`);
+  }
+  await setDarkTheme(page, false);
+
+  // Log out: the guest's Agent tab is inactive, and nothing was saved.
+  await page.getByRole("button", { name: `User menu: ${username}` }).click();
+  await page
+    .getByRole("dialog", { name: "User menu" })
+    .getByRole("button", { name: "Log out" })
+    .click();
+  await expect(page.getByRole("button", { name: "User menu: Guest" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Agent" })).toHaveAttribute("aria-disabled", "true");
+  expect(await user.call("GET", `/architectures/${architectureId}`)).toEqual(before);
+
+  // The proposal is still the user's, still pending.
+  const session = await user.call<{ proposals: { status: string }[] }>("GET", "/agent/session");
+  expect(session.proposals.map((p) => p.status)).toContain("pending");
 });

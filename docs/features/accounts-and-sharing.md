@@ -6,16 +6,19 @@
   else; they're stored on the server under a random ID kept in that browser, so they're reachable
   only from that browser, and lost to it if its site data is cleared. Guests can't share or
   import. Guest IDs that are no longer used are never cleaned up.
-- The person icon in the header shows **Guest** or your username. **Login** (or **Change user**
-  once logged in) asks for a username, then:
+- The person icon in the header opens the user menu (see
+  [workspace and preferences](workspace-and-preferences.md#user-menu)): your username or
+  **Guest**, then **Log in** or **Log out**. **Log in** asks for a username, then:
   - if the account has no password yet, asks you to create one, and logs you in;
   - otherwise asks for the password.
 - A username that doesn't exist, a wrong password, or a deactivated account just closes the
   dialog, with no error, and leaves you as you were.
 - Usernames are case-sensitive.
-- You stay logged in in that browser, across reloads and restarts, until you change user. There's
-  no way back to guest yet (short of clearing the browser's site data); an explicit **Log out**
-  is planned.
+- You stay logged in in that browser, across reloads and restarts, until you log out.
+- **Log out** returns the browser to the guest it was before you logged in, with that guest's
+  architectures; if that guest is gone, or the browser was never a guest, it starts a new one.
+  Your account and its architectures are unchanged. If you have unsaved input, the app asks
+  first (save, discard or cancel). There's no Change user: log out, then log in as someone else.
 - Accounts are created by the Admin (see [admin](admin.md)). There's one administrator, the
   built-in `Admin` account.
 
@@ -77,4 +80,5 @@ it isn't recreated. How they're generated is in
 [012](../../specs/012-user-accounts-sharing/spec.md) (US2–US4),
 [014](../../specs/014-architecture-templates-import-export/spec.md) (US1),
 [021](../../specs/021-workspace-layout-redesign/spec.md) (US1, US6: the menu replaced Column 1),
-[022](../../specs/022-gcp-azure-standard-architectures/spec.md) (GCP and Azure standard architectures).
+[022](../../specs/022-gcp-azure-standard-architectures/spec.md) (GCP and Azure standard architectures),
+[027](../../specs/027-deferred-ui-admin-fixes/spec.md) (US1, US3: the user menu and Log out).

@@ -8,6 +8,8 @@ provider's official architecture icons, applies the checked-in `OVERRIDES` and
   (`<P>_SERVICE_ICON_BY_ID`), plus per service an ordered list of more specific icons
   (`<P>_SERVICE_ICON_OVERRIDES`, first match wins). GCP matches a taxonomy prefix of the
   selection's product family; Azure a case-insensitive product-name pattern.
+- `backend/src/pricing_data/{gcp,azure}_service_icons.json`: the same map for the Admin icon
+  check (027), so the Issues table and the canvas agree.
 - `frontend/src/assets/{gcp,azure}-icons/*.svg`: only the icons those maps reference, copied
   unmodified (FR-014). Other `.svg` files there are removed; `README.md` is kept.
 
@@ -39,8 +41,6 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import duckdb
-
 BACKEND = Path(__file__).resolve().parent.parent
 if str(BACKEND) not in sys.path:
     # Run as a plain script, Python puts `scripts/` (not `backend/`) on the path.
@@ -49,13 +49,21 @@ if str(BACKEND) not in sys.path:
 from src.config import settings  # noqa: E402
 from src.logging_config import configure_logging, get_logger  # noqa: E402
 from src.pricing_data.active_snapshot import select_snapshot  # noqa: E402
+from src.pricing_data.provider_services import (  # noqa: E402, F401  (re-exported for tests)
+    _GCP_THIRD_PARTY,
+    CATEGORIES,
+    CATEGORY_RULES,
+    Service,
+    azure_categorized,
+    gcp_categorized,
+    load_category_rules,
+    read_services,
+)
 from src.pricing_data.snapshot import ActiveSnapshot  # noqa: E402
 from src.pricing_data.snapshot_cache import ensure_cached  # noqa: E402
 from src.pricing_data.storage import LocalStore, open_store  # noqa: E402
 
 FRONTEND = BACKEND.parent / "frontend"
-CATEGORY_RULES = BACKEND / "src" / "db" / "seed" / "service_categories.json"
-CATEGORIES = frozenset({"compute", "storage", "database", "networking"})
 PROVIDERS = ("gcp", "azure")
 
 # --- Checked-in, reviewed overrides (T019, T020) ---------------------------------------------
@@ -222,9 +230,6 @@ FAMILY_OVERRIDES: dict[str, dict[str, list[tuple[str, str]]]] = {
     },
 }
 
-# GCP top-level taxonomy groups that hold only third-party products.
-_GCP_THIRD_PARTY = frozenset({"Marketplace Services", "Third Party Services"})
-
 # Words dropped before comparing names: the icon sets and the price lists disagree on them.
 _STOP_WORDS = {
     "gcp": {"cloud", "google", "gcp"},
@@ -232,16 +237,6 @@ _STOP_WORDS = {
 }
 
 _AZURE_ICON = re.compile(r"^(?P<number>\d+)-icon-service-(?P<name>.+)\.svg$")
-
-
-@dataclass(frozen=True)
-class Service:
-    service_id: str
-    name: str
-    # GCP: taxonomy paths (" > "-joined, without "GCP"); Azure: product names.
-    families: tuple[str, ...] = ()
-    categorized: bool = False
-    first_party: bool = True
 
 
 @dataclass
@@ -469,6 +464,16 @@ def render_ts(provider: str, mapping: Mapping) -> str:
     return "\n".join(lines)
 
 
+def render_json(mapping: Mapping) -> str:
+    """027 (FR-015, data-model §5): the same map for the backend's Admin icon check."""
+    document = {
+        "by_id": dict(sorted(mapping.by_id.items())),
+        "overrides": {sid: [{"match": e["match"], "icon": e["icon"]} for e in entries]
+                      for sid, entries in sorted(mapping.family_by_id.items())},
+    }
+    return json.dumps(document, indent=2) + "\n"
+
+
 def copy_icons(icons: dict[str, Path], stems: list[str], out_dir: Path) -> None:
     """Copy exactly `stems` into `out_dir` as `<stem>.svg`, unmodified; drop any other SVG."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -481,28 +486,6 @@ def copy_icons(icons: dict[str, Path], stems: list[str], out_dir: Path) -> None:
         source = icons[stem]
         if not target.exists() or target.read_bytes() != source.read_bytes():
             shutil.copyfile(source, target)
-
-
-# --- Categories (the seed rules, applied as the app does) --------------------------------------
-
-
-def load_category_rules(path: Path = CATEGORY_RULES) -> list[dict]:
-    rules = json.loads(path.read_text())["rules"]
-    return [r for r in rules if r["category"] in CATEGORIES]
-
-
-def gcp_categorized(taxonomy: list[str], rules: list[dict]) -> bool:
-    """`taxonomy` without its leading "GCP"; level 1 and level 2 rules."""
-    levels = {"taxonomy_1": taxonomy[0] if taxonomy else None,
-              "taxonomy_2": taxonomy[1] if len(taxonomy) > 1 else None}
-    return any(r["provider"] == "gcp" and levels.get(r["match_field"]) == r["match_value"]
-               for r in rules)
-
-
-def azure_categorized(service_family: str, service_name: str, rules: list[dict]) -> bool:
-    values = {"service_family": service_family, "service_name": service_name}
-    return any(r["provider"] == "azure" and values.get(r["match_field"]) == r["match_value"]
-               for r in rules)
 
 
 # --- Reading the pricing data ------------------------------------------------------------------
@@ -522,52 +505,6 @@ def _latest_snapshot(provider: str, data_uri: str) -> ActiveSnapshot:
     return ActiveSnapshot.from_manifest(cached.manifest, base_dir=cached.path, pinned=False)
 
 
-def _files(snapshot: ActiveSnapshot, table: str) -> list[str]:
-    return [f for region in sorted(snapshot.regions(table)) for f in snapshot.files(table, region)]
-
-
-def read_services(provider: str, snapshot: ActiveSnapshot, rules: list[dict]) -> list[Service]:
-    con = duckdb.connect(":memory:")
-    try:
-        if provider == "gcp":
-            rows = con.execute(
-                "SELECT k.service_id, any_value(s.display_name), "
-                "list(DISTINCT array_to_string(k.product_taxonomy[2:], ' > ')), "
-                "list(DISTINCT k.product_taxonomy[2:3]) "
-                "FROM read_parquet(?) k LEFT JOIN read_parquet(?) s USING (service_id) "
-                "GROUP BY 1",
-                [_files(snapshot, "sku"), _files(snapshot, "service")],
-            ).fetchall()
-            return [
-                Service(
-                    service_id=sid,
-                    name=name or sid,
-                    families=tuple(sorted(f for f in paths if f)),
-                    categorized=any(gcp_categorized(list(levels or []), rules)
-                                    for levels in level_lists),
-                    first_party=any((levels or [None])[0] not in _GCP_THIRD_PARTY
-                                    for levels in level_lists),
-                )
-                for sid, name, paths, level_lists in rows
-            ]
-        rows = con.execute(
-            "SELECT service_id, any_value(service_name), list(DISTINCT product_name), "
-            "list(DISTINCT [service_family, service_name]) "
-            "FROM read_parquet(?, union_by_name = true) GROUP BY 1",
-            [_files(snapshot, "price_item")],
-        ).fetchall()
-        return [
-            Service(
-                service_id=sid,
-                name=name or sid,
-                families=tuple(sorted(p for p in products if p)),
-                categorized=any(azure_categorized(fam or "", svc or "", rules)
-                                for fam, svc in pairs),
-            )
-            for sid, name, products, pairs in rows
-        ]
-    finally:
-        con.close()
 
 
 def main() -> None:
@@ -590,6 +527,8 @@ def main() -> None:
 
     out_ts = FRONTEND / "src" / "lib" / f"{provider}ServiceIcons.generated.ts"
     out_ts.write_text(render_ts(provider, mapping))
+    out_json = BACKEND / "src" / "pricing_data" / f"{provider}_service_icons.json"
+    out_json.write_text(render_json(mapping))
     copy_icons(icons, mapping.used_stems, FRONTEND / "src" / "assets" / f"{provider}-icons")
 
     print(f"{provider} snapshot {snapshot.snapshot_date} r{snapshot.revision}: "
@@ -604,7 +543,8 @@ def main() -> None:
             for stem in mapping.used_stems:
                 log.info("icon copied", provider=provider, icon=f"{stem}.svg")
         configure_logging(settings.log_level, settings.log_format)  # don't keep the closed file
-    print(f"\nwrote {out_ts.relative_to(BACKEND.parent)} and {len(mapping.used_stems)} icons")
+    print(f"\nwrote {out_ts.relative_to(BACKEND.parent)}, {out_json.relative_to(BACKEND.parent)} "
+          f"and {len(mapping.used_stems)} icons")
 
 
 if __name__ == "__main__":

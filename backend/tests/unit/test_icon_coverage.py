@@ -116,3 +116,77 @@ def test_full_coverage_logs_zero_and_no_debug_lines(tmp_path, log_output):
     assert summary["missing_icon_count"] == 0
     assert summary["new_service_codes"] == []
     assert not [r for r in records if r["message"] == "service has no icon"]
+
+
+# --- 027 US5 (FR-014 to FR-016, research R7): GCP and Azure ------------------------------------
+
+import json  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import pytest  # noqa: E402
+
+from src.pricing_data.icon_coverage import ServiceRow, unmatched_issues  # noqa: E402
+from src.pricing_data.provider_services import read_services  # noqa: E402
+
+FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "pricing_parquet"
+MAPS = Path(__file__).resolve().parents[2] / "src" / "pricing_data"
+
+
+def _fixture_snapshot(provider: str) -> ActiveSnapshot:
+    latest = json.loads((FIXTURE / provider / "manifests" / "latest.json").read_text())
+    manifest = Manifest.model_validate_json((FIXTURE / latest["manifest_path"]).read_text())
+    return ActiveSnapshot.from_manifest(manifest, base_dir=FIXTURE, pinned=False)
+
+
+def test_first_party_services_without_an_icon_are_listed_with_their_provider():
+    services = {
+        "AAAA": ServiceRow("Has An Icon", first_party=True),
+        "BBBB": ServiceRow("New First Party", first_party=True),
+        "CCCC": ServiceRow("Old First Party", first_party=True),
+        "M1": ServiceRow("Some Marketplace App", first_party=False),
+        "M2": ServiceRow("Another Vendor App", first_party=False),
+    }
+    issues = unmatched_issues("gcp", "2026-11-16", services, frozenset({"AAAA"}),
+                              previous_codes={"AAAA", "CCCC", "M1"})
+    listed = [i for i in issues if i.kind == "missing_icon"]
+    assert [i.service_code for i in listed] == ["BBBB", "CCCC"]  # new first
+    assert all(i.provider == "gcp" for i in issues)
+    assert {i.service_code: i.is_new for i in listed} == {"BBBB": True, "CCCC": False}
+    assert "generic GCP tile" in listed[0].message
+    [summary] = [i for i in issues if i.kind == "marketplace_without_icons"]
+    assert summary.count == 2
+    assert summary.service_code is None
+    assert "2 Marketplace and third-party GCP services have no icon" in summary.message
+
+
+def test_no_marketplace_line_when_every_service_is_first_party():
+    issues = unmatched_issues("azure", "2026-11-16", {"X": ServiceRow("X", first_party=True)},
+                              frozenset(), previous_codes=None)
+    assert [i.kind for i in issues] == ["missing_icon"]
+    assert issues[0].is_new is False  # no previous snapshot: nothing is new
+
+
+@pytest.mark.parametrize("provider", ["gcp", "azure"])
+def test_the_issues_are_exactly_the_services_the_canvas_shows_with_the_generic_icon(provider):
+    """SC-006: the check reads the canvas's own map (by_id) and the generator's services."""
+    snapshot = _fixture_snapshot(provider)
+    issues = find_unmatched_services(snapshot, None)
+    by_id = json.loads((MAPS / f"{provider}_service_icons.json").read_text())["by_id"]
+    services = read_services(provider, snapshot)
+    expected = {s.service_id for s in services if s.first_party and s.service_id not in by_id}
+    assert {i.service_code for i in issues if i.kind == "missing_icon"} == expected
+    assert all(i.provider == provider for i in issues)
+    marketplace = sum(1 for s in services if not s.first_party and s.service_id not in by_id)
+    counts = [i.count for i in issues if i.kind == "marketplace_without_icons"]
+    assert counts == ([marketplace] if marketplace else [])
+
+
+@pytest.mark.parametrize("provider", ["gcp", "azure"])
+def test_analysis_without_an_active_snapshot_reports_nothing(provider):
+    state = MonitorState()
+    analyze(state, LocalStore(FIXTURE), None)
+    assert state.issues == []
+
+
+def test_aws_issues_now_name_their_provider(tmp_path):
+    assert {i.provider for i in _unmatched(tmp_path)} == {"aws"}
