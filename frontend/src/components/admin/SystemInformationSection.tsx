@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { api, type SystemInfo } from "../../api/client";
@@ -87,6 +87,16 @@ export function SystemInformationSection({ pollMs = 2_000 }: { pollMs?: number }
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
 
+  // Stop polling for a check's result once the section is gone (027: it kept fetching after
+  // unmount, which also left tests making real requests after they had finished).
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   async function checkNow() {
     setCheckError(null);
     const before = info.data?.last_check_at ?? null;
@@ -101,6 +111,7 @@ export function SystemInformationSection({ pollMs = 2_000 }: { pollMs?: number }
     try {
       while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, pollMs));
+        if (!mounted.current) return;
         const fresh = await queryClient.fetchQuery({
           queryKey: ["systemInfo"],
           queryFn: api.getSystemInfo,
@@ -109,7 +120,7 @@ export function SystemInformationSection({ pollMs = 2_000 }: { pollMs?: number }
         if (fresh.last_check_at !== before) break;
       }
     } finally {
-      setChecking(false);
+      if (mounted.current) setChecking(false);
     }
   }
 

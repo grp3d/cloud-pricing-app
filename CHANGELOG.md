@@ -3,7 +3,7 @@
 Releases of the app, newest first. Each feature links to its specification folder, which has
 the full design (spec, plan, tasks). Versions stay below 1.0.0 until a deliberate 1.0 release.
 
-## Unreleased
+## v0.2.0 — 2026-11-22
 
 - 022 GCP and Azure standard architectures: the four standard designs on GCP and Azure, created once in every environment ([spec](specs/022-gcp-azure-standard-architectures/))
 - 023 Agent foundation: an Agent tab beside the Canvas tab (they merge, split and swap like the inspector's tabs) that answers questions about the open architecture's contents and cost, and what can be imported, with figures from the pricing engine; sessions, an activity log, Admin agent settings, per-user preview and limits, and a global monthly cap; the agent is off by default. The Admin page now has three tabs: Agent Settings, User Management and System Information ([spec](specs/023-agent-foundation/))

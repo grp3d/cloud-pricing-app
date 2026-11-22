@@ -328,10 +328,12 @@ describe("Trends history (027 US4)", () => {
 
   it("refreshes with the rest of the section", async () => {
     const building = info({}, { history: { ...DONE, weeks_built: 12, backfill: "running" } });
+    // The check has run (a new last_check_at), so Check now stops polling.
+    const done = info({ last_check_at: "2026-09-26T21:06:00Z" });
     vi.spyOn(api, "getSystemInfo")
       .mockResolvedValueOnce(building)
       .mockResolvedValueOnce(building)
-      .mockResolvedValue(info());
+      .mockResolvedValue(done);
     vi.spyOn(api, "startSnapshotCheck").mockResolvedValue({ started: true });
     renderSection({ pollMs: 5 });
     expect(await providerCell("AWS", "Trends history")).toMatch(/^Building/);

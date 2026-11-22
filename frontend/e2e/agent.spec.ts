@@ -383,12 +383,23 @@ test("the Agent tab meets AA contrast, and Log out keeps a pending proposal", as
   }
   await setDarkTheme(page, false);
 
-  // Log out: the guest's Agent tab is inactive, and nothing was saved.
+  // Log out: back to this browser's own guest (`openArchitecture` stores the user's ID as the
+  // guest too, so give the browser a separate guest first). The guest's Agent tab is inactive,
+  // and nothing was saved.
+  const guestId = randomUUID();
+  await page.evaluate((id) => localStorage.setItem("cloud-pricing-guest-id", id), guestId);
   await page.getByRole("button", { name: `User menu: ${username}` }).click();
   await page
     .getByRole("dialog", { name: "User menu" })
     .getByRole("button", { name: "Log out" })
     .click();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("cloud-pricing-current-identity-id")))
+    .toBe(guestId);
+  // The menu reads "Guest" briefly while the identity reloads, so check it once the requests
+  // have settled: only that proves the browser is the guest. (No reload: `openArchitecture`'s
+  // init script would log the user back in.)
+  await page.waitForLoadState("networkidle");
   await expect(page.getByRole("button", { name: "User menu: Guest" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Agent" })).toHaveAttribute("aria-disabled", "true");
   expect(await user.call("GET", `/architectures/${architectureId}`)).toEqual(before);

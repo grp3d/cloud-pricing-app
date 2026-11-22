@@ -59,9 +59,13 @@ test("a logged-in user's dark theme switches at once and follows them", async ({
   await other.close();
 
   // Back to light, and that is saved too.
+  // Wait for the save that the click starts; registered first, so a fast save isn't missed.
+  const savedLight = page.waitForResponse(
+    (r) => r.url().endsWith("/me/preferences") && r.request().method() === "PATCH" && r.ok(),
+  );
   await pickTheme(page, username, "Light");
   await expect(html(page)).not.toHaveClass(/dark/);
-  await page.waitForResponse((r) => r.url().endsWith("/me/preferences") && r.ok());
+  await savedLight;
   await page.reload();
   await expect(html(page)).not.toHaveClass(/dark/);
 });
