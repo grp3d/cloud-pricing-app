@@ -72,7 +72,7 @@ Checked against the code on 2026-11-22 (branch `027-deferred-ui-admin-fixes`, on
 ## R6: Trends history status on the Admin page
 
 - **Decision:** frontend shows each provider's `history` in the existing provider rows:
-  "Complete: N weeks, last built <date>"; "N weeks missing"; "Building…"; "Failed: <error>";
+  "Complete: N weeks, last built <date>"; "N weeks missing"; "Building (N of M weeks)"; "Failed: <error>";
   "No history yet" when `weeks_total` is 0 and `backfill` is `pending`. Backend: `_history_out`
   catches a read error and the field becomes `null`, shown as "Unavailable".
 - **Rationale:** the data is already served (019, contracts §9); only the edge case of an
@@ -84,7 +84,9 @@ Checked against the code on 2026-11-22 (branch `027-deferred-ui-admin-fixes`, on
 - **Decision:**
   - `generate_provider_service_icon_map.py` also writes
     `backend/src/pricing_data/{gcp,azure}_service_icons.json` (`by_id`, `overrides`) from the
-    same mapping as the TypeScript file; re-run once to create them. A unit test checks each JSON
+    same mapping as the TypeScript file. It is re-run on the current snapshots (2026-11-16), which
+    also refreshes the TypeScript maps and the shipped SVGs from 020's 2026-11-02 run
+    (clarification 2026-11-22); the changes are listed in tasks.md. A unit test checks each JSON
     equals its TypeScript map, so the canvas and the check can't disagree (FR-015).
   - `icon_coverage.py` becomes provider-aware: AWS unchanged; GCP reads services from `service`
     and `sku` (taxonomy) as the generator's `read_services` does, which moves into `src` so both

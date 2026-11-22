@@ -50,6 +50,9 @@ each marked "planned" or "not shown yet" on its `docs/features/` page. This feat
   or third-party software, which never get icons (020). Which GCP and Azure services does the
   Issues table report? → A: First-party services only. Marketplace and third-party services
   without an icon are counted in one summary line per provider, not listed.
+- Q: The 020 icon maps came from the 2026-11-02 snapshots; regenerating them for the backend
+  reads the 2026-11-16 ones. Keep the old maps or refresh? → A: Refresh. Icons aren't stored
+  with architectures, so every canvas shows the refreshed icons with no approval step.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -131,8 +134,8 @@ Guest and the guest's architecture is back.
 1. **Given** a logged-in user who was a guest in this browser before logging in, **When** they
    pick **Log out**, **Then** the browser returns to that guest identity.
 2. **Given** a user who has logged out, **Then** the menu shows **Guest** and **Log in**; the
-   user's own architectures, saved settings (theme included) and Agent tab are no longer shown or
-   applied; and the account itself is unchanged.
+   user's own architectures, saved settings (theme included) and agent conversation are no
+   longer shown or applied; and the account itself is unchanged.
 3. **Given** the earlier guest, **When** the user has logged out, **Then** that guest's
    architectures are listed again, and the workspace opens as it would for that guest.
 4. **Given** the earlier guest no longer exists, or this browser has no earlier guest recorded,
@@ -225,7 +228,7 @@ open the Issues table and see it listed with its provider.
 - **FR-009**: **Log out** MUST return the browser to that earlier guest if it still exists, and
   otherwise create and use a new guest. It MUST NOT change the account.
 - **FR-010**: After Log out, nothing of the logged-in user's MUST remain shown or applied: their
-  architectures, saved settings (theme included) and Agent tab.
+  architectures, saved settings (theme included) and agent conversation.
 - **FR-011**: Log out MUST ask the same confirmation the app asks today before leaving unsaved
   work.
 - **FR-012**: System Information MUST show, for each provider, its Trends history: weeks built
@@ -291,6 +294,8 @@ open the Issues table and see it listed with its provider.
 - Saving a guest's theme choice (decided: not saved).
 - Any user settings beyond the theme; the Settings section only makes room for them.
 - Changing how logins work.
-- Adding icons for the GCP and Azure services found; this feature only reports them.
+- Adding icons by hand or new icon overrides for the GCP and Azure services found. Re-running the
+  020 icon generator on the current snapshots, which refreshes the maps the canvas uses, is in
+  scope (clarification 2026-11-22).
 - Other open follow-ups: a cleanup job for guest IDs no longer used; readable GCP and Azure
   names on the canvas boxes (021); branching connectors (019).

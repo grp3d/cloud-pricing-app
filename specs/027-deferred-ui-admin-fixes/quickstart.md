@@ -41,10 +41,13 @@ uv run python scripts/generate_provider_service_icon_map.py --provider gcp \
   --icons ../../images-web/gcp_architecture_icons
 uv run python scripts/generate_provider_service_icon_map.py --provider azure \
   --icons ../../images-web/azure_architecture_icons
-git diff --stat ../frontend/src/lib/   # expected: no change to the .generated.ts maps
+git diff --stat ../frontend/src/lib/ ../frontend/src/assets/ src/pricing_data/
 ```
 
-The TypeScript maps must come out byte-identical (020, FR-010); only the new JSON files appear.
+This refreshes the canvas's maps and icons from 020's 2026-11-02 run to the newest snapshots, and
+adds the two JSON files. Check the generator's report: the "categorized services without an
+icon" list is still empty (020, SC-003), and each icon added or dropped is a real service name
+match. A second run on the same data must change nothing (020, FR-010).
 
 ## 3. Manual walk-through: [MANUAL] items only
 

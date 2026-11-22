@@ -47,11 +47,11 @@ from the keyboard.
 ### Tests for User Story 1
 
 - [ ] T007 [P] [US1] Write `frontend/tests/unit/UserMenu.test.tsx`: for a guest the menu shows the label "Guest", **Log in**, a Settings heading and **Colour theme: Dark**, and no Log out or Change user (US1-1); for a user it shows the username, **Log out** and Colour theme, and no Log in or Change user (US1-2); the label isn't focusable; **Log in** closes the menu and opens `LoginDialog` (US1-5); the trigger's accessible name is "User menu: Guest" / "User menu: <username>"
-- [ ] T008 [P] [US1] Write `frontend/e2e/user-menu.spec.ts`: both header menus from the keyboard only (open with Enter, Space and ArrowDown; ArrowDown/ArrowUp; Escape returns focus to each trigger) (US1-3); log in from the user menu with the seeded test user and see the username (US1-5)
+- [ ] T008 [P] [US1] Write `frontend/e2e/user-menu.spec.ts`: both header menus from the keyboard only (open with Enter, Space and ArrowDown; ArrowDown/ArrowUp; Escape returns focus to each trigger) (US1-3); log in from the user menu with the seeded test user and see the username (US1-5); with reduced motion emulated, the open menu has no animation and switching the theme has no transition (spec edge case)
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Implement `frontend/src/components/layout/UserMenu.tsx` on `HeaderMenu` per contracts/user-menu-ui.md (items in order; Settings section; Log in opens the existing `LoginDialog`, success calls `onIdentityChanged()` and navigates to `/`); Colour theme and Log out call props wired in US2 and US3 (until then, Colour theme is hidden behind a `themeItem` prop and Log out behind `onLogOut`)
+- [ ] T009 [US1] Implement `frontend/src/components/layout/UserMenu.tsx` on `HeaderMenu` per contracts/user-menu-ui.md (items in order; Settings section; Log in opens the existing `LoginDialog`, success calls `onIdentityChanged()` and navigates to `/`); until US2 and US3, the Settings heading is shown with no items and Log out is not rendered; T020 adds Colour theme and T025 adds Log out
 - [ ] T010 [US1] Replace `IdentityMenu` with `UserMenu` in `frontend/src/components/layout/TopTabs.tsx` and delete `frontend/src/components/layout/IdentityMenu.tsx`; update any test or e2e step that opens the old identity dialog
 
 **Checkpoint**: the user menu works for Log in; US1 is testable on its own.
@@ -95,7 +95,7 @@ architecture are back.
 
 - [ ] T021 [P] [US3] Write `frontend/tests/unit/logOut.test.ts` for `api.logOut()` in `frontend/src/api/client.ts`: the current identity becomes the stored guest ID (US3-1); with no guest ID stored, a new one is created and used (US3-4); the guest ID key is never overwritten
 - [ ] T022 [P] [US3] Extend `frontend/tests/unit/UserMenu.test.tsx`: Log out with no unsaved work calls `api.logOut()`, removes the theme cache and `.dark`, calls `onIdentityChanged()` and navigates to `/`; with unsaved work it shows `UnsavedWorkDialog` first and Cancel keeps the user logged in (FR-011)
-- [ ] T023 [P] [US3] Extend `frontend/e2e/user-menu.spec.ts`: as a guest create an architecture; log in (the user's own architectures list, theme dark); Log out → menu shows Guest and Log in, the guest's architecture is listed again, the user's are not, the theme is light, and the Agent tab shows its guest message (US3-1 to US3-3, SC-004); clear `cloud-pricing-guest-id` while logged in, then Log out → a new guest with no architectures (US3-4)
+- [ ] T023 [P] [US3] Extend `frontend/e2e/user-menu.spec.ts`: as a guest create an architecture; log in (the user's own architectures list, theme dark); Log out → menu shows Guest and Log in, the guest's architecture is listed again, the user's are not, the theme is light, and the Agent tab shows its guest message (US3-1 to US3-3, SC-004); clear `cloud-pricing-guest-id` while logged in, then Log out → a new guest with no architectures (US3-4); with a pending agent proposal, Log out, log back in: the proposal is still pending and nothing was saved (spec edge case)
 
 ### Implementation for User Story 3
 
@@ -144,7 +144,7 @@ services without icons and the Marketplace count.
 ### Implementation for User Story 5
 
 - [ ] T034 [US5] Extend `backend/scripts/generate_provider_service_icon_map.py` to also write `backend/src/pricing_data/{gcp,azure}_service_icons.json` (data-model.md §5) from the same mapping, and move `read_services` (and the `Service` record, `_GCP_THIRD_PARTY`) into `backend/src/pricing_data/provider_services.py` so the server and the script share it; update `backend/tests/unit/test_provider_icon_generator.py` for the move
-- [ ] T035 [US5] Run the generator for GCP and Azure against the local snapshots and `../images-web/` (quickstart section 2); commit the two JSON files; confirm the `.generated.ts` maps are byte-identical
+- [ ] T035 [US5] Run the generator for GCP and Azure on the newest local snapshots and `../images-web/` (quickstart section 2), refreshing the `.generated.ts` maps and `frontend/src/assets/{gcp,azure}-icons/` from 020's 2026-11-02 run (clarification 2026-11-22) and writing the two JSON files; check the report (no categorized service without an icon; added and dropped icons are real name matches); a second run changes nothing; record here the icons added and dropped per provider; commit the maps, icons and JSON together
 - [ ] T036 [US5] Make `backend/src/pricing_data/icon_coverage.py` provider-aware (research R7): the map per provider, services from `provider_services.read_services` for GCP and Azure, the first-party filter and the Marketplace count issue, the provider's fallback in the message; add `provider` and `count` to `Issue` in `backend/src/pricing_data/active_snapshot.py`
 - [ ] T037 [US5] Run the analysis for every provider after its active snapshot changes, in `backend/src/pricing_data/active_snapshot.py` (today only AWS), with `_previous` taking the provider
 - [ ] T038 [US5] Add `provider`, the `marketplace_without_icons` kind and `count` to `IssueOut`, and return every provider's issues in the top-level `issues`, in `backend/src/models/schemas.py` and `backend/src/api/admin_system.py`; regenerate the frontend API types
@@ -157,8 +157,8 @@ services without icons and the Marketplace count.
 ## Phase 8: Polish & Cross-Cutting Concerns
 
 - [ ] T040 [P] Update `docs/features/workspace-and-preferences.md` (header user menu, Colour theme, the theme in "Settings saved to your account" for logged-in users only, both menus' keyboard), `docs/features/accounts-and-sharing.md` (user menu, Log out, no Change user) and `docs/features/admin.md` (Trends history status, Issues for GCP and Azure, Provider column); remove the "planned" / "not shown yet" notes these replace
-- [ ] T041 [P] Add the 027 line to `CHANGELOG.md` under Unreleased
-- [ ] T042 Run the whole backend suite, ruff on touched files, frontend unit tests, type-check, lint and build, and the whole e2e suite; record the results in this file
+- [ ] T041 [P] Add the 027 line to `CHANGELOG.md` under Unreleased (user menu with Log out and Colour theme; Trends history status and GCP and Azure icon issues on the Admin page; GCP and Azure canvas icons refreshed to the current price lists)
+- [ ] T042 Run the whole backend suite, ruff on touched files, frontend unit tests, type-check, lint and build, and the whole e2e suite; record the results in this file; time the icon check for GCP and Azure on the real local snapshots and record it (plan: under 1 s)
 - [ ] T043 Run the quickstart manual walk-through with the user (section 3, the two `[MANUAL]` items) and record what was checked
 
 ---
@@ -230,6 +230,8 @@ section 3 (constitution 1.3.0, Principle V).
 | US5-4 one Marketplace count line | T031; T033 |
 | Edge: theme save fails | T012 |
 | Edge: unsaved work before Log out | T022 |
+| Edge: reduced motion | T008 |
+| Edge: pending agent proposal at Log out | T023 |
 | Edge: unreadable history | T026; T027 |
 | Edge: no snapshot → no icon issues | T031 |
 | SC-001 two clicks, under 1 s | T013 |

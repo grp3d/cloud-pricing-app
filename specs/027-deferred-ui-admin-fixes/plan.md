@@ -25,7 +25,7 @@ Four small, independent changes, mostly in the frontend:
 - **Admin (US4, US5):** System Information shows each provider's history from the existing
   `providers.<p>.history`, which becomes nullable when its state can't be read (R6). The icon
   check runs for GCP and Azure from JSON maps the 020 generator now writes beside its TypeScript
-  maps, lists first-party services only and adds one Marketplace count line per provider (R7);
+  maps (re-run on the current snapshots, which also refreshes the canvas's GCP and Azure icons), lists first-party services only and adds one Marketplace count line per provider (R7);
   the Issues table gains a Provider column (R8).
 
 ## Technical Context
